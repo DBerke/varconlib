@@ -126,9 +126,6 @@ def measureSNR(spectrum, start_wl, search_window=0.6, sub_window=0.05,
     return {'SNRmax':greatest_SNR, 'SNRmaxWL':central_wl,
             'SNRlist':np.array(snr_list), 'SNRlistWL':np.array(wl_list)}
 
-def line_free(x, m, b):
-    return m * x + b
-
 def line_fixed(x, m):
     return m * x
 
@@ -138,7 +135,7 @@ outPicDir = "/Users/dberke/Pictures/"
 objects = ("HD68168", "HD126525", "HD138573")
 start_wavelengths = (561, 620.24, 623.2) # Adjusted for offset.
 
-# Uncomment this to run minimal mode.
+# Uncomment this to run just over a single object.
 #objects = ("HD68168",)
 
 
