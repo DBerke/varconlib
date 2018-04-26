@@ -25,6 +25,8 @@ def readHARPSfile(FITSfile):
         date_obs: the date the file was observed
         spec_bin: the wavelength bin size
         med_snr: the median SNR of the flux array
+        hd_num: the HD number of the star
+        radvel: the radial velocity of the star
     """
 
     with fits.open(FITSfile) as hdulist:
@@ -77,11 +79,12 @@ def vac2airESO(ll):
 def air2vacESO(air_arr):
     """Take an array of air wavelengths (A) and return an array of vacuum wavelengths   
     
-    air_arr: ar array-like list of wavelengths in air (Angstroms)
+    air_arr: an array-like list of wavelengths in air (Angstroms)
 
-    returns: 
+    returns: an array of wavelengths in vacuum (Angstroms)
     """
-    air_arr = np.array(air_arr)
+    if not type(air_arr) == np.ndarray:
+        air_arr = np.array(air_arr)
 
     tolerance = 1e-12
 
@@ -122,8 +125,6 @@ def air2vacMortonIAU(wl_air):
         + (0.0001599740894897 / (38.92568793293 - s**2))
     return wl_air * n
 
-
-
 def index2wavelength(index, step, min_wl):
     """Return the wavelength associated with an index.
     
@@ -134,7 +135,7 @@ def index2wavelength(index, step, min_wl):
     return round((step * index + min_wl), 2)
 
 
-def wavelength2index(wl, step, min_wl):
+#def wavelength2index(wl, step, min_wl):
     """Return the index of the given wavelength.
     
     wl: the wavelength of the position of interest
@@ -142,6 +143,19 @@ def wavelength2index(wl, step, min_wl):
     min_wl: the minimum wavelength of the spectrum, in nm
     """
     
-    return int((wl - min_wl) / step)
+#    return int((wl - min_wl) / step)
 
+def wavelength2index(wl_arr, wl):
+    """Find the index in a list associated with a given wavelength
+    
+    wl_arr: an iterable object of wavelengths, in increasing order
+    wl: the wavelength to search for
 
+    returns: the first index for which the wavelength is larger than the given    
+    """
+    for i in range(len(wl_arr)):
+        if wl_arr[i] >= wl:
+            return i
+        
+    print("Couldn't find the given wavelength: {}".format(wl))
+    raise ValueError
