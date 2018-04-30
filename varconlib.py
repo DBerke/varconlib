@@ -151,11 +151,18 @@ def wavelength2index(wl_arr, wl):
     wl_arr: an iterable object of wavelengths, in increasing order
     wl: the wavelength to search for
 
-    returns: the first index for which the wavelength is larger than the given    
+    returns: the index for which the wavelength is closest to the given    
     """
     for i in range(len(wl_arr)):
+        # First find the index for which the value is greater than the given wl
         if wl_arr[i] >= wl:
-            return i
+            # Then check if it's closest to this index or the previous one
+            # Note that the way it's set up it should always be
+            # wl_arr[i-1] <= wl <= wl_arr[i]
+            if wl_arr[i]-wl > wl-wl_arr[i-1]:
+                return i-1
+            else:
+                return i
         
     print("Couldn't find the given wavelength: {}".format(wl))
     raise ValueError
