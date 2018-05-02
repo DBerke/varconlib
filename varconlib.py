@@ -98,7 +98,7 @@ def air2vacESO(air_arr):
             n = air_indexEdlen53(newwl)
             newwl = air_arr[i] * n
 
-        vac.append(newwl)
+        vac.append(round(newwl, 2))
     vac_arr = np.array(vac)
 
     return vac_arr
