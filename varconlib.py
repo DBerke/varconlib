@@ -10,6 +10,7 @@ Created on Wed Apr 18 16:28:13 2018
 
 import numpy as np
 from astropy.io import fits
+from astropy.constants import c
 
 def readHARPSfile(FITSfile):
     """Read a HARPS FITS file and return a dictionary of information.
@@ -49,6 +50,26 @@ def readHARPSfile(FITSfile):
             'wlmin':wavelmin, 'date_obs':date_obs,
             'spec_bin':spec_bin, 'med_snr':med_SNR,
             'hd_num':hd_num, 'radvel':radvel}
+
+
+def readESPRESSOfile(ESPfile):
+    """Read an ESPRESSO file and return a dictionary of information
+
+    ESPfile: a path to the ESPRESSO file to be read
+    
+    output: a dictionary containing the following information:
+        obj: the name from the OBJECT card
+        w: the wavelength array
+        f: the flux array
+        e: the error array
+    """
+    with fits.open(ESPfile) as hdulist:
+        data = hdulist[1].data
+        obj = hdulist[0].header['OBJECT']
+        w = data['wavelength']
+        f = data['flux']
+        e = data['error']
+    return {'obj':obj, 'w':w, 'f':f, 'e':e}
 
 
 def air_indexEdlen53(l, t=15., p=760.):
@@ -135,16 +156,6 @@ def index2wavelength(index, step, min_wl):
     return round((step * index + min_wl), 2)
 
 
-#def wavelength2index(wl, step, min_wl):
-    """Return the index of the given wavelength.
-    
-    wl: the wavelength of the position of interest
-    step: the step in wavelength, in nm
-    min_wl: the minimum wavelength of the spectrum, in nm
-    """
-    
-#    return int((wl - min_wl) / step)
-
 def wavelength2index(wl_arr, wl):
     """Find the index in a list associated with a given wavelength
     
@@ -156,6 +167,7 @@ def wavelength2index(wl_arr, wl):
     for i in range(len(wl_arr)):
         # First find the index for which the value is greater than the given wl
         if wl_arr[i] >= wl:
+            #print("Found wl_arr[{}]={} >= {}".format(i, wl_arr[i], wl))
             # Then check if it's closest to this index or the previous one
             # Note that the way it's set up it should always be
             # wl_arr[i-1] <= wl <= wl_arr[i]
@@ -166,3 +178,36 @@ def wavelength2index(wl_arr, wl):
         
     print("Couldn't find the given wavelength: {}".format(wl))
     raise ValueError
+
+
+def lineshift(line, radvel):
+    """Find the new position of a line given the radial velocity of a star
+
+    line: line position. Can be nm or Angstroms, will return in same units
+    radvel: radial velocity in km/s
+
+    returns: the new line position
+    """
+    return ((radvel * 1000 / c.value) * line) + line
+
+
+def getwlseparation(v, wl):
+    """Return wavelength separation for a given velocity separation at a point
+    
+    v: the velocity separation. Should be in m/s
+    wl: the wavelength at which the function should be evaluated, since
+        it's also a function of wavelength. Returned in whatever units it's
+        given in.
+    
+    """
+    return (v * wl) /  c.value
+
+
+def getvelseparation(wl1, wl2):
+    """Return velocity separation for a pair of points in wavelength space
+    
+    wl1 & wl2: wavelengths to get the velocity separation between in m/s
+    """
+    return (wl2 - wl1) * c.value / ((wl1 + wl2) / 2)
+
+
