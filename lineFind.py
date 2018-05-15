@@ -14,8 +14,10 @@ import varconlib as vcl
 import os.path
 import math
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticks
 from scipy.optimize import curve_fit
 from astropy.modeling import models, fitting
+from astropy.visualization import hist as astrohist
 from glob import glob
 import sys
 
@@ -132,6 +134,7 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
 
     # Fit a parabola to the line center
     popt_par, pcov_par = curve_fit(parabola, xnorm, ynorm, sigma=e)
+    perr_par = np.sqrt(np.diag(pcov_par))
     #print(popt_par)
 
     # Find curve_fit minimum analytically (line of symmetry = -b/2a)
@@ -144,6 +147,8 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
     popt_gauss, pcov_gauss = curve_fit(gaussian, xnorm, ynorm-continuum,
                                        p0=(-1*continuum, 0, 1e3),
                                        sigma=e, maxfev=800)
+    perr_gauss = np.sqrt(np.diag(pcov_gauss))
+    print(perr_gauss[:100])
     #print(popt_gauss)
     
     # Find center of Gaussian &
@@ -218,9 +223,9 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, FITSfile):
     global unfittablelines    
     params = (vac_wl, flux, err, radvel)
     line1wl = linefind(linepair[0], *params,
-                       plot=True, velsep=9000, pixrange=3)
+                       plot=False, velsep=9000, pixrange=3)
     line2wl = linefind(linepair[1], *params,
-                       plot=True, velsep=9000, pixrange=3)
+                       plot=False, velsep=9000, pixrange=3)
 
     if line1wl == None:
         unfittablelines += 1
@@ -231,14 +236,6 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, FITSfile):
 
         parveldiff = abs(vcl.getvelseparation(line1wl[0], line2wl[0]))
         gaussveldiff = abs(vcl.getvelseparation(line1wl[1], line2wl[1]))
-        
-#        if veldiff > calcveldiff:
-#            linefind(linepair[0], *params, plot=True, pixrange=3, velsep=10000)
-#            linefind(linepair[1], *params, plot=True, pixrange=3, velsep=10000)
-#            print(veldiff)
-#            print(calcveldiff)
-#            print(FITSfile)
-#            sys.exit(0)
     
         return (parveldiff, gaussveldiff)
     else:
@@ -270,35 +267,96 @@ def searchFITSfile(FITSfile, pairlist):
             measuredseps.append(math.nan)
     for item, linepair in zip(measuredseps, pairlist):
         if item != None:
-            print("{}, {}: measured separation {:.3f} m/s".format(*linepair,
-                  item))
+            print("{}, {}: measured separation {:.3f}/{:.3f} m/s".format(
+                    *linepair, item[0], item[1]))
         else:
             print("Couldn't measure separation for {}, {}".format(*linepair))
 
-    return np.array(measuredseps)
-#    return 0, 0
+    return measuredseps
+
 
 def plotstarseparations(mseps):
     """
     """
 
-
+    fig_par = plt.figure(figsize=(8, 6))
+    fig_gauss = plt.figure(figsize=(8, 6))
     for i in range(len(mseps[0])):
+            ax_par = fig_par.add_subplot(5, 7, i+1)
+            ax_gauss = fig_gauss.add_subplot(5, 7, i+1)
+            parhistlist = []
+            gausshistlist = []
+            for seplist in mseps:
+                parhistlist.append(seplist[i][0])
+                gausshistlist.append(seplist[i][1])
+            parhistlist = np.array(parhistlist)
+            parhistlist -= np.median(parhistlist)
+            gausshistlist = np.array(gausshistlist)
+            gausshistlist -= np.median(gausshistlist)
+            parmax = parhistlist.max()
+            parmin = parhistlist.min()
+#            print(min, max)
+            if parmax > abs(parmin):
+                parlim = parmax
+            else:
+                parlim = abs(parmin)
+#            print(lim)
+            gaussmax = parhistlist.max()
+            gaussmin = parhistlist.min()
+#            print(min, max)
+            if gaussmax > abs(gaussmin):
+                gausslim = gaussmax
+            else:
+                gausslim = abs(gaussmin)
+            #ax.hist(parhistlist, range=(-1.05*lim, 1.05*lim))
+            astrohist(parhistlist, ax=ax_par, bins=10,
+                                       range=(-1.05*parlim, 1.05*parlim))
+            astrohist(gausshistlist, ax=ax_gauss, bins=10,
+                                       range=(-1.05*gausslim, 1.05*gausslim))
+#    outfile
+#    outfile = '/Users/dberke/Pictures/.png'.format(i)
+#    fig.savefig(outfile, format='png')
+    plt.tight_layout(pad=0.5)
+    plt.show()
+
+
+def plot_line_comparisons(mseps, linepairs):
+    """
+    """
+
+    for i, linepair in zip(range(len(mseps[0])), linepairs):
         fig = plt.figure(figsize=(8, 6))
         ax = fig.add_subplot(1, 1, 1)
-        
-        #ax = fig_main.add_subplot(i, j, n+1)
-        histlist = []
+        ax.set_xlabel('$\delta$ v ({}nm - {}nm) [m/s]'.format(linepair[0],
+                                                       linepair[1]))
+        parlist = []
+        gausslist = []
         for seplist in mseps:
-            histlist.append(seplist[i])
-        print(histlist)
-        histlist = np.array(histlist)
-        print(histlist.min(), histlist.max())
-        ax.hist(histlist, bins=10)#, range=(-70000, 70000))
-        outfile = '/User/dberke/Pictures/Line_pair_{}.png'.format(i)
-        #fig.savefig(outfile, format='png')
+                parlist.append(seplist[i][0])
+                gausslist.append(seplist[i][1])
+        parlist = np.array(parlist)
+        parlist -= np.median(parlist)
+        gausslist = np.array(gausslist)
+        gausslist -= np.median(gausslist)
+        y_par = np.arange(0, len(parlist), 1)
+        y_gauss = np.arange(0.3, len(parlist)+0.3, 1)
+        ymin, ymax = -0.5, len(parlist)+0.5
+        lim = max(abs(parlist.min()), abs(gausslist.min()),
+                  parlist.max(), gausslist.max())
+        ax.vlines(x=0, ymin=ymin, ymax=ymax, color='black',
+                  linestyle='--', alpha=1, zorder=1)
+        ax.set_xlim(left=-1.05*lim, right=1.05*lim)
+        ax.set_ylim(bottom=ymin, top=ymax)
+        ax.scatter(parlist, y_par, color='blue', marker='o',
+                   label='Parabola fit', zorder=2)
+        ax.scatter(gausslist, y_gauss, color='green', marker='o',
+                   label='Gaussian fit', zorder=3)
+        
+        ax.xaxis.set_minor_locator(ticks.AutoMinorLocator(5))
+        ax.legend()
         plt.show()
-
+#        outfile = '/Users/dberke/Pictures/HD146233/Linepair{}.png'.format(i+1)
+#        fig.savefig(outfile, format='png')
 
 
 ############
@@ -315,24 +373,11 @@ global unfittablelines
 
 line1 = 600.4673
 
-# RV = -0.1
-#infile = os.path.join(baseDir, 'HD177758/ADP.2014-09-16T11:07:40.490.fits')
-# RV = 43.2
-#infile = os.path.join(baseDir, 'HD197818/ADP.2014-09-25T15:36:30.170.fits')
-# RV = 0.5 (HD 219482 F6)
-#infile = "/Users/dberke/Documents/ADP.2014-09-17T11:22:04.440.fits"
-# RV = -21.6 (HD 190248, Delta Pavonis G8)
-#infile = "/Users/dberke/Documents/ADP.2016-10-02T01:02:55.839.fits"
-
-#files = ["/Users/dberke/Documents/ADP.2014-09-17T11:22:04.440.fits",
-#         "/Users/dberke/Documents/ADP.2016-10-02T01:02:55.839.fits"]
-#files =["/Users/dberke/Documents/ADP.2016-10-02T01:02:55.839.fits"]
-
 #files = glob(os.path.join(baseDir, 'HD208704/*.fits')) # G1 (17 files)
 #files = glob(os.path.join(baseDir, 'HD138573/*.fits')) # G5
-#files = ['/Volumes/External Storage/HARPS/HD138573/ADP.2014-09-26T16:51:15.230.fits']
-#files = glob('/Users/dberke/HD146233/*.fits') # 18 Sco, G2 (7 files)
-files = ['/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits']
+#files = glob(os.path.join(baseDir, 'HD146233/*.fits')) # G2
+files = glob('/Users/dberke/HD146233/*.fits') # 18 Sco, G2 (7 files)
+#files = ['/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits']
 
 
 results = []
@@ -343,16 +388,14 @@ for infile in files:
     print(mseps)
     results.append(mseps)
 
-#    ax_main.plot(mseps, label='{}'.format(infile[-28:]), linestyle='',
-#            marker='o')
     print('Found {} unfittable lines.'.format(unfittablelines))
 
 #ax_main.legend()
 
 print("#############")
-print(len(results[0]))
+print("{} files analyzed total.".format(len(files)))
 #plotstarseparations(results)
-
+plot_line_comparisons(results, pairlist)
 
 
 
