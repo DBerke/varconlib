@@ -13,7 +13,8 @@ from astropy.io import fits
 from astropy.constants import c
 
 
-def readHARPSfile(FITSfile):
+def readHARPSfile(FITSfile, obj=False, wavelenmin=False, date_obs=False,
+                  spec_bin=False, med_snr=False, hdnum=False, radvel=False):
     """Read a HARPS FITS file and return a dictionary of information.
 
     FITSfile: a path to a HARPS FITS file to be read.
@@ -31,26 +32,34 @@ def readHARPSfile(FITSfile):
         radvel: the radial velocity of the star
     """
 
+    result = {}
     with fits.open(FITSfile) as hdulist:
         header = hdulist[1].header
         data = hdulist[1].data
-        obj = header['OBJECT']
-        wavelmin = hdulist[0].header['WAVELMIN']
-        date_obs = hdulist[0].header['DATE-OBS']
-        spec_bin = hdulist[0].header['SPEC_BIN']
-        med_SNR = hdulist[0].header['SNR']
-        hd_num = hdulist[0].header['HDNUM']
-        radvel = hdulist[0].header['RADVEL']
-        w = data.WAVE[0]
+        result['w'] = data.WAVE[0]
         f = data.FLUX[0]
         e = 1.e6 * np.absolute(f)
         for i in np.arange(0, len(f), 1):
             if (f[i] > 0.0):
                 e[i] = np.sqrt(f[i])
-    return {'obj': obj, 'w': w, 'f': f, 'e': e,
-            'wlmin': wavelmin, 'date_obs': date_obs,
-            'spec_bin': spec_bin, 'med_snr': med_SNR,
-            'hd_num': hd_num, 'radvel': radvel}
+        result['f'] = f
+        result['e'] = e
+        if obj:
+            result['obj'] = header['OBJECT']
+        if wavelenmin:
+            result['wavelmin'] = hdulist[0].header['WAVELMIN']
+        if date_obs:
+            result['date_obs'] = hdulist[0].header['DATE-OBS']
+        if spec_bin:
+            result['spec_bin'] = hdulist[0].header['SPEC_BIN']
+        if med_snr:
+            result['med_snr'] = hdulist[0].header['SNR']
+        if hdnum:
+            result['hdnum'] = hdulist[0].header['HDNUM']
+        if radvel:
+            result['radvel'] = hdulist[0].header['RADVEL']
+
+    return result
 
 
 def readESPRESSOfile(ESPfile):
