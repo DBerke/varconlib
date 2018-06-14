@@ -9,6 +9,7 @@ Created on Wed Apr 18 16:28:13 2018
 # Module to contain functions potentially useful across multiple programs
 
 import numpy as np
+import datetime as dt
 from astropy.io import fits
 from astropy.constants import c
 
@@ -49,7 +50,9 @@ def readHARPSfile(FITSfile, obj=False, wavelenmin=False, date_obs=False,
         if wavelenmin:
             result['wavelmin'] = hdulist[0].header['WAVELMIN']
         if date_obs:
-            result['date_obs'] = hdulist[0].header['DATE-OBS']
+            date_str = dt.datetime.strptime(hdulist[0].header['DATE-OBS'],
+                                            '%Y-%m-%dT%H:%M:%S.%f')
+            result['date_obs'] = date_str
         if spec_bin:
             result['spec_bin'] = hdulist[0].header['SPEC_BIN']
         if med_snr:
