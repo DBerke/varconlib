@@ -14,6 +14,7 @@ import varconlib as vcl
 import os.path
 import datetime as dt
 import math
+import csv
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticks
@@ -21,6 +22,7 @@ import matplotlib.dates as dates
 from scipy.optimize import curve_fit
 from astropy.visualization import hist as astrohist
 from glob import glob
+from pathlib import Path
 plt.rcParams['text.usetex'] = True
 matplotlib.rc('xtick', labelsize=20)
 matplotlib.rc('ytick', labelsize=20)
@@ -449,7 +451,8 @@ def searchFITSfile(FITSfile, pairlist):
 
     """
 
-    data = vcl.readHARPSfile(FITSfile, radvel=True, date_obs=True, hdnum=True)
+    data = vcl.readHARPSfile(str(FITSfile), radvel=True, date_obs=True,
+                             hdnum=True)
     vac_wl = vcl.air2vacESO(data['w']) / 10 #Convert from Angstroms to nm AFTER
                                             #converting to vacuum wavelengths
     flux = data['f']
@@ -464,7 +467,6 @@ def searchFITSfile(FITSfile, pairlist):
     measuredseps = []
     for linepair in pairlist:
         msepdict = measurepairsep(linepair, *params, FITSfile, plot=False)
-        msepdict['date_obs'] = data['date_obs']
         if msepdict != None:
             measuredseps.append(msepdict)
         else:
@@ -477,7 +479,29 @@ def searchFITSfile(FITSfile, pairlist):
         else:
             print("Couldn't measure separation for {}, {}".format(*linepair))
 
-    return measuredseps
+    file_parent = FITSfile.parent
+    date_str = data['date_obs'].strftime('%Y%m%dT%H%M%S') + '.csv'
+    csvfilePath = file_parent / date_str
+    with open(csvfilePath, 'w', newline='') as csvfile:
+        fieldnames = ['date_obs']
+        for i in range(len(pairlist)):
+            fieldnames.append('pair_{}_vel_diff'.format(i))
+            fieldnames.append('pair_{}_err'.format(i))
+        print(fieldnames)
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+        writer.writeheader()
+        row = [data['date_obs']]
+        for msepdict in measuredseps:
+            row.append(msepdict['gaussveldiff'])
+            row.append(msepdict['gaussdifferr'])
+        print(row)
+        rowdict = dict(zip(fieldnames, row))
+        print(rowdict)
+#        writer.writerow(rowdict)
+
+    return rowdict
+#    return measuredseps
 
 
 def plotstarseparations(mseps):
@@ -686,19 +710,21 @@ pairlist = [(443.9589, 444.1128), (450.0151, 450.3467), (459.9405, 460.329),
 #pairlist = [(579.4679, 579.9464)]
 #pairlist = [(507.3498, 507.4086)]
 
-baseDir = "/Volumes/External Storage/HARPS/"
+baseDir = Path("/Volumes/External Storage/HARPS/")
 global unfittablelines
 
 
 line1 = 600.4673
 
 #files = glob(os.path.join(baseDir, '4Vesta/*.fits')) # Vesta (6 files)
-files = glob(os.path.join(baseDir, 'HD126525/*.fits')) # G4 (133 files))
+#files = glob(os.path.join(baseDir, 'HD126525/*.fits')) # G4 (133 files))
 #files = glob(os.path.join(baseDir, 'HD208704/*.fits')) # G1 (17 files)
 #files = glob(os.path.join(baseDir, 'HD138573/*.fits')) # G5
-files = glob(os.path.join(baseDir, 'HD146233/*.fits')) # G2 (151 files)
-#files = glob('/Users/dberke/HD146233/*.fits') # 18 Sco, G2 (7 files)
-files = ['/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits']
+#files = glob(os.path.join(baseDir, 'HD146233/*.fits')) # G2 (151 files)
+filepath = Path('/Users/dberke/HD146233')
+filepath = baseDir / 'HD146233'
+files = [file for file in filepath.glob('*.fits')] # 18 Sco, G2 (7 files)
+files = [Path('/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits')]
 
 results = []
 
@@ -714,7 +740,28 @@ for infile in files:
 
 print("#############")
 print("{} files analyzed total.".format(len(files)))
-print(results)
+
+file_parent = files[0].parent
+target = file_parent.stem + '.csv'
+csvfilePath = file_parent / target
+with open(csvfilePath, 'w', newline='') as csvfile:
+    fieldnames = ['date_obs']
+    for i in range(len(pairlist)):
+        fieldnames.append('pair_{}_vel_diff'.format(i))
+        fieldnames.append('pair_{}_err'.format(i))
+    print(fieldnames)
+    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+    writer.writeheader()
+    row = [data['date_obs']]
+    for msepdict in measuredseps:
+        row.append(msepdict['gaussveldiff'])
+        row.append(msepdict['gaussdifferr'])
+    print(row)
+    rowdict = dict(zip(fieldnames, row))
+    print(rowdict)
+    writer.writerow(rowdict)
+
 #plotstarseparations(results)
 #plot_line_comparisons(results, pairlist)
 #plot_as_func_of_date(results, pairlist, folded=True)
