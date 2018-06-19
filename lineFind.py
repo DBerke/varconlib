@@ -19,6 +19,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticks
 import matplotlib.dates as dates
+import pandas as pd
 from scipy.optimize import curve_fit
 from astropy.visualization import hist as astrohist
 from glob import glob
@@ -462,13 +463,20 @@ def searchFITSfile(FITSfile, pairlist):
 
     params = (vac_wl, flux, err, radvel)
 
+    index = [str(pair) for pair in pairlist]
+    print(index)
+
     #foundlinepos = linefind(line1, *params, plot=True)
 
     measuredseps = []
+    gaussveldiff = []
+    gaussdifferr = []
     for linepair in pairlist:
         msepdict = measurepairsep(linepair, *params, FITSfile, plot=False)
         if msepdict != None:
             measuredseps.append(msepdict)
+            gaussveldiff.append(msepdict['gaussveldiff'])
+            gaussdifferr.append(msepdict['gaussdifferr'])
         else:
             measuredseps.append(math.nan)
     for item, linepair in zip(measuredseps, pairlist):
@@ -478,6 +486,12 @@ def searchFITSfile(FITSfile, pairlist):
 #                    *linepair, item['gaussveldiff']))
         else:
             print("Couldn't measure separation for {}, {}".format(*linepair))
+
+    gaussvel = pd.Series(gaussveldiff, index=index)
+    gausserr = pd.Series(gaussdifferr, index=index)
+    print(gaussvel)
+    exit(0)
+
 
     file_parent = FITSfile.parent
     date_str = data['date_obs'].strftime('%Y%m%dT%H%M%S') + '.csv'
