@@ -163,6 +163,7 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum,
                                        sigma=enorm,
                                        absolute_sigma=True)
 
+    # Get the errors in the fitted parameters from the covariance matrix
     perr_gauss = np.sqrt(np.diag(pcov_gauss))
     r_gauss = (ynorm - continuum) - gaussian(xnorm, *popt_gauss)
     chisq_gauss = sum((r_gauss / enorm) ** 2)
@@ -176,12 +177,14 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum,
 
     if chisq_nu_gauss > 1:
         wl_err_gauss *= math.sqrt(chisq_nu_gauss)
+    # Multiply by 1e-9 to get nm to m for getvelseparation
     vel_err_gauss = vcl.getvelseparation(gausscenterwl*1e-9,
                                          (gausscenterwl+wl_err_gauss)*1e-9)
     # Shift line to stellar rest frame
     gaussrestframeline = vcl.lineshift(gausscenterwl, -1*radvel)
 
     if verbose:
+        print('-----------')
         print("Continuum level is {}".format(continuum))
         print("Covariance matrix for Gaussian:")
         print(pcov_gauss)
@@ -195,8 +198,13 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum,
         print("Found line center at {} using Gaussian.".format(gausscenterwl))
         print("Corrected for radial velocity: {}".format(gaussrestframeline))
 
-    return {'gaussrestframeline': gaussrestframeline,
+    return {'restframe_line_gauss': gaussrestframeline,
             'vel_err_gauss': vel_err_gauss,
+            'amplitude_gauss': popt_gauss[0],
+            'amplitude_err_gauss': perr_gauss[0],
+            'width_gauss': popt_gauss[2],
+            'width_err_gauss': perr_gauss[2],
+            'chisq_nu_gauss': chisq_nu_gauss,
             'gausscenterwl': gausscenterwl,
             'popt_gauss': popt_gauss}
 
@@ -282,6 +290,7 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
     centralwl = vac_wl[centralpos]
     continuum = flux[lowercont:uppercont].max()
     lowerlim, upperlim = centralpos - pixrange, centralpos + pixrange + 1
+    results['continuum'] = continuum
 
     x = np.array(vac_wl[lowerlim:upperlim])
     y = np.array(flux[lowerlim:upperlim])
@@ -313,8 +322,13 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
     if gauss_fit:
         gaussData = fitGaussian(xnorm, ynorm, enorm, centralwl, radvel,
                                 continuum, verbose=False)
-        results['line_gauss'] = gaussData['gaussrestframeline']
-        results['err_gauss'] = gaussData['vel_err_gauss']
+        results['restframe_line_gauss'] = gaussData['restframe_line_gauss']
+        results['vel_err_gauss'] = gaussData['vel_err_gauss']
+        results['amplitude_gauss'] = gaussData['amplitude_gauss']
+        results['amplitude_err_gauss'] = gaussData['amplitude_err_gauss']
+        results['width_gauss'] = gaussData['width_gauss']
+        results['width_err_gauss'] = gaussData['width_err_gauss']
+        results['chisq_nu_gauss'] = gaussData['chisq_nu_gauss']
 
     # Fit a constrained parabola to the normalized data
     if spar_fit:
@@ -394,13 +408,15 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
     return results
 
 
-def measurepairsep(linepair, vac_wl, flux, err, radvel, FITSfile, plot=False):
+def measurepairsep(linepair, vac_wl, flux, err, radvel, plot=False):
     """Return the distance between a pair of lines
 
     """
 
     # Create dictionary to store results
     results = {}
+    results['line1_nom_wl'] = linepair[0]
+    results['line2_nom_wl'] = linepair[1]
 
     global unfittablelines
     params = (vac_wl, flux, err, radvel)
@@ -426,13 +442,36 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, FITSfile, plot=False):
             results['parveldiff'] = parveldiff
             results['pardifferr'] = err_par
 
-        if 'line_gauss' in (line1 and line2):
-            gaussveldiff = abs(vcl.getvelseparation(line1['line_gauss'],
-                                                    line2['line_gauss']))
-            err_gauss = np.sqrt((line1['err_gauss'])**2 +
-                                (line2['err_gauss'])**2)
-            results['gaussveldiff'] = gaussveldiff
-            results['gaussdifferr'] = err_gauss
+        if 'restframe_line_gauss' in (line1 and line2):
+            gaussveldiff = abs(vcl.getvelseparation(line1['restframe_line_gauss'],
+                                                    line2['restframe_line_gauss']))
+            err_gauss = np.sqrt((line1['vel_err_gauss'])**2 +
+                                (line2['vel_err_gauss'])**2)
+
+            # Populate results dict with linepair specific data...
+            results['vel_diff_gauss'] = gaussveldiff
+            results['diff_err_gauss'] = err_gauss
+
+            # ... and line 1 specific data...
+            results['line1_wl_gauss'] = line1['restframe_line_gauss']
+            results['line1_wl_err_gauss'] = line1['vel_err_gauss']
+            results['line1_amp_gauss'] = line1['amplitude_gauss']
+            results['line1_amp_err_gauss'] = line1['amplitude_err_gauss']
+            results['line1_width_gauss'] = line1['width_gauss']
+            results['line1_width_err_gauss'] = line1['width_err_gauss']
+            results['line1_chisq_nu_gauss'] = line1['chisq_nu_gauss']
+            results['line1_continuum'] = line1['continuum']
+
+            # ... and line 2 specific data.
+
+            results['line2_wl_gauss'] = line2['restframe_line_gauss']
+            results['line2_wl_err_gauss'] = line2['vel_err_gauss']
+            results['line2_amp_gauss'] = line2['amplitude_gauss']
+            results['line2_amp_err_gauss'] = line2['amplitude_err_gauss']
+            results['line2_width_gauss'] = line2['width_gauss']
+            results['line2_width_err_gauss'] = line2['width_err_gauss']
+            results['line2_chisq_nu_gauss'] = line2['chisq_nu_gauss']
+            results['line2_continuum'] = line2['continuum']
 
         if 'line_spar' in (line1 and line2):
             sparveldiff = abs(vcl.getvelseparation(line1['line_spar'],
@@ -459,63 +498,39 @@ def searchFITSfile(FITSfile, pairlist):
     flux = data['f']
     err = data['e']
     radvel = data['radvel']
-    hdnum = data['hdnum']
+    date = data['date_obs']
+#    hdnum = data['hdnum']
 
     params = (vac_wl, flux, err, radvel)
 
-    index = [str(pair) for pair in pairlist]
-    print(index)
+    index = ['date', 'line1_nom_wl', 'line2_nom_wl', 'vel_diff_gauss',
+             'diff_err_gauss', 'line1_wl_gauss', 'line1_wl_err_gauss',
+             'line1_amp_gauss', 'line1_amp_err_gauss', 'line1_width_gauss',
+             'line1_width_err_gauss', 'line1_chisq_nu_gauss',
+             'line1_continuum', 'line2_wl_gauss', 'line2_wl_err_gauss',
+             'line2_amp_gauss', 'line2_amp_err_gauss', 'line2_width_gauss',
+             'line2_width_err_gauss', 'line2_chisq_nu_gauss',
+             'line2_continuum']
+#    print(index)
 
     #foundlinepos = linefind(line1, *params, plot=True)
 
-    measuredseps = []
-    gaussveldiff = []
-    gaussdifferr = []
+    # Create a list to store the Series objects in
+    lines = []
+
     for linepair in pairlist:
-        msepdict = measurepairsep(linepair, *params, FITSfile, plot=False)
-        if msepdict != None:
-            measuredseps.append(msepdict)
-            gaussveldiff.append(msepdict['gaussveldiff'])
-            gaussdifferr.append(msepdict['gaussdifferr'])
-        else:
-            measuredseps.append(math.nan)
-    for item, linepair in zip(measuredseps, pairlist):
-        if item != None:
-            pass
-#            print("{}, {}: measured separation {:.3f} m/s".format(
-#                    *linepair, item['gaussveldiff']))
-        else:
-            print("Couldn't measure separation for {}, {}".format(*linepair))
+        line = {'date': date}
+        line.update(measurepairsep(linepair, *params, plot=False))
+        lines.append(pd.Series(line, index=index))
 
-    gaussvel = pd.Series(gaussveldiff, index=index)
-    gausserr = pd.Series(gaussdifferr, index=index)
-    print(gaussvel)
-    exit(0)
+    for line in lines:
+        print("{}, {}: measured separation {:.3f} m/s".format(
+                line['line1_nom_wl'], line['line2_nom_wl'],
+                line['vel_diff_gauss']))
+        print(line.shape)
+        #print(line)
 
-
-    file_parent = FITSfile.parent
-    date_str = data['date_obs'].strftime('%Y%m%dT%H%M%S') + '.csv'
-    csvfilePath = file_parent / date_str
-    with open(csvfilePath, 'w', newline='') as csvfile:
-        fieldnames = ['date_obs']
-        for i in range(len(pairlist)):
-            fieldnames.append('pair_{}_vel_diff'.format(i))
-            fieldnames.append('pair_{}_err'.format(i))
-        print(fieldnames)
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
-        writer.writeheader()
-        row = [data['date_obs']]
-        for msepdict in measuredseps:
-            row.append(msepdict['gaussveldiff'])
-            row.append(msepdict['gaussdifferr'])
-        print(row)
-        rowdict = dict(zip(fieldnames, row))
-        print(rowdict)
-#        writer.writerow(rowdict)
-
-    return rowdict
-#    return measuredseps
+    return lines
 
 
 def plotstarseparations(mseps):
@@ -719,6 +734,14 @@ pairlist = [(443.9589, 444.1128), (450.0151, 450.3467), (459.9405, 460.329),
             (617.7065, 617.8498), (623.9045, 624.6193), (625.9833, 626.0427),
             (625.9833, 626.2831), (647.098, 647.7413)]
 
+columns = ['date', 'line1_nom_wl', 'line2_nom_wl', 'vel_diff_gauss',
+           'diff_err_gauss', 'line1_wl_gauss', 'line1_wl_err_gauss',
+           'line1_amp_gauss', 'line1_amp_err_gauss', 'line1_width_gauss',
+           'line1_width_err_gauss', 'line1_chisq_nu_gauss',
+           'line1_continuum', 'line2_wl_gauss', 'line2_wl_err_gauss',
+           'line2_amp_gauss', 'line2_amp_err_gauss', 'line2_width_gauss',
+           'line2_width_err_gauss', 'line2_chisq_nu_gauss',
+           'line2_continuum']
 
 #pairlist = [(537.5203, 538.1069)]
 #pairlist = [(579.4679, 579.9464)]
@@ -740,17 +763,22 @@ filepath = baseDir / 'HD146233'
 files = [file for file in filepath.glob('*.fits')] # 18 Sco, G2 (7 files)
 files = [Path('/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits')]
 
-results = []
+total_results = []
 
 num_file = 1
 for infile in files:
     print('Processing file {} of {}.'.format(num_file, len(files)))
     unfittablelines = 0
-    mseps = searchFITSfile(infile, pairlist)
-    results.append(mseps)
+    results = searchFITSfile(infile, pairlist)
+    total_results.extend(results)
 
     print('Found {} unfittable lines.'.format(unfittablelines))
     num_file += 1
+
+
+
+lines = pd.DataFrame(total_results, columns=columns)
+
 
 print("#############")
 print("{} files analyzed total.".format(len(files)))
@@ -758,23 +786,8 @@ print("{} files analyzed total.".format(len(files)))
 file_parent = files[0].parent
 target = file_parent.stem + '.csv'
 csvfilePath = file_parent / target
-with open(csvfilePath, 'w', newline='') as csvfile:
-    fieldnames = ['date_obs']
-    for i in range(len(pairlist)):
-        fieldnames.append('pair_{}_vel_diff'.format(i))
-        fieldnames.append('pair_{}_err'.format(i))
-    print(fieldnames)
-    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
-    writer.writeheader()
-    row = [data['date_obs']]
-    for msepdict in measuredseps:
-        row.append(msepdict['gaussveldiff'])
-        row.append(msepdict['gaussdifferr'])
-    print(row)
-    rowdict = dict(zip(fieldnames, row))
-    print(rowdict)
-    writer.writerow(rowdict)
+
 
 #plotstarseparations(results)
 #plot_line_comparisons(results, pairlist)
