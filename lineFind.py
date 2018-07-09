@@ -258,7 +258,8 @@ def fitSimpleParabola(xnorm, ynorm, enorm, centralwl, radvel, verbose=False):
 
 
 def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
-             plot=False, par_fit=False, gauss_fit=False, spar_fit=False):
+             plot=False, par_fit=False, gauss_fit=False, spar_fit=False,
+             plot_dir=None, date=None):
     """Find a given line in a HARPS spectrum after correcting for rad. vel.
 
     line: the line to look for, in nm
@@ -338,10 +339,15 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
         results['err_spar'] = sparData['vel_err_spar']
 
     if plot:
-        fig = plt.figure(figsize=(8, 6))
+        # Create the plots for the line
+        fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(1, 1, 1)
         ax.set_xlim(left=lowerwllim, right=upperwllim)
         ax.set_xlim(left=vac_wl[lowercont], right=vac_wl[uppercont])
+        ax.set_title(line, fontsize=14)
+        ax.get_xaxis().get_major_formatter().set_useOffset(False)
+        ax.set_xlabel('Wavelength (nm)', fontsize=14)
+        ax.set_ylabel('ADUs', fontsize=14)
         ax.errorbar(vac_wl[lowercont:uppercont],
                     flux[lowercont:uppercont],
                     yerr=err[lowercont:uppercont],
@@ -349,7 +355,7 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
         ax.vlines(shiftedlinewl, color='crimson',
                   ymin=flux[lowerguess:upperguess].min(),
                   ymax=continuum,
-                  linestyle='-', label='Line expected position')
+                  linestyle='--', label='Line expected position')
         if par_fit:
             ax.vlines(parData['parcenterwl'], color='green',
                       ymin=flux[lowerguess:upperguess].min(),
@@ -368,7 +374,7 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
             ax.plot((xnorm / 1000) + centralwl,
                     ((gaussian(xnorm, *gaussData['popt_gauss']) + continuum)
                     * fluxrange) + y.min(),
-                    color='black', linestyle=':',
+                    color='black', linestyle='-',
                     label='Gaussian fit')
         if spar_fit:
             ax.vlines(sparData['sparcenterwl'], color='orange',
@@ -384,10 +390,21 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
         ax.axvspan(xmin=lowerwllim, xmax=upperwllim,
                    color='grey', alpha=0.25)
         ax.legend()
-        plt.show()
 
-        fig2 = plt.figure()
+        if plot_dir:
+            filepath1 = plot_dir.joinpath('{}_{}_{}.png'.format(
+                    plot_dir.parent.stem, date, line))
+            print(filepath1)
+            plt.savefig(str(filepath1), format='png')
+        else:
+            plt.show()
+        plt.close(fig)
+
+        fig2 = plt.figure(figsize=(8, 6))
         ax2 = fig2.add_subplot(1, 1, 1)
+        ax2.set_title(line, fontsize=14)
+        ax2.set_xlabel('Normalized wavelength', fontsize=14)
+        ax2.set_ylabel('Normalized flux', fontsize=14)
         ax2.errorbar(xnorm, ynorm, yerr=enorm,
                      color='blue', marker='o', linestyle='')
         if par_fit:
@@ -401,14 +418,20 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
             ax2.plot(xnorm, simpleparabola(xnorm, *sparData['popt_spar']),
                      color='black', linestyle=':', label='Const. parabola')
         ax2.legend()
-        plt.show()
-
-#    print("--------------------------------")
+        if plot_dir:
+            filepath2 = plot_dir.joinpath('{}_{}_norm_{}.png'.format(
+                    plot_dir.parent.stem, date, line))
+            print(filepath2)
+            plt.savefig(str(filepath2), format='png')
+        else:
+            plt.show()
+        plt.close(fig2)
 
     return results
 
 
-def measurepairsep(linepair, vac_wl, flux, err, radvel, plot=False):
+def measurepairsep(linepair, vac_wl, flux, err, radvel, plot=False,
+                   plot_dir=None, date=None):
     """Return the distance between a pair of lines
 
     """
@@ -422,10 +445,12 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, plot=False):
     params = (vac_wl, flux, err, radvel)
     line1 = linefind(linepair[0], *params,
                      plot=plot, velsep=5000, pixrange=3,
-                     par_fit=False, gauss_fit=True, spar_fit=False)
+                     par_fit=False, gauss_fit=True, spar_fit=False,
+                     plot_dir=plot_dir, date=date)
     line2 = linefind(linepair[1], *params,
                      plot=plot, velsep=5000, pixrange=3,
-                     par_fit=False, gauss_fit=True, spar_fit=False)
+                     par_fit=False, gauss_fit=True, spar_fit=False,
+                     plot_dir=plot_dir, date=date)
 
     if line1 is None:
         unfittablelines += 1
@@ -443,8 +468,9 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, plot=False):
             results['pardifferr'] = err_par
 
         if 'restframe_line_gauss' in (line1 and line2):
-            gaussveldiff = abs(vcl.getvelseparation(line1['restframe_line_gauss'],
-                                                    line2['restframe_line_gauss']))
+            gaussveldiff = abs(
+                    vcl.getvelseparation(line1['restframe_line_gauss'],
+                                         line2['restframe_line_gauss']))
             err_gauss = np.sqrt((line1['vel_err_gauss'])**2 +
                                 (line2['vel_err_gauss'])**2)
 
@@ -518,9 +544,20 @@ def searchFITSfile(FITSfile, pairlist):
     # Create a list to store the Series objects in
     lines = []
 
+    # Check if a path for graphs exists already, and if not create it one
+    graph_path = FITSfile.parent / 'Graphs'
+    if not graph_path.exists():
+        try:
+            print('No graph directory found, creating one.')
+            graph_path.mkdir()
+        except FileExistsError:
+            print('Graph directory already exists!')
+            raise FileExistsError
+
     for linepair in pairlist:
         line = {'date': date, 'object': hdnum}
-        line.update(measurepairsep(linepair, *params, plot=False))
+        line.update(measurepairsep(linepair, *params, plot=True,
+                                   plot_dir=graph_path, date=date))
         lines.append(pd.Series(line, index=index))
 
     for line in lines:
@@ -584,8 +621,7 @@ def plot_line_comparisons(mseps, linepairs):
         fig = plt.figure(figsize=(10, 10))
         ax = fig.add_subplot(1, 1, 1)
         ax.set_xlabel(r'$\delta v$ ({} nm - {} nm) [m/s]'.
-                      format(linepair[0],
-                      linepair[1]), fontsize=18)
+                      format(linepair[0], linepair[1]), fontsize=18)
         ax.set_ylabel('Observation number', fontsize=18)
         parlist = []
         parerr = []
