@@ -463,7 +463,6 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, plot=False):
             results['line1_continuum'] = line1['continuum']
 
             # ... and line 2 specific data.
-
             results['line2_wl_gauss'] = line2['restframe_line_gauss']
             results['line2_wl_err_gauss'] = line2['vel_err_gauss']
             results['line2_amp_gauss'] = line2['amplitude_gauss']
@@ -499,12 +498,13 @@ def searchFITSfile(FITSfile, pairlist):
     err = data['e']
     radvel = data['radvel']
     date = data['date_obs']
-#    hdnum = data['hdnum']
+    hdnum = data['hdnum']
 
     params = (vac_wl, flux, err, radvel)
 
-    index = ['date', 'line1_nom_wl', 'line2_nom_wl', 'vel_diff_gauss',
-             'diff_err_gauss', 'line1_wl_gauss', 'line1_wl_err_gauss',
+    index = ['date', 'object', 'line1_nom_wl', 'line2_nom_wl',
+             'vel_diff_gauss', 'diff_err_gauss',
+             'line1_wl_gauss', 'line1_wl_err_gauss',
              'line1_amp_gauss', 'line1_amp_err_gauss', 'line1_width_gauss',
              'line1_width_err_gauss', 'line1_chisq_nu_gauss',
              'line1_continuum', 'line2_wl_gauss', 'line2_wl_err_gauss',
@@ -519,7 +519,7 @@ def searchFITSfile(FITSfile, pairlist):
     lines = []
 
     for linepair in pairlist:
-        line = {'date': date}
+        line = {'date': date, 'object': hdnum}
         line.update(measurepairsep(linepair, *params, plot=False))
         lines.append(pd.Series(line, index=index))
 
@@ -527,8 +527,6 @@ def searchFITSfile(FITSfile, pairlist):
         print("{}, {}: measured separation {:.3f} m/s".format(
                 line['line1_nom_wl'], line['line2_nom_wl'],
                 line['vel_diff_gauss']))
-        print(line.shape)
-        #print(line)
 
     return lines
 
@@ -734,7 +732,7 @@ pairlist = [(443.9589, 444.1128), (450.0151, 450.3467), (459.9405, 460.329),
             (617.7065, 617.8498), (623.9045, 624.6193), (625.9833, 626.0427),
             (625.9833, 626.2831), (647.098, 647.7413)]
 
-columns = ['date', 'line1_nom_wl', 'line2_nom_wl', 'vel_diff_gauss',
+columns = ['date', 'object', 'line1_nom_wl', 'line2_nom_wl', 'vel_diff_gauss',
            'diff_err_gauss', 'line1_wl_gauss', 'line1_wl_err_gauss',
            'line1_amp_gauss', 'line1_amp_err_gauss', 'line1_width_gauss',
            'line1_width_err_gauss', 'line1_chisq_nu_gauss',
@@ -760,7 +758,7 @@ line1 = 600.4673
 #files = glob(os.path.join(baseDir, 'HD146233/*.fits')) # G2 (151 files)
 filepath = Path('/Users/dberke/HD146233')
 filepath = baseDir / 'HD146233'
-files = [file for file in filepath.glob('*.fits')] # 18 Sco, G2 (7 files)
+files = [file for file in filepath.glob('*.fits')]  # 18 Sco, G2 (7 files)
 files = [Path('/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits')]
 
 total_results = []
@@ -775,10 +773,7 @@ for infile in files:
     print('Found {} unfittable lines.'.format(unfittablelines))
     num_file += 1
 
-
-
 lines = pd.DataFrame(total_results, columns=columns)
-
 
 print("#############")
 print("{} files analyzed total.".format(len(files)))
@@ -786,8 +781,9 @@ print("{} files analyzed total.".format(len(files)))
 file_parent = files[0].parent
 target = file_parent.stem + '.csv'
 csvfilePath = file_parent / target
-
-
+print('Output written to {}'.format(csvfilePath))
+lines.to_csv(csvfilePath, index=False, header=True, encoding='utf-8',
+             date_format='%Y-%m-%dT%H:%M:%S.%f')
 
 #plotstarseparations(results)
 #plot_line_comparisons(results, pairlist)
