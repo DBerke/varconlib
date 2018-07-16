@@ -369,7 +369,7 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
         ax.set_title('{} nm'.format(line), fontsize=14)
         ax.get_xaxis().get_major_formatter().set_useOffset(False)
         ax.set_xlabel('Wavelength (nm)', fontsize=14)
-        ax.set_ylabel('ADUs', fontsize=14)
+        ax.set_ylabel('Photons', fontsize=14)
         ax.errorbar(vac_wl[lowercont:uppercont],
                     flux[lowercont:uppercont],
                     yerr=err[lowercont:uppercont],

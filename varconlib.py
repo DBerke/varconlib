@@ -35,32 +35,36 @@ def readHARPSfile(FITSfile, obj=False, wavelenmin=False, date_obs=False,
 
     result = {}
     with fits.open(FITSfile) as hdulist:
-        header = hdulist[1].header
+        header0 = hdulist[0].header
+        header1 = hdulist[1].header
         data = hdulist[1].data
-        result['w'] = data.WAVE[0]
-        f = data.FLUX[0]
+        w = data.WAVE[0]
+        gain = header0['GAIN']
+        # Multiply by the gain to convert from ADUs to photoelectrons
+        f = data.FLUX[0] * gain
         e = 1.e6 * np.absolute(f)
+        # Construct an error array by taking the square root of each flux
         for i in np.arange(0, len(f), 1):
             if (f[i] > 0.0):
                 e[i] = np.sqrt(f[i])
+        result['w'] = w
         result['f'] = f
         result['e'] = e
         if obj:
-            result['obj'] = header['OBJECT']
+            result['obj'] = header1['OBJECT']
         if wavelenmin:
-            result['wavelmin'] = hdulist[0].header['WAVELMIN']
+            result['wavelmin'] = header0['WAVELMIN']
         if date_obs:
-            date_str = dt.datetime.strptime(hdulist[0].header['DATE-OBS'],
-                                            '%Y-%m-%dT%H:%M:%S.%f')
-            result['date_obs'] = date_str
+            result['date_obs'] = dt.datetime.strptime(header0['DATE-OBS'],
+                                                      '%Y-%m-%dT%H:%M:%S.%f')
         if spec_bin:
-            result['spec_bin'] = hdulist[0].header['SPEC_BIN']
+            result['spec_bin'] = header0['SPEC_BIN']
         if med_snr:
-            result['med_snr'] = hdulist[0].header['SNR']
+            result['med_snr'] = header0['SNR']
         if hdnum:
-            result['hdnum'] = hdulist[0].header['HDNUM']
+            result['hdnum'] = header0['HDNUM']
         if radvel:
-            result['radvel'] = hdulist[0].header['RADVEL']
+            result['radvel'] = header0['RADVEL']
 
     return result
 
