@@ -149,43 +149,58 @@ def fitParabola(xnorm, ynorm, enorm, centralwl, radvel, verbose=False):
             'popt_par': popt_par}
 
 
-def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum,
-                verbose=False):
+def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
+                fluxrange, verbose=False):
     """Fit a Gaussian to the given data
 
     verbose: prints out diagnostic info on the process
     """
 
     # Fit a Gaussian to the line center
-
-    popt_gauss, pcov_gauss = curve_fit(gaussian, xnorm, ynorm-continuum,
-                                       p0=(-1*continuum, 0, 1e3),
+    popt_gauss, pcov_gauss = curve_fit(gaussian, xnorm,
+                                       ynorm-continuum+linebottom,
+                                       p0=(-1*(continuum-linebottom), 0, 1e3),
                                        sigma=enorm,
                                        absolute_sigma=True)
 
     # Get the errors in the fitted parameters from the covariance matrix
     perr_gauss = np.sqrt(np.diag(pcov_gauss))
-    r_gauss = (ynorm - continuum) - gaussian(xnorm, *popt_gauss)
+    r_gauss = (ynorm - continuum + linebottom) - gaussian(xnorm, *popt_gauss)
     chisq_gauss = sum((r_gauss / enorm) ** 2)
     chisq_nu_gauss = chisq_gauss / 4  # nu = 7 - 3
-
-    wl_err_gauss = perr_gauss[1] / 1000
 
     # Find center of Gaussian &
     # correct for fitting normalized data
     gausscenterwl = popt_gauss[1] / 1000 + centralwl
+    wl_err_gauss = perr_gauss[1] / 1000
 
     if chisq_nu_gauss > 1:
         wl_err_gauss *= math.sqrt(chisq_nu_gauss)
-    # Multiply by 1e-9 to get nm to m for getvelseparation
+
+    # Multiply by 1e-9 to get nm to m for getvelseparation which requires m
     vel_err_gauss = vcl.getvelseparation(gausscenterwl*1e-9,
                                          (gausscenterwl+wl_err_gauss)*1e-9)
     # Shift line to stellar rest frame
     gaussrestframeline = vcl.lineshift(gausscenterwl, -1*radvel)
 
+    # Get the width (sigma) of the Gaussian
+    gauss_sigma = abs(popt_gauss[2] / 1000)
+    gauss_sigma_err = perr_gauss[2] / 1000
+
+    sigma_vel = vcl.getvelseparation(gausscenterwl*1e-9,
+                                     (gausscenterwl+gauss_sigma)*1e-9)
+    sigma_vel_err = vcl.getvelseparation(gausscenterwl*1e-9,
+                                         (gausscenterwl+gauss_sigma_err)*1e-9)
+
+    # Get the aplitude of the Gaussian
+    amp = popt_gauss[0]
+    amp_err = perr_gauss[0]
+
     if verbose:
         print('-----------')
-        print("Continuum level is {}".format(continuum))
+        print("Continuum level = {}".format(continuum))
+        print('Depth of line = {}'.format(continuum - linebottom))
+        print('fluxrange = {}'.format(fluxrange))
         print("Covariance matrix for Gaussian:")
         print(pcov_gauss)
         print('popt_gauss = {}'.format(popt_gauss))
@@ -195,15 +210,19 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum,
         print('Gaussian central wl: {:.6f} nm'.format(gausscenterwl))
         print("1 stddev Gaussian = {:.6e} nm".format(wl_err_gauss))
         print("1 stddev Gaussian velspace = {:.7f} m/s".format(vel_err_gauss))
-        print("Found line center at {} using Gaussian.".format(gausscenterwl))
-        print("Corrected for radial velocity: {}".format(gaussrestframeline))
+        print('1 sigma = {:.6f} nm'.format(gauss_sigma))
+        print('1 sigma velspace = {:.7f} m/s'.format(sigma_vel))
+        print('Gaussian amplitude = {:.6f} ADUs'.format(amp))
+        print('Gaussian amp err = {:.6f} ADUs'.format(amp_err))
+        print("Found line center at {:.6f} nm.".format(gausscenterwl))
+        print("Corrected for rad vel: {:.6f} nm".format(gaussrestframeline))
 
     return {'restframe_line_gauss': gaussrestframeline,
             'vel_err_gauss': vel_err_gauss,
-            'amplitude_gauss': popt_gauss[0],
-            'amplitude_err_gauss': perr_gauss[0],
-            'width_gauss': popt_gauss[2],
-            'width_err_gauss': perr_gauss[2],
+            'amplitude_gauss': amp,
+            'amplitude_err_gauss': amp_err,
+            'width_gauss': sigma_vel,
+            'width_err_gauss': sigma_vel_err,
             'chisq_nu_gauss': chisq_nu_gauss,
             'gausscenterwl': gausscenterwl,
             'popt_gauss': popt_gauss}
@@ -297,9 +316,10 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
     y = np.array(flux[lowerlim:upperlim])
     if not y.all():
         print('Found zero flux for line {}'.format(line))
-        return None
+        raise
     e = np.array(err[lowerlim:upperlim])
-    fluxrange = y.max() - y.min()
+    linebottom = y.min()
+    fluxrange = y.max() - linebottom
 #    print("fluxrange = {}".format(fluxrange))
 #    print(x)
 #    print(y)
@@ -308,7 +328,7 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
     # Normalize data for Scipy fitting
     xnorm = x - centralwl
     xnorm *= 1000
-    ynorm = y - y.min()
+    ynorm = y - linebottom
     ynorm /= fluxrange
     enorm = e / fluxrange
 
@@ -322,7 +342,8 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
     # Fit a Gaussian to the normalized data
     if gauss_fit:
         gaussData = fitGaussian(xnorm, ynorm, enorm, centralwl, radvel,
-                                continuum, verbose=False)
+                                continuum, linebottom, fluxrange,
+                                verbose=False)
         results['restframe_line_gauss'] = gaussData['restframe_line_gauss']
         results['vel_err_gauss'] = gaussData['vel_err_gauss']
         results['amplitude_gauss'] = gaussData['amplitude_gauss']
@@ -340,11 +361,12 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
 
     if plot:
         # Create the plots for the line
+        datestring = date.strftime('%Y%m%dT%H%M%S.%f')
         fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(1, 1, 1)
         ax.set_xlim(left=lowerwllim, right=upperwllim)
         ax.set_xlim(left=vac_wl[lowercont], right=vac_wl[uppercont])
-        ax.set_title(line, fontsize=14)
+        ax.set_title('{} nm'.format(line), fontsize=14)
         ax.get_xaxis().get_major_formatter().set_useOffset(False)
         ax.set_xlabel('Wavelength (nm)', fontsize=14)
         ax.set_ylabel('ADUs', fontsize=14)
@@ -372,10 +394,16 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
                       ymax=continuum,
                       linestyle=':', label='Gaussian center')
             ax.plot((xnorm / 1000) + centralwl,
-                    ((gaussian(xnorm, *gaussData['popt_gauss']) + continuum)
-                    * fluxrange) + y.min(),
+                    ((gaussian(xnorm, *gaussData['popt_gauss'])
+                     + continuum - linebottom)
+                     * fluxrange) + linebottom,
                     color='black', linestyle='-',
                     label='Gaussian fit')
+#            ax.plot(vac_wl[lowerguess:upperguess],
+#                    ((gaussian((vac_wl[lowerguess:upperguess]-centralwl)*1000,
+#                     *gaussData['popt_gauss'])
+#                     + continuum - linebottom) * fluxrange) + linebottom,
+#                    color='black', linestyle='--', alpha=0.3)
         if spar_fit:
             ax.vlines(sparData['sparcenterwl'], color='orange',
                       ymin=flux[lowerguess:upperguess].min(),
@@ -392,8 +420,8 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
         ax.legend()
 
         if plot_dir:
-            filepath1 = plot_dir.joinpath('{}_{}_{}.png'.format(
-                    plot_dir.parent.stem, date, line))
+            filepath1 = plot_dir.joinpath('{}_{}_{}nm.png'.format(
+                    plot_dir.parent.stem, datestring, line))
             print(filepath1)
             plt.savefig(str(filepath1), format='png')
         else:
@@ -402,7 +430,7 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
 
         fig2 = plt.figure(figsize=(8, 6))
         ax2 = fig2.add_subplot(1, 1, 1)
-        ax2.set_title(line, fontsize=14)
+        ax2.set_title('{} nm'.format(line), fontsize=14)
         ax2.set_xlabel('Normalized wavelength', fontsize=14)
         ax2.set_ylabel('Normalized flux', fontsize=14)
         ax2.errorbar(xnorm, ynorm, yerr=enorm,
@@ -412,15 +440,15 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
                      label='parabola')
         if gauss_fit:
             ax2.plot(xnorm, gaussian(xnorm, *gaussData['popt_gauss'])
-                     + continuum, color='green', linestyle='--',
+                     + continuum - linebottom, color='green', linestyle='--',
                      label='Gaussian')
         if spar_fit:
             ax2.plot(xnorm, simpleparabola(xnorm, *sparData['popt_spar']),
                      color='black', linestyle=':', label='Const. parabola')
         ax2.legend()
         if plot_dir:
-            filepath2 = plot_dir.joinpath('{}_{}_norm_{}.png'.format(
-                    plot_dir.parent.stem, date, line))
+            filepath2 = plot_dir.joinpath('{}_{}_norm_{}nm.png'.format(
+                    plot_dir.parent.stem, datestring, line))
             print(filepath2)
             plt.savefig(str(filepath2), format='png')
         else:
@@ -537,9 +565,6 @@ def searchFITSfile(FITSfile, pairlist):
              'line2_amp_gauss', 'line2_amp_err_gauss', 'line2_width_gauss',
              'line2_width_err_gauss', 'line2_chisq_nu_gauss',
              'line2_continuum']
-#    print(index)
-
-    #foundlinepos = linefind(line1, *params, plot=True)
 
     # Create a list to store the Series objects in
     lines = []
@@ -768,7 +793,7 @@ pairlist = [(443.9589, 444.1128), (450.0151, 450.3467), (459.9405, 460.329),
             (617.7065, 617.8498), (623.9045, 624.6193), (625.9833, 626.0427),
             (625.9833, 626.2831), (647.098, 647.7413)]
 
-columns = ['date', 'object', 'line1_nom_wl', 'line2_nom_wl', 'vel_diff_gauss',
+columns = ['object', 'date', 'line1_nom_wl', 'line2_nom_wl', 'vel_diff_gauss',
            'diff_err_gauss', 'line1_wl_gauss', 'line1_wl_err_gauss',
            'line1_amp_gauss', 'line1_amp_err_gauss', 'line1_width_gauss',
            'line1_width_err_gauss', 'line1_chisq_nu_gauss',
@@ -792,9 +817,9 @@ line1 = 600.4673
 #files = glob(os.path.join(baseDir, 'HD208704/*.fits')) # G1 (17 files)
 #files = glob(os.path.join(baseDir, 'HD138573/*.fits')) # G5
 #files = glob(os.path.join(baseDir, 'HD146233/*.fits')) # G2 (151 files)
-filepath = Path('/Users/dberke/HD146233')
-filepath = baseDir / 'HD146233'
-files = [file for file in filepath.glob('*.fits')]  # 18 Sco, G2 (7 files)
+filepath = baseDir / 'HD146233'  # 18 Sco, G2 (151 files)
+#filepath = baseDir / 'HD126525']  # (134 files)
+files = [file for file in filepath.glob('*.fits')]
 files = [Path('/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits')]
 
 total_results = []
@@ -802,6 +827,7 @@ total_results = []
 num_file = 1
 for infile in files:
     print('Processing file {} of {}.'.format(num_file, len(files)))
+    print('filepath = {}'.format(infile))
     unfittablelines = 0
     results = searchFITSfile(infile, pairlist)
     total_results.extend(results)
