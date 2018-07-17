@@ -719,61 +719,6 @@ def plot_line_comparisons(mseps, linepairs):
         plt.close(fig)
 
 
-def plot_as_func_of_date(mseps, linepairs, folded=False):
-    """Plot separations as a function of date.
-
-    """
-
-    for i, linepair in zip(range(len(mseps[0])), linepairs):
-        fig = plt.figure(figsize=(8, 8))
-        ax = fig.add_subplot(1, 1, 1)
-        ax.set_title('HD146233')
-        ax.set_ylabel(r'$\delta v$ ({} nm - {} nm) [m/s]'.
-                      format(linepair[0],
-                      linepair[1]), fontsize=18)
-        xlabel = 'Date of observation'
-        if folded:
-            xlabel = 'Date of observation (folded by year)'
-        ax.set_xlabel(xlabel, fontsize=18)
-        ax.set_ylim(bottom=-200, top=200)
-
-
-        gausslist = []
-        gausserr = []
-        datelist = []
-        for seplist in mseps:
-                gausslist.append(seplist[i]['gaussveldiff'])
-                gausserr.append(seplist[i]['gaussdifferr'])
-                datelist.append(seplist[i]['date_obs'])
-        gausslist = np.array(gausslist)
-        gausslist -= np.median(gausslist)
-
-        if folded:
-            for j in range(0, len(datelist), 1):
-                datelist[j] = datelist[j].replace(year=2000)
-            format_str = '%b'
-            ax.set_xlim(left=dt.date(year=2000, month=1, day=1),
-                         right=dt.date(year=2000, month=12, day=31))
-        else:
-            format_str = '%Y%m%d'
-
-        ax.xaxis.set_major_locator(dates.AutoDateLocator())
-        ax.xaxis.set_major_formatter(dates.DateFormatter(format_str))
-
-        ax.errorbar(datelist, gausslist, yerr=gausserr,
-                    markerfacecolor='Black', markeredgecolor='Black',
-                    linestyle='', marker='o',
-                    markersize=5, elinewidth=2, ecolor='Green',
-                    capsize=2, capthick=2)
-        fig.subplots_adjust(bottom=0.16, wspace=0.0, hspace=0.0)
-        fig.autofmt_xdate(bottom=0.16, rotation=30, ha='right')
-#        plt.show()
-        outfile = '/Users/dberke/Pictures/HD146233/Linepair_{}_folded_date.png'.\
-                 format(i+1)
-        fig.savefig(outfile, format='png')
-        plt.close(fig)
-
-
 ############
 
 #pairlistfile = "/Users/dberke/code/GoldStandardLineList_vac_working.txt"
