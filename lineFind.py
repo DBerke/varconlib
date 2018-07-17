@@ -86,7 +86,7 @@ def getpairlist(listfile):
             pass
         else:
             if not line == '\n':
-                temppair.append(float(line.split()[0]))
+                temppair.append(line.split()[0])
             else:
                 pairlist.append((temppair[0], temppair[1]))
                 temppair = []
@@ -422,7 +422,7 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
         if plot_dir:
             filepath1 = plot_dir.joinpath('{}_{}_{}nm.png'.format(
                     plot_dir.parent.stem, datestring, line))
-            print(filepath1)
+#            print(filepath1)
             plt.savefig(str(filepath1), format='png')
         else:
             plt.show()
@@ -449,7 +449,7 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
         if plot_dir:
             filepath2 = plot_dir.joinpath('{}_{}_norm_{}nm.png'.format(
                     plot_dir.parent.stem, datestring, line))
-            print(filepath2)
+#            print(filepath2)
             plt.savefig(str(filepath2), format='png')
         else:
             plt.show()
@@ -466,16 +466,14 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, plot=False,
 
     # Create dictionary to store results
     results = {}
-    results['line1_nom_wl'] = linepair[0]
-    results['line2_nom_wl'] = linepair[1]
 
     global unfittablelines
     params = (vac_wl, flux, err, radvel)
-    line1 = linefind(linepair[0], *params,
+    line1 = linefind(float(linepair[0]), *params,
                      plot=plot, velsep=5000, pixrange=3,
                      par_fit=False, gauss_fit=True, spar_fit=False,
                      plot_dir=plot_dir, date=date)
-    line2 = linefind(linepair[1], *params,
+    line2 = linefind(float(linepair[1]), *params,
                      plot=plot, velsep=5000, pixrange=3,
                      par_fit=False, gauss_fit=True, spar_fit=False,
                      plot_dir=plot_dir, date=date)
@@ -580,7 +578,8 @@ def searchFITSfile(FITSfile, pairlist):
             raise FileExistsError
 
     for linepair in pairlist:
-        line = {'date': date, 'object': hdnum}
+        line = {'date': date, 'object': hdnum,
+                'line1_nom_wl': linepair[0], 'line2_nom_wl': linepair[1]}
         line.update(measurepairsep(linepair, *params, plot=True,
                                    plot_dir=graph_path, date=date))
         lines.append(pd.Series(line, index=index))
@@ -780,18 +779,24 @@ def plot_as_func_of_date(mseps, linepairs, folded=False):
 #pairlistfile = "/Users/dberke/code/GoldStandardLineList_vac_working.txt"
 #pairlist = getpairlist(pairlistfile)
 
-pairlist = [(443.9589, 444.1128), (450.0151, 450.3467), (459.9405, 460.329),
-            (460.5846, 460.6877), (465.8889, 466.284), (473.3122, 473.378),
-            (475.9448, 476.0601), (480.0073, 480.0747), (484.0896, 484.4496),
-            (488.6794, 488.7696), (490.9102, 491.0754), (497.1304, 497.4489),
-            (500.5115, 501.142), (506.8562, 507.4086), (507.3492, 507.4086),
-            (513.2898, 513.8813), (514.8912, 515.3619), (524.851, 525.167),
-            (537.5203, 538.1069), (554.4686, 554.5475), (563.551, 564.3),
-            (571.3716, 571.9418), (579.4679, 579.9464), (579.5521, 579.9779),
-            (580.8335, 581.0828), (593.1823, 593.6299), (595.4367, 595.8344),
-            (600.4673, 601.022), (616.3002, 616.8146), (617.2213, 617.5042),
-            (617.7065, 617.8498), (623.9045, 624.6193), (625.9833, 626.0427),
-            (625.9833, 626.2831), (647.098, 647.7413)]
+pairlist = [('443.9589', '444.1128'), ('450.0151', '450.3467'),
+            ('459.9405', '460.3290'), ('460.5846', '460.6877'),
+            ('465.8889', '466.2840'), ('473.3122', '473.3780'),
+            ('475.9448', '476.0601'), ('480.0073', '480.0747'),
+            ('484.0896', '484.4496'), ('488.6794', '488.7696'),
+            ('490.9102', '491.0754'), ('497.1304', '497.4489'),
+            ('500.5115', '501.1420'), ('506.8562', '507.4086'),
+            ('507.3492', '507.4086'), ('513.2898', '513.8813'),
+            ('514.8912', '515.3619'), ('524.8510', '525.1670'),
+            ('537.5203', '538.1069'), ('554.4686', '554.5475'),
+            ('563.5510', '564.3000'), ('571.3716', '571.9418'),
+            ('579.4679', '579.9464'), ('579.5521', '579.9779'),
+            ('580.8335', '581.0828'), ('593.1823', '593.6299'),
+            ('595.4367', '595.8344'), ('600.4673', '601.0220'),
+            ('616.3002', '616.8146'), ('617.2213', '617.5042'),
+            ('617.7065', '617.8498'), ('623.9045', '624.6193'),
+            ('625.9833', '626.0427'), ('625.9833', '626.2831'),
+            ('647.0980', '647.7413')]
 
 columns = ['object', 'date', 'line1_nom_wl', 'line2_nom_wl', 'vel_diff_gauss',
            'diff_err_gauss', 'line1_wl_gauss', 'line1_wl_err_gauss',
@@ -809,9 +814,6 @@ columns = ['object', 'date', 'line1_nom_wl', 'line2_nom_wl', 'vel_diff_gauss',
 baseDir = Path("/Volumes/External Storage/HARPS/")
 global unfittablelines
 
-
-line1 = 600.4673
-
 #files = glob(os.path.join(baseDir, '4Vesta/*.fits')) # Vesta (6 files)
 #files = glob(os.path.join(baseDir, 'HD126525/*.fits')) # G4 (133 files))
 #files = glob(os.path.join(baseDir, 'HD208704/*.fits')) # G1 (17 files)
@@ -820,7 +822,7 @@ line1 = 600.4673
 filepath = baseDir / 'HD146233'  # 18 Sco, G2 (151 files)
 #filepath = baseDir / 'HD126525']  # (134 files)
 files = [file for file in filepath.glob('*.fits')]
-files = [Path('/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits')]
+#files = [Path('/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits')]
 
 total_results = []
 
