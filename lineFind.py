@@ -24,6 +24,7 @@ from scipy.optimize import curve_fit
 from astropy.visualization import hist as astrohist
 from glob import glob
 from pathlib import Path
+from tqdm import tqdm
 plt.rcParams['text.usetex'] = True
 matplotlib.rc('xtick', labelsize=20)
 matplotlib.rc('ytick', labelsize=20)
@@ -488,7 +489,7 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
     return results
 
 
-def measurepairsep(linepair, vac_wl, flux, err, radvel, plot=False,
+def measurepairsep(linepair, vac_wl, flux, err, radvel, pbar, plot=False,
                    plot_dir=None, date=None):
     """Return the distance between a pair of lines
 
@@ -503,10 +504,12 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, plot=False,
                      plot=plot, velsep=5000, pixrange=3,
                      par_fit=False, gauss_fit=True, spar_fit=False,
                      plot_dir=None, date=date)
+    pbar.update(1)
     line2 = linefind(float(linepair[1]), *params,
                      plot=plot, velsep=5000, pixrange=3,
                      par_fit=False, gauss_fit=True, spar_fit=False,
                      plot_dir=None, date=date)
+    pbar.update(1)
 
     if line1 is None:
         unfittablelines += 1
@@ -603,17 +606,19 @@ def searchFITSfile(FITSfile, pairlist, index):
             print('Graph directory already exists!')
             raise FileExistsError
 
-    for linepair in pairlist:
-        line = {'date': date, 'object': hdnum,
-                'line1_nom_wl': linepair[0], 'line2_nom_wl': linepair[1]}
-        line.update(measurepairsep(linepair, *params, plot=False,
-                                   plot_dir=graph_path, date=date))
-        lines.append(pd.Series(line, index=index))
+    with tqdm(total=len(pairlist)*2, unit='lines',
+              desc='Lines analyzed') as pbar:
+        for linepair in pairlist:
+            line = {'date': date, 'object': hdnum,
+                    'line1_nom_wl': linepair[0], 'line2_nom_wl': linepair[1]}
+            line.update(measurepairsep(linepair, *params, pbar, plot=False,
+                                       plot_dir=graph_path, date=date))
+            lines.append(pd.Series(line, index=index))
 
-    for line in lines:
-        print("{}, {}: measured separation {:.3f} m/s".format(
-                line['line1_nom_wl'], line['line2_nom_wl'],
-                line['vel_diff_gauss']))
+#    for line in lines:
+#        print("{}, {}: measured separation {:.3f} m/s".format(
+#                line['line1_nom_wl'], line['line2_nom_wl'],
+#                line['vel_diff_gauss']))
 
     return lines
 
@@ -815,6 +820,7 @@ filepath = baseDir / 'HD146233'  # 18 Sco, G2 (151 files)
 #filepath = baseDir / 'HD78660'  # 1 file
 #filepath = baseDir / 'HD183658' # 12 files
 #filepath = baseDir / 'HD45184' # 116 files
+filepath = Path('/Users/dberke/HD146233')
 files = [file for file in filepath.glob('*.fits')]
 #files = [Path('/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits')]
 
@@ -822,23 +828,23 @@ total_results = []
 
 num_file = 1
 for infile in files:
-    print('Processing file {} of {}.'.format(num_file, len(files)))
-    print('filepath = {}'.format(infile))
+    tqdm.write('Processing file {} of {}.'.format(num_file, len(files)))
+    tqdm.write('filepath = {}'.format(infile))
     unfittablelines = 0
     results = searchFITSfile(infile, pairlist, columns)
     total_results.extend(results)
 
-    print('Found {} unfittable lines.'.format(unfittablelines))
+    tqdm.write('Found {} unfittable lines.'.format(unfittablelines))
     num_file += 1
 
 lines = pd.DataFrame(total_results, columns=columns)
 
-print("#############")
-print("{} files analyzed total.".format(len(files)))
+tqdm.write("#############")
+tqdm.write("{} files analyzed total.".format(len(files)))
 
 file_parent = files[0].parent
 target = file_parent.stem + '.csv'
 csvfilePath = file_parent / target
-print('Output written to {}'.format(csvfilePath))
+tqdm.write('Output written to {}'.format(csvfilePath))
 lines.to_csv(csvfilePath, index=False, header=True, encoding='utf-8',
              date_format='%Y-%m-%dT%H:%M:%S.%f')
