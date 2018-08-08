@@ -199,6 +199,7 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
 
     # Get the full width at half maximum (approximately 2.355 * sigma)
     gauss_fwhm = 2 * sqrt(2 * log(2)) * gauss_sigma
+    gauss_fwhm_err = 2 * sqrt(2 * log(2)) * gauss_sigma_err
 
 
     # Convert sigma and FWHM to velocity space
@@ -209,7 +210,8 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
 
     fwhm_vel = vcl.getvelseparation(gausscenterwl*1e-9,
                                      (gausscenterwl+gauss_fwhm)*1e-9)
-
+    fwhm_vel_err = vcl.getvelseparation(gausscenterwl*1e-9,
+                                         (gausscenterwl+gauss_fwhm_err)*1e-9)
 
     # Get the aplitude of the Gaussian
     amp = popt_gauss[0]
@@ -245,6 +247,7 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
             'width_gauss': sigma_vel,
             'width_err_gauss': sigma_vel_err,
             'fwhm_gauss': fwhm_vel,
+            'fwhm_gauss_err': fwhm_vel_err,
             'chisq_nu_gauss': chisq_nu_gauss,
             'gausscenterwl': gausscenterwl,
             'popt_gauss': popt_gauss}
@@ -342,6 +345,9 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
     e = np.array(err[lowerlim:upperlim])
     linebottom = y.min()
     fluxrange = y.max() - linebottom
+
+    normdepth = (continuum - linebottom) / continuum
+    results['norm_depth'] = normdepth
 #    print("fluxrange = {}".format(fluxrange))
 #    print(x)
 #    print(y)
@@ -373,6 +379,7 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
         results['width_gauss'] = gaussData['width_gauss']
         results['width_err_gauss'] = gaussData['width_err_gauss']
         results['fwhm_gauss'] = gaussData['fwhm_gauss']
+        results['fwhm_gauss_err'] = gaussData['fwhm_gauss_err']
         results['chisq_nu_gauss'] = gaussData['chisq_nu_gauss']
 
     # Fit a constrained parabola to the normalized data
@@ -535,8 +542,10 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, plot=False,
             results['line1_width_gauss'] = line1['width_gauss']
             results['line1_width_err_gauss'] = line1['width_err_gauss']
             results['line1_fwhm_gauss'] = line1['fwhm_gauss']
+            results['line1_fwhm_err_gauss'] = line1['fwhm_gauss_err']
             results['line1_chisq_nu_gauss'] = line1['chisq_nu_gauss']
             results['line1_continuum'] = line1['continuum']
+            results['line1_norm_depth'] = line1['norm_depth']
 
             # ... and line 2 specific data.
             results['line2_wl_gauss'] = line2['restframe_line_gauss']
@@ -546,8 +555,10 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, plot=False,
             results['line2_width_gauss'] = line2['width_gauss']
             results['line2_width_err_gauss'] = line2['width_err_gauss']
             results['line2_fwhm_gauss'] = line2['fwhm_gauss']
+            results['line2_fwhm_err_gauss'] = line2['fwhm_gauss_err']
             results['line2_chisq_nu_gauss'] = line2['chisq_nu_gauss']
             results['line2_continuum'] = line2['continuum']
+            results['line2_norm_depth'] = line2['norm_depth']
 
         if 'line_spar' in (line1 and line2):
             sparveldiff = abs(vcl.getvelseparation(line1['line_spar'],
@@ -562,7 +573,7 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, plot=False,
         return None
 
 
-def searchFITSfile(FITSfile, pairlist):
+def searchFITSfile(FITSfile, pairlist, index):
     """Measure line pair separations in given file with given list
 
     """
@@ -578,16 +589,6 @@ def searchFITSfile(FITSfile, pairlist):
     hdnum = data['hdnum']
 
     params = (vac_wl, flux, err, radvel)
-
-    index = ['date', 'object', 'line1_nom_wl', 'line2_nom_wl',
-             'vel_diff_gauss', 'diff_err_gauss',
-             'line1_wl_gauss', 'line1_wl_err_gauss',
-             'line1_amp_gauss', 'line1_amp_err_gauss', 'line1_width_gauss',
-             'line1_width_err_gauss', 'line1_fwhm_gauss',
-             'line1_chisq_nu_gauss', 'line1_continuum', 'line2_wl_gauss',
-             'line2_wl_err_gauss', 'line2_amp_gauss', 'line2_amp_err_gauss',
-             'line2_width_gauss', 'line2_width_err_gauss',
-             'line2_fwhm_gauss', 'line2_chisq_nu_gauss', 'line2_continuum']
 
     # Create a list to store the Series objects in
     lines = []
@@ -768,14 +769,34 @@ pairlist = [('443.9589', '444.1128'), ('450.0151', '450.3467'),
             ('625.9833', '626.0427'), ('625.9833', '626.2831'),
             ('647.0980', '647.7413')]
 
-columns = ['object', 'date', 'line1_nom_wl', 'line2_nom_wl', 'vel_diff_gauss',
-           'diff_err_gauss', 'line1_wl_gauss', 'line1_wl_err_gauss',
-           'line1_amp_gauss', 'line1_amp_err_gauss', 'line1_width_gauss',
-           'line1_width_err_gauss', 'line1_fwhm_gauss', 'line1_chisq_nu_gauss',
-           'line1_continuum', 'line2_wl_gauss', 'line2_wl_err_gauss',
-           'line2_amp_gauss', 'line2_amp_err_gauss', 'line2_width_gauss',
-           'line2_width_err_gauss', 'line2_fwhm_gauss', 'line2_chisq_nu_gauss',
-           'line2_continuum']
+columns = ['object',
+           'date',
+           'line1_nom_wl',
+           'line2_nom_wl',
+           'vel_diff_gauss',
+           'diff_err_gauss',
+           'line1_wl_gauss',
+           'line1_wl_err_gauss',
+           'line1_amp_gauss',
+           'line1_amp_err_gauss',
+           'line1_width_gauss',
+           'line1_width_err_gauss',
+           'line1_fwhm_gauss',
+           'line1_fwhm_err_gauss',
+           'line1_chisq_nu_gauss',
+           'line1_continuum',
+           'line1_norm_depth',
+           'line2_wl_gauss',
+           'line2_wl_err_gauss',
+           'line2_amp_gauss',
+           'line2_amp_err_gauss',
+           'line2_width_gauss',
+           'line2_width_err_gauss',
+           'line2_fwhm_gauss',
+           'line2_fwhm_err_gauss',
+           'line2_chisq_nu_gauss',
+           'line2_continuum',
+           'line2_norm_depth']
 
 #pairlist = [(537.5203, 538.1069)]
 #pairlist = [(579.4679, 579.9464)]
@@ -790,12 +811,12 @@ global unfittablelines
 #files = glob(os.path.join(baseDir, 'HD138573/*.fits')) # G5
 #files = glob(os.path.join(baseDir, 'HD146233/*.fits')) # G2 (151 files)
 filepath = baseDir / 'HD146233'  # 18 Sco, G2 (151 files)
-filepath = baseDir / 'HD126525'  # (133 files)
-filepath = baseDir / 'HD78660'  # 1 file
-filepath = baseDir / 'HD183658' # 12 files
-filepath = baseDir / 'HD45184' # 116 files
+#filepath = baseDir / 'HD126525'  # (133 files)
+#filepath = baseDir / 'HD78660'  # 1 file
+#filepath = baseDir / 'HD183658' # 12 files
+#filepath = baseDir / 'HD45184' # 116 files
 files = [file for file in filepath.glob('*.fits')]
-files = [Path('/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits')]
+#files = [Path('/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits')]
 
 total_results = []
 
@@ -804,7 +825,7 @@ for infile in files:
     print('Processing file {} of {}.'.format(num_file, len(files)))
     print('filepath = {}'.format(infile))
     unfittablelines = 0
-    results = searchFITSfile(infile, pairlist)
+    results = searchFITSfile(infile, pairlist, columns)
     total_results.extend(results)
 
     print('Found {} unfittable lines.'.format(unfittablelines))
