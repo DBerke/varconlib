@@ -302,9 +302,9 @@ def fitSimpleParabola(xnorm, ynorm, enorm, centralwl, radvel, verbose=False):
             'popt_spar': popt_spar}
 
 
-def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
-             plot=True, par_fit=False, gauss_fit=False, spar_fit=False,
-             plot_dir=None, date=None):
+def linefind(line, vac_wl, flux, err, radvel, filename,
+             pixrange=3, velsep=5000, plot=True, par_fit=False,
+             gauss_fit=False, spar_fit=False, plot_dir=None, date=None):
     """Find a given line in a HARPS spectrum after correcting for rad. vel.
 
     line: the line to look for, in nm
@@ -321,7 +321,7 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
 
     radvel = float(radvel)
     # Figure out location of line given radial velocity of the star (in km/s)
-    shiftedlinewl = vcl.lineshift(line, radvel)  # In nm here.
+    shiftedlinewl = vcl.lineshift(float(line), radvel)  # In nm here.
 #    print('Given radial velocity {} km/s, line {} should be at {:.4f}'.
 #          format(radvel, line, shiftedlinewl))
     wlrange = vcl.getwlseparation(velsep, shiftedlinewl)  # 5 km/s by default
@@ -450,10 +450,17 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
                    color='grey', alpha=0.25)
         ax.legend()
 
+
         if plot_dir:
-            filepath1 = plot_dir.joinpath('{}_{}_{}nm.png'.format(
-                    plot_dir.parent.stem, datestring, line))
-#            print(filepath1)
+            line_dir = plot_dir / filename
+            if not line_dir.exists():
+                line_dir.mkdir()
+            filepath1 = line_dir / '{}_{}_{}nm.png'.format(
+                                                    plot_dir.parent.stem,
+                                                    datestring, line)
+            filepath2 = line_dir / '{}_{}_norm_{}nm.png'.format(
+                                                    plot_dir.parent.stem,
+                                                    datestring, line)
             plt.savefig(str(filepath1), format='png')
         else:
             plt.show()
@@ -478,9 +485,6 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
                      color='black', linestyle=':', label='Const. parabola')
         ax2.legend()
         if plot_dir:
-            filepath2 = plot_dir.joinpath('{}_{}_norm_{}nm.png'.format(
-                    plot_dir.parent.stem, datestring, line))
-#            print(filepath2)
             plt.savefig(str(filepath2), format='png')
         else:
             plt.show()
@@ -489,8 +493,8 @@ def linefind(line, vac_wl, flux, err, radvel, pixrange=3, velsep=5000,
     return results
 
 
-def measurepairsep(linepair, vac_wl, flux, err, radvel, pbar, plot=False,
-                   plot_dir=None, date=None):
+def measurepairsep(linepair, vac_wl, flux, err, radvel, filename, pbar,
+                   plot=False, plot_dir=None, date=None):
     """Return the distance between a pair of lines
 
     """
@@ -499,16 +503,16 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, pbar, plot=False,
     results = {}
 
     global unfittablelines
-    params = (vac_wl, flux, err, radvel)
-    line1 = linefind(float(linepair[0]), *params,
+    params = (vac_wl, flux, err, radvel, filename)
+    line1 = linefind(linepair[0], *params,
                      plot=plot, velsep=5000, pixrange=3,
                      par_fit=False, gauss_fit=True, spar_fit=False,
-                     plot_dir=None, date=date)
+                     plot_dir=plot_dir, date=date)
     pbar.update(1)
-    line2 = linefind(float(linepair[1]), *params,
+    line2 = linefind(linepair[1], *params,
                      plot=plot, velsep=5000, pixrange=3,
                      par_fit=False, gauss_fit=True, spar_fit=False,
-                     plot_dir=None, date=date)
+                     plot_dir=plot_dir, date=date)
     pbar.update(1)
 
     if line1 is None:
@@ -576,10 +580,12 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, pbar, plot=False,
         return None
 
 
-def searchFITSfile(FITSfile, pairlist, index):
+def searchFITSfile(FITSfile, pairlist, index, plot=False):
     """Measure line pair separations in given file with given list
 
     """
+
+    filename = FITSfile.stem
 
     data = vcl.readHARPSfile(str(FITSfile), radvel=True, date_obs=True,
                              hdnum=True)
@@ -591,16 +597,16 @@ def searchFITSfile(FITSfile, pairlist, index):
     date = data['date_obs']
     hdnum = data['hdnum']
 
-    params = (vac_wl, flux, err, radvel)
+    params = (vac_wl, flux, err, radvel, filename)
 
     # Create a list to store the Series objects in
     lines = []
 
     # Check if a path for graphs exists already, and if not create it one
-    graph_path = FITSfile.parent / 'Graphs'
+    graph_path = FITSfile.parent / 'graphs'
     if not graph_path.exists():
+        print('No graph directory found, creating one.')
         try:
-            print('No graph directory found, creating one.')
             graph_path.mkdir()
         except FileExistsError:
             print('Graph directory already exists!')
@@ -611,8 +617,9 @@ def searchFITSfile(FITSfile, pairlist, index):
         for linepair in pairlist:
             line = {'date': date, 'object': hdnum,
                     'line1_nom_wl': linepair[0], 'line2_nom_wl': linepair[1]}
-            line.update(measurepairsep(linepair, *params, pbar, plot=False,
-                                       plot_dir=graph_path, date=date))
+            line.update(measurepairsep(linepair, *params, pbar,
+                                       plot=plot, plot_dir=graph_path,
+                                       date=date))
             lines.append(pd.Series(line, index=index))
 
 #    for line in lines:
@@ -811,16 +818,14 @@ baseDir = Path("/Volumes/External Storage/HARPS/")
 global unfittablelines
 
 #files = glob(os.path.join(baseDir, '4Vesta/*.fits')) # Vesta (6 files)
-#files = glob(os.path.join(baseDir, 'HD126525/*.fits')) # G4 (133 files))
 #files = glob(os.path.join(baseDir, 'HD208704/*.fits')) # G1 (17 files)
 #files = glob(os.path.join(baseDir, 'HD138573/*.fits')) # G5
-#files = glob(os.path.join(baseDir, 'HD146233/*.fits')) # G2 (151 files)
 filepath = baseDir / 'HD146233'  # 18 Sco, G2 (151 files)
-#filepath = baseDir / 'HD126525'  # (133 files)
+#filepath = baseDir / 'HD126525'  # (132 files)
 #filepath = baseDir / 'HD78660'  # 1 file
 #filepath = baseDir / 'HD183658' # 12 files
 #filepath = baseDir / 'HD45184' # 116 files
-filepath = Path('/Users/dberke/HD146233')
+#filepath = Path('/Users/dberke/HD146233')
 files = [file for file in filepath.glob('*.fits')]
 #files = [Path('/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits')]
 
@@ -831,10 +836,10 @@ for infile in files:
     tqdm.write('Processing file {} of {}.'.format(num_file, len(files)))
     tqdm.write('filepath = {}'.format(infile))
     unfittablelines = 0
-    results = searchFITSfile(infile, pairlist, columns)
+    results = searchFITSfile(infile, pairlist, columns, plot=True)
     total_results.extend(results)
 
-    tqdm.write('Found {} unfittable lines.'.format(unfittablelines))
+    tqdm.write('\nFound {} unfittable lines.'.format(unfittablelines))
     num_file += 1
 
 lines = pd.DataFrame(total_results, columns=columns)

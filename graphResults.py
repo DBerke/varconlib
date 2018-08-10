@@ -19,7 +19,7 @@ import datetime as dt
 from pathlib import Path
 
 
-def plot_as_func_of_date(data, linepairs, folded=False):
+def plot_as_func_of_date(data, linepairs, filepath, folded=False):
     """Plot separations as a function of date.
 
     """
@@ -34,7 +34,7 @@ def plot_as_func_of_date(data, linepairs, folded=False):
         if folded:
             xlabel = 'Date of observation (folded by year)'
         ax.set_xlabel(xlabel, fontsize=18)
-        ax.set_ylim(bottom=-200, top=200)
+#        ax.set_ylim(bottom=-200, top=200)
 
         # Select the data to plot
         filtdata = data[(data['line1_nom_wl'] == float(linepair[0])) &
@@ -45,7 +45,8 @@ def plot_as_func_of_date(data, linepairs, folded=False):
         gausserr = filtdata['diff_err_gauss']
         gaussdatetimes = filtdata['date']
         gausspy = []
-        # Convert to Python datetimes so matplotlib's errorbar will work
+        # Convert to Python datetimes so matplotlib's errorbar will work --
+        # it doesn't like pandas' native Timestamp object apparently
         for date in gaussdatetimes:
             gausspy.append(date.to_pydatetime())
 
@@ -68,10 +69,17 @@ def plot_as_func_of_date(data, linepairs, folded=False):
                     capsize=2, capthick=2)
         fig.subplots_adjust(bottom=0.16, wspace=0.0, hspace=0.0)
         fig.autofmt_xdate(bottom=0.16, rotation=30, ha='right')
-        plt.show()
-#        outfile = '/Users/dberke/Pictures/HD146233/Linepair_{}_folded_date.png'.\
-#                 format(i+1)
-#        fig.savefig(outfile, format='png')
+#        plt.show()
+
+        if folded:
+            outfile = filepath / 'graphs' / 'Linepair_{}_{}_folded.png'.format(
+                                                             linepair[0],
+                                                             linepair[1])
+        else:
+            outfile = filepath / 'graphs' / 'Linepair_{}_{}.png'.format(
+                                                                linepair[0],
+                                                                linepair[1])
+        fig.savefig(str(outfile), format='png')
         plt.close(fig)
 
 
@@ -100,10 +108,12 @@ baseDir = Path('/Volumes/External Storage/HARPS')
 obj = 'HD146233'
 
 filepath = Path('/Users/dberke/HD146233')  # 18 Sco, G2 (7 files)
+filepath = Path('/Volumes/External Storage/HARPS/HD146233')
 file = filepath / '{}.csv'.format(filepath.stem)
-file = baseDir / obj / '{}.csv'.format(obj)
+#file = baseDir / obj / '{}.csv'.format(obj)
 print(file)
 
 data = pd.read_csv(file, header=0, parse_dates=[1], engine='c')
 
-plot_as_func_of_date(data, pairlist, folded=True)
+plot_as_func_of_date(data, pairlist, filepath, folded=False)
+plot_as_func_of_date(data, pairlist, filepath, folded=True)
