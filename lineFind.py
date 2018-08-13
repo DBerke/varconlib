@@ -613,7 +613,7 @@ def searchFITSfile(FITSfile, pairlist, index, plot=False):
             raise FileExistsError
 
     with tqdm(total=len(pairlist)*2, unit='lines',
-              desc='Lines analyzed') as pbar:
+              desc='Lines analyzed', disable=False) as pbar:
         for linepair in pairlist:
             line = {'date': date, 'object': hdnum,
                     'line1_nom_wl': linepair[0], 'line2_nom_wl': linepair[1]}
@@ -759,7 +759,7 @@ def plot_line_comparisons(mseps, linepairs):
 
 ############
 
-#pairlistfile = "/Users/dberke/code/GoldStandardLineList_vac_working.txt"
+#pairlistfile = "/Users/dberke/code/tables/GoldStandardLineList_vac_working.txt"
 #pairlist = getpairlist(pairlistfile)
 
 pairlist = [('443.9589', '444.1128'), ('450.0151', '450.3467'),
@@ -825,7 +825,7 @@ filepath = baseDir / 'HD146233'  # 18 Sco, G2 (151 files)
 #filepath = baseDir / 'HD78660'  # 1 file
 #filepath = baseDir / 'HD183658' # 12 files
 #filepath = baseDir / 'HD45184' # 116 files
-#filepath = Path('/Users/dberke/HD146233')
+filepath = Path('/Users/dberke/HD146233')
 files = [file for file in filepath.glob('*.fits')]
 #files = [Path('/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits')]
 
