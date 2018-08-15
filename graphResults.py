@@ -11,76 +11,93 @@ Created on Fri Jun 15 15:32:43 2018
 import varconlib as vcl
 import pandas as pd
 import numpy as np
-import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticks
 import matplotlib.dates as dates
 import datetime as dt
 from pathlib import Path
+from tqdm import tqdm
+from time import sleep
 
 
-def plot_as_func_of_date(data, linepairs, filepath, folded=False):
+def plot_as_func_of_date(data, linepair, filepath, folded=False):
     """Plot separations as a function of date.
 
     """
 
-    for linepair in linepairs:
-        fig = plt.figure(figsize=(8, 8))
-        ax = fig.add_subplot(1, 1, 1)
-        ax.set_title('HD146233')
-        ax.set_ylabel(r'$\delta v$ ({} nm - {} nm) [m/s]'.
-                      format(linepair[0], linepair[1]), fontsize=18)
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.set_title('HD146233')
+    ax.set_ylabel(r'$\delta v$ ({} nm - {} nm) [m/s]'.
+                  format(linepair[0], linepair[1]), fontsize=18)
+
+    if folded:
+        xlabel = 'Date of observation (folded by year)'
+    else:
         xlabel = 'Date of observation'
-        if folded:
-            xlabel = 'Date of observation (folded by year)'
-        ax.set_xlabel(xlabel, fontsize=18)
+    ax.set_xlabel(xlabel, fontsize=18)
 #        ax.set_ylim(bottom=-200, top=200)
 
-        # Select the data to plot
-        filtdata = data[(data['line1_nom_wl'] == float(linepair[0])) &
-                        (data['line2_nom_wl'] == float(linepair[1]))]
-        gaussvel = filtdata['vel_diff_gauss']
-        gaussvel -= np.median(gaussvel)
+    # Select the data to plot
+    filtdata = data[(data['line1_nom_wl'] == float(linepair[0])) &
+                    (data['line2_nom_wl'] == float(linepair[1]))]
+    gaussvel = filtdata['vel_diff_gauss']
+    gaussvel -= np.median(gaussvel)
+    gausserr = filtdata['diff_err_gauss']
 
-        gausserr = filtdata['diff_err_gauss']
-        gaussdatetimes = filtdata['date']
-        gausspy = []
-        # Convert to Python datetimes so matplotlib's errorbar will work --
-        # it doesn't like pandas' native Timestamp object apparently
-        for date in gaussdatetimes:
-            gausspy.append(date.to_pydatetime())
+    # Find the RMS of the scatter
+    gauss_rms = np.sqrt(np.mean(np.square(gaussvel)))
+    # Find the mean error
+    mean_err = np.mean(gausserr)
 
-        if folded:
-            gaussdates = [date.replace(year=2000) for date in gausspy]
-            format_str = '%b'
-            ax.set_xlim(left=dt.date(year=2000, month=1, day=1),
-                        right=dt.date(year=2000, month=12, day=31))
-        else:
-            format_str = '%Y%m%d'
-            gaussdates = gausspy
+    gaussdatetimes = filtdata['date']
+    gausspy = []
+    # Convert to Python datetimes so matplotlib's errorbar will work --
+    # it doesn't like pandas' native Timestamp object apparently
+    for date in gaussdatetimes:
+        gausspy.append(date.to_pydatetime())
 
-        ax.xaxis.set_major_locator(dates.AutoDateLocator())
-        ax.xaxis.set_major_formatter(dates.DateFormatter(format_str))
+    if folded:
+        gaussdates = [date.replace(year=2000) for date in gausspy]
+        format_str = '%b'
+        ax.set_xlim(left=dt.date(year=2000, month=1, day=1),
+                    right=dt.date(year=2000, month=12, day=31))
+    else:
+        format_str = '%Y%m%d'
+        gaussdates = gausspy
 
-        ax.errorbar(gaussdates, gaussvel, yerr=gausserr,
-                    markerfacecolor='Black', markeredgecolor='Black',
-                    linestyle='', marker='o',
-                    markersize=5, elinewidth=2, ecolor='Green',
-                    capsize=2, capthick=2)
-        fig.subplots_adjust(bottom=0.16, wspace=0.0, hspace=0.0)
-        fig.autofmt_xdate(bottom=0.16, rotation=30, ha='right')
-#        plt.show()
+    ax.xaxis.set_major_locator(dates.AutoDateLocator())
+    ax.xaxis.set_major_formatter(dates.DateFormatter(format_str))
 
-        if folded:
-            outfile = filepath / 'graphs' / 'Linepair_{}_{}_folded.png'.format(
-                                                             linepair[0],
-                                                             linepair[1])
-        else:
-            outfile = filepath / 'graphs' / 'Linepair_{}_{}.png'.format(
-                                                                linepair[0],
-                                                                linepair[1])
-        fig.savefig(str(outfile), format='png')
-        plt.close(fig)
+    # Plot the RMS
+    ax.axhspan(-1*gauss_rms, gauss_rms, color='gray', alpha=0.3)
+    # Plot the median-subtracted velocity differences
+    ax.errorbar(gaussdates, gaussvel, yerr=gausserr,
+                markerfacecolor='Black', markeredgecolor='Black',
+                linestyle='', marker='o',
+                markersize=5, elinewidth=2, ecolor='Green',
+                capsize=2, capthick=2)
+
+    fig.subplots_adjust(bottom=0.16, wspace=0.0, hspace=0.0)
+    fig.autofmt_xdate(bottom=0.16, rotation=30, ha='right')
+
+    ax.annotate('RMS: {:.4f}\nmean error: {:.4f}'.format(gauss_rms, mean_err),
+                xy=(0.3, 0.08), xycoords='axes fraction',
+                size=14, ha='right', va='center',
+                bbox=dict(boxstyle='round', fc='w', alpha=0.2))
+#    ax.legend(framealpha=0.4, fontsize=18, numpoints=0)
+#    plt.show()
+
+    if folded:
+        outfile = filepath / 'graphs' / 'Linepair_{}_{}_folded.png'.format(
+                                                         linepair[0],
+                                                         linepair[1])
+    else:
+        outfile = filepath / 'graphs' / 'Linepair_{}_{}.png'.format(
+                                                            linepair[0],
+                                                            linepair[1])
+    fig.savefig(str(outfile), format='png')
+    plt.close(fig)
 
 
 #########################
@@ -111,9 +128,14 @@ filepath = Path('/Users/dberke/HD146233')  # 18 Sco, G2 (7 files)
 filepath = Path('/Volumes/External Storage/HARPS/HD146233')
 file = filepath / '{}.csv'.format(filepath.stem)
 #file = baseDir / obj / '{}.csv'.format(obj)
-print(file)
+print('Data file = {}'.format(file))
+sleep(0.5)
 
 data = pd.read_csv(file, header=0, parse_dates=[1], engine='c')
 
-plot_as_func_of_date(data, pairlist, filepath, folded=False)
-plot_as_func_of_date(data, pairlist, filepath, folded=True)
+with tqdm(total=2*len(pairlist), unit='Plot') as pbar:
+    for linepair in pairlist:
+        plot_as_func_of_date(data, linepair, filepath, folded=False)
+        pbar.update(1)
+        plot_as_func_of_date(data, linepair, filepath, folded=True)
+        pbar.update(1)
