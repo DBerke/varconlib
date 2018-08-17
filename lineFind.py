@@ -382,6 +382,8 @@ def linefind(line, vac_wl, flux, err, radvel, filename,
         results['fwhm_gauss'] = gaussData['fwhm_gauss']
         results['fwhm_gauss_err'] = gaussData['fwhm_gauss_err']
         results['chisq_nu_gauss'] = gaussData['chisq_nu_gauss']
+        results['gauss_vel_offset'] = vcl.getvelseparation(shiftedlinewl*1e-9,
+                                               gaussData['gausscenterwl']*1e-9)
 
     # Fit a constrained parabola to the normalized data
     if spar_fit:
@@ -553,6 +555,7 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, filename, pbar,
             results['line1_chisq_nu_gauss'] = line1['chisq_nu_gauss']
             results['line1_continuum'] = line1['continuum']
             results['line1_norm_depth'] = line1['norm_depth']
+            results['line1_gauss_vel_offset'] = line1['gauss_vel_offset']
 
             # ... and line 2 specific data.
             results['line2_wl_gauss'] = line2['restframe_line_gauss']
@@ -566,6 +569,7 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, filename, pbar,
             results['line2_chisq_nu_gauss'] = line2['chisq_nu_gauss']
             results['line2_continuum'] = line2['continuum']
             results['line2_norm_depth'] = line2['norm_depth']
+            results['line2_gauss_vel_offset'] = line2['gauss_vel_offset']
 
         if 'line_spar' in (line1 and line2):
             sparveldiff = abs(vcl.getvelseparation(line1['line_spar'],
@@ -796,6 +800,7 @@ columns = ['object',
            'line1_fwhm_gauss',
            'line1_fwhm_err_gauss',
            'line1_chisq_nu_gauss',
+           'line1_gauss_vel_offset',
            'line1_continuum',
            'line1_norm_depth',
            'line2_wl_gauss',
@@ -807,6 +812,7 @@ columns = ['object',
            'line2_fwhm_gauss',
            'line2_fwhm_err_gauss',
            'line2_chisq_nu_gauss',
+           'line2_gauss_vel_offset',
            'line2_continuum',
            'line2_norm_depth']
 
@@ -822,10 +828,10 @@ global unfittablelines
 #files = glob(os.path.join(baseDir, 'HD138573/*.fits')) # G5
 filepath = baseDir / 'HD146233'  # 18 Sco, G2 (151 files)
 #filepath = baseDir / 'HD126525'  # (132 files)
-#filepath = baseDir / 'HD78660'  # 1 file
-#filepath = baseDir / 'HD183658' # 12 files
-#filepath = baseDir / 'HD45184' # 116 files
-filepath = Path('/Users/dberke/HD146233')
+filepath = baseDir / 'HD78660'  # 1 file
+filepath = baseDir / 'HD183658' # 12 files
+filepath = baseDir / 'HD45184' # 116 files
+#filepath = Path('/Users/dberke/HD146233')
 files = [file for file in filepath.glob('*.fits')]
 #files = [Path('/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits')]
 
@@ -836,7 +842,7 @@ for infile in files:
     tqdm.write('Processing file {} of {}.'.format(num_file, len(files)))
     tqdm.write('filepath = {}'.format(infile))
     unfittablelines = 0
-    results = searchFITSfile(infile, pairlist, columns, plot=True)
+    results = searchFITSfile(infile, pairlist, columns, plot=False)
     total_results.extend(results)
 
     tqdm.write('\nFound {} unfittable lines.'.format(unfittablelines))
