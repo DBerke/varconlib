@@ -274,7 +274,7 @@ def plot_as_func_of_date(data, pairlist, filepath, folded=False):
         fig.subplots_adjust(bottom=0.16, wspace=0.0, hspace=0.0)
         fig.autofmt_xdate(bottom=0.16, rotation=30, ha='right')
 
-        ax.annotate('RMS: {:.4f}\nmean error: {:.4f}'.format(gauss_rms,
+        ax.annotate('RMS: {:.4f} m/s\nmean error: {:.4f} m/s'.format(gauss_rms,
                     mean_err), xy=(0.35, 0.07), xycoords='axes fraction',
                     size=14, ha='right', va='center',
                     bbox=dict(boxstyle='round', fc='w', alpha=0.2))
