@@ -34,6 +34,11 @@ pairlist = [('443.9589', '444.1128'), ('450.0151', '450.3467'),
             ('647.0980', '647.7413')]
 
 
+badlines = frozenset(['506.8562', '507.4086', '593.1823', '593.6299',
+                      '595.4367', '595.8344', '600.4673', '601.0220',
+                      '647.0980', '647.7413'])
+
+
 def readHARPSfile(FITSfile, obj=False, wavelenmin=False, date_obs=False,
                   spec_bin=False, med_snr=False, hdnum=False, radvel=False):
     """Read a HARPS FITS file and return a dictionary of information.
