@@ -15,10 +15,10 @@ import pandas as pd
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticks
 import matplotlib.dates as dates
 from scipy.optimize import curve_fit
 from tqdm import tqdm
+from adjustText import adjust_text
 
 def polynomial1D(x, m, b):
     """Return the value of a line with slope m and offset b
@@ -61,7 +61,7 @@ def getHARPSxypos(wl, data, slope, offset):
     """
 
     CCD_x_width = 4096
-    CCD_y_height = 2048
+#    CCD_y_height = 2048
 
 #    if not ((378.113 <= wl <= 530.43) or (533.73 <= wl <= 691.219)):
 #        error_string1 = "Given wavelength ({}) not in HARPS' spectral range".\
@@ -211,6 +211,167 @@ def plot_HARPS_CCDs(pairlist):
     mpl.rcdefaults()
 
 
+def plot_absorption_spectrum(pairlist):
+    """Plot line pairs along with transmission spectrum
+
+
+    """
+    import subprocess
+    for pair in tqdm(pairlist):
+        args = ['/Users/dberke/code/plotSpec.py',
+                'HD45184/ADP.2014-09-26T16:54:56.573.fits',
+                'HD45184/ADP.2015-09-30T02:00:51.583.fits',
+                '-o', 'Trans_{}_{}.png'.format(pair[0], pair[1]),
+                '-r', '-3.9', '-i', '0', '-j', '1.05', '-vtz', '-n',
+                '{}'.format(float(pair[0]) -
+                            ((float(pair[1]) - float(pair[0])) * 0.75)),
+                '-m',
+                '{}'.format(float(pair[1]) +
+                            ((float(pair[1]) - float(pair[0])) * 0.75)),
+                '-l', pair[0], pair[1]]
+        subprocess.run(args)
+
+
+def plot_line_offsets(pairlist, data, filepath):
+    """Plot a histogram of each chosen line's offsets
+    """
+
+    for linepair in tqdm(pairlist):
+        filtdata1 = data[data['line1_nom_wl'] == float(linepair[0])]
+        filtdata2 = data[data['line2_nom_wl'] == float(linepair[1])]
+
+        outpath1 = filepath / 'graphs' / 'Hist_{}.png'.format(linepair[0])
+        outpath2 = filepath / 'graphs' / 'Hist_{}.png'.format(linepair[1])
+
+        fig1 = plt.figure(figsize=(8, 8))
+        fig2 = plt.figure(figsize=(8, 8))
+        ax1 = fig1.add_subplot(1, 1, 1)
+        ax2 = fig2.add_subplot(1, 1, 1)
+        ax1.set_title(linepair[0])
+        ax2.set_title(linepair[1])
+        ax1.set_xlabel(r'$\delta v$ around expected position [m/s]', size=18)
+        ax2.set_xlabel(r'$\delta v$ around expected position [m/s]', size=18)
+
+        offsets1 = filtdata1['line1_gauss_vel_offset']
+        offsets2 = filtdata2['line2_gauss_vel_offset']
+
+        median1 = np.median(offsets1)
+        median2 = np.median(offsets2)
+        offsets1 -= median1
+        offsets2 -= median2
+        std1 = np.std(offsets1)
+        std2 = np.std(offsets2)
+
+        ax1.hist(offsets1, bins=14, edgecolor='Black',
+                 label='Median: {:.4f} m/s\nStdDev: {:.4f} m/s'.
+                 format(median1, std1))
+        ax2.hist(offsets2, bins=14, edgecolor='Black',
+                 label='Median: {:.4f} m/s\nStdDev: {:.4f} m/s'.
+                 format(median2, std2))
+
+        ax1.legend(fontsize=16)
+        ax2.legend(fontsize=16)
+        fig1.savefig(str(outpath1))
+        fig2.savefig(str(outpath2))
+
+        plt.close(fig1)
+        plt.close(fig2)
+
+
+def plot_scatter_by_atomic_number(baseDir):
+    """Create a plot of scatter among transitions by atomic number
+
+    """
+
+    stars = ('HD146233', 'HD45184', 'HD183658', 'HD138573')
+    files = []
+    for star in stars:
+        files.append(baseDir / star / '{}.csv'.format(star))
+
+    frames = [pd.read_csv(file, header=0, parse_dates=[1], engine='c',
+                          converters={'line1_nom_wl': str,
+                                      'line2_nom_wl': str}) for file in files]
+    data = pd.concat(frames)
+
+    fig = plt.figure(figsize=(12, 10))
+    ax = fig.add_subplot(1, 1, 1)
+
+    labels = []
+    for pair in vcl.pairlist:
+        if not vcl.badlines.isdisjoint(pair):
+            print('Bad lines! {}, {}'.format(pair, vcl.elemdict[pair]))
+            continue
+        scatters = []
+        results = []
+        atomnum = vcl.elemdict[pair]
+        xpositions = np.linspace(atomnum - 0.4, atomnum + 0.4, len(stars))
+
+        for star, pos in zip(stars, xpositions):
+            filtdata = data[(data['line1_nom_wl'] == pair[0]) &
+                            (data['line2_nom_wl'] == pair[1]) &
+                            (data['object'] == star)]
+            gaussvel = filtdata['vel_diff_gauss']
+            gaussvel -= np.median(gaussvel)
+            RMS = np.sqrt(np.mean(np.square(gaussvel)))
+            print(RMS)
+            print(np.std(gaussvel))
+            scatters.append(RMS)
+#            ax.plot([pos]*len(gaussvel), gaussvel, color='Green', marker='_',
+#                    linestyle='')
+
+        ax.plot(xpositions, scatters, color='Black', linewidth=1, marker='.')
+        labels.append(plt.text(xpositions[0], scatters[0], '{}'.format(pair),
+                               ha='center', va='center', fontsize=6))
+    adjust_text(labels, arrowprops=dict(arrowstyle='->', color='red'))
+#
+#    colors = ('Blue', 'Green', 'Red', 'Black')
+#    for star, color in zip(stars, colors):
+#        file = baseDir / star / '{}.csv'.format(star)
+#        data = pd.read_csv(file, header=0, parse_dates=[1], engine='c',
+#                           converters={'line1_nom_wl': str,
+#                                       'line2_nom_wl': str})
+#        for pair in vcl.pairlist:
+#            if not vcl.badlines.isdisjoint(pair):
+#                print('Bad lines! {}, {}'.format(pair, vcl.elemdict[pair]))
+#                continue
+#            filtdata = data[(data['line1_nom_wl'] == pair[0]) &
+#                            (data['line2_nom_wl'] == pair[1])]
+#            gaussvel = filtdata['vel_diff_gauss']
+#            gaussvel -= np.median(gaussvel)
+#            RMS = np.sqrt(np.mean(np.square(gaussvel)))
+#            ax.plot(vcl.elemdict[pair], RMS, color=color, marker='.')
+
+    plt.show()
+#    plt.close(fig)
+
+
+def plot_as_function_of_depth():
+    """Plot the scattar in line pair separation as a function of line depth
+    """
+    data = pd.read_csv(file, header=0, parse_dates=[1], engine='c',
+                       converters={'line1_nom_wl': str,
+                                   'line2_nom_wl': str})
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(1, 1, 1)
+    for pair in vcl.pairlist:
+        if not vcl.badlines.isdisjoint(pair):
+            print('Bad lines! {}, {}'.format(pair, vcl.elemdict[pair]))
+            continue
+        filtdata = data[(data['line1_nom_wl'] == pair[0]) &
+                        (data['line2_nom_wl'] == pair[1])]
+        depth = np.median((filtdata['line1_norm_depth']
+                 + filtdata['line2_norm_depth']) / 2)
+        print(depth)
+        gaussvel = filtdata['vel_diff_gauss']
+        gaussvel -= np.median(gaussvel)
+        RMS = np.sqrt(np.mean(np.square(gaussvel)))
+        ax.plot(RMS, depth, marker='.', color='black')
+        ax.set_xlabel('RMS scatter in pair separation [m/s]')
+        ax.set_ylabel('Normalized line depth')
+        ax.invert_yaxis()
+    plt.show()
+
+
 def plot_as_func_of_date(data, pairlist, filepath, folded=False):
     """Plot separations as a function of date.
 
@@ -303,14 +464,21 @@ obj = 'HD146233'
 
 filepath = Path('/Users/dberke/HD146233')  # 18 Sco, G2 (7 files)
 filepath = Path('/Volumes/External Storage/HARPS/HD146233')
-filepath = Path('/Volumes/External Storage/HARPS/HD78660')
-filepath = Path('/Volumes/External Storage/HARPS/HD183658')
-filepath = Path('/Volumes/External Storage/HARPS/HD45184')
+#filepath = Path('/Volumes/External Storage/HARPS/HD78660')
+#filepath = Path('/Volumes/External Storage/HARPS/HD183658')
+#filepath = Path('/Volumes/External Storage/HARPS/HD45184')
+#filepath = Path('/Volumes/External Storage/HARPS/HD138573')
 file = filepath / '{}.csv'.format(filepath.stem)
 
 data = pd.read_csv(file, header=0, parse_dates=[1], engine='c')
 
-plot_as_func_of_date(data, vcl.pairlist, filepath, folded=False)
-plot_as_func_of_date(data, vcl.pairlist, filepath, folded=True)
+#plot_as_func_of_date(data, vcl.pairlist, filepath, folded=False)
+#plot_as_func_of_date(data, vcl.pairlist, filepath, folded=True)
 
 #plot_HARPS_CCDs(vcl.pairlist)
+
+#plot_line_offsets(vcl.pairlist, data, filepath)
+
+#plot_scatter_by_atomic_number(baseDir)
+plot_as_function_of_depth()
+
