@@ -323,53 +323,68 @@ def plot_scatter_by_atomic_number(baseDir):
         labels.append(plt.text(xpositions[0], scatters[0], '{}'.format(pair),
                                ha='center', va='center', fontsize=6))
     adjust_text(labels, arrowprops=dict(arrowstyle='->', color='red'))
-#
-#    colors = ('Blue', 'Green', 'Red', 'Black')
-#    for star, color in zip(stars, colors):
-#        file = baseDir / star / '{}.csv'.format(star)
-#        data = pd.read_csv(file, header=0, parse_dates=[1], engine='c',
-#                           converters={'line1_nom_wl': str,
-#                                       'line2_nom_wl': str})
-#        for pair in vcl.pairlist:
-#            if not vcl.badlines.isdisjoint(pair):
-#                print('Bad lines! {}, {}'.format(pair, vcl.elemdict[pair]))
-#                continue
-#            filtdata = data[(data['line1_nom_wl'] == pair[0]) &
-#                            (data['line2_nom_wl'] == pair[1])]
-#            gaussvel = filtdata['vel_diff_gauss']
-#            gaussvel -= np.median(gaussvel)
-#            RMS = np.sqrt(np.mean(np.square(gaussvel)))
-#            ax.plot(vcl.elemdict[pair], RMS, color=color, marker='.')
 
     plt.show()
 #    plt.close(fig)
 
 
-def plot_as_function_of_depth():
+def plot_as_function_of_depth(infile, individual_lines=True):
     """Plot the scattar in line pair separation as a function of line depth
+
+    individual_lines: boolean: whether to plot individual lines or line pairs
     """
-    data = pd.read_csv(file, header=0, parse_dates=[1], engine='c',
+    data = pd.read_csv(infile, header=0, parse_dates=[1], engine='c',
                        converters={'line1_nom_wl': str,
                                    'line2_nom_wl': str})
-    fig = plt.figure(figsize=(10, 8))
+    name = data['object'][0]
+    labels = []
+    fig = plt.figure(figsize=(12, 10))
     ax = fig.add_subplot(1, 1, 1)
+    ax.set_title(name)
+    if individual_lines:
+        ylabel = 'RMS scatter in line wavelength measurement [m/s]'
+    else:
+        ylabel = 'RMS scatter in pair velocity separation [m/s]'
+    ax.set_xlabel('Normalized line depth')
+    ax.set_ylabel(ylabel)
+    ax.set_xlim(left=0.28, right=0.72)
+    ax.set_ylim(bottom=8, top=96)
     for pair in vcl.pairlist:
         if not vcl.badlines.isdisjoint(pair):
             print('Bad lines! {}, {}'.format(pair, vcl.elemdict[pair]))
             continue
         filtdata = data[(data['line1_nom_wl'] == pair[0]) &
                         (data['line2_nom_wl'] == pair[1])]
-        depth = np.median((filtdata['line1_norm_depth']
-                 + filtdata['line2_norm_depth']) / 2)
-        print(depth)
+        depth1 = np.median(filtdata['line1_norm_depth'])
+        depth2 = np.median(filtdata['line2_norm_depth'])
+        meddepth = np.mean((depth1, depth2))
         gaussvel = filtdata['vel_diff_gauss']
-        gaussvel -= np.median(gaussvel)
-        RMS = np.sqrt(np.mean(np.square(gaussvel)))
-        ax.plot(RMS, depth, marker='.', color='black')
-        ax.set_xlabel('RMS scatter in pair separation [m/s]')
-        ax.set_ylabel('Normalized line depth')
-        ax.invert_yaxis()
-    plt.show()
+        scatter = np.std(gaussvel)
+        if individual_lines:
+            scatter1 = np.std(filtdata['line1_gauss_vel_offset'])
+            scatter2 = np.std(filtdata['line2_gauss_vel_offset'])
+            depths = (depth1, depth2)
+            scatters = (scatter1, scatter2)
+            ax.plot(depths, scatters, marker='.', color='FireBrick',
+                    markerfacecolor='Red', markersize=8, linewidth=1)
+            labels.append(plt.text(depth1, scatter1, '{}'.format(pair[0]),
+                                   fontsize=6, ha='right'))
+            labels.append(plt.text(depth2, scatter2, '{}'.format(pair[1]),
+                                   fontsize=6))
+            outfile = Path('/Users/dberke/Pictures/{}_linedepthvsscatter.png'.
+                           format(name))
+        else:
+            ax.plot(meddepth, scatter, marker='.', color='Red', markersize=10)
+            labels.append(plt.text(meddepth, scatter, '{}, {}'.
+                                   format(pair[0], pair[1]),
+                                   ha='left', fontsize=6))
+            outfile = Path('/Users/dberke/Pictures/{}_linepairdepthvsscatter.png'.
+                           format(name))
+
+    adjust_text(labels, arrowprops=dict(arrowstyle='->', color='gray'))
+
+    plt.savefig(str(outfile))
+    plt.close(fig)
 
 
 def plot_as_func_of_date(data, pairlist, filepath, folded=False):
@@ -465,12 +480,12 @@ obj = 'HD146233'
 filepath = Path('/Users/dberke/HD146233')  # 18 Sco, G2 (7 files)
 filepath = Path('/Volumes/External Storage/HARPS/HD146233')
 #filepath = Path('/Volumes/External Storage/HARPS/HD78660')
-#filepath = Path('/Volumes/External Storage/HARPS/HD183658')
-#filepath = Path('/Volumes/External Storage/HARPS/HD45184')
-#filepath = Path('/Volumes/External Storage/HARPS/HD138573')
+filepath = Path('/Volumes/External Storage/HARPS/HD183658')
+filepath = Path('/Volumes/External Storage/HARPS/HD45184')
+filepath = Path('/Volumes/External Storage/HARPS/HD138573')
 file = filepath / '{}.csv'.format(filepath.stem)
 
-data = pd.read_csv(file, header=0, parse_dates=[1], engine='c')
+#data = pd.read_csv(file, header=0, parse_dates=[1], engine='c')
 
 #plot_as_func_of_date(data, vcl.pairlist, filepath, folded=False)
 #plot_as_func_of_date(data, vcl.pairlist, filepath, folded=True)
@@ -480,5 +495,6 @@ data = pd.read_csv(file, header=0, parse_dates=[1], engine='c')
 #plot_line_offsets(vcl.pairlist, data, filepath)
 
 #plot_scatter_by_atomic_number(baseDir)
-plot_as_function_of_depth()
+plot_as_function_of_depth(file, individual_lines=True)
+plot_as_function_of_depth(file, individual_lines=False)
 
