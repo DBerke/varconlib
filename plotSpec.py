@@ -29,9 +29,11 @@ parser.add_argument('filenames', action='store', nargs='+',
 parser.add_argument('-o', '--name', action='store',
                     default='Spectrum.png',
                     help='Name of output file (in Pictures).')
-parser.add_argument('-n', '--minx', action='store', default=378, type=float,
+parser.add_argument('-n', '--minx', action='store', default=378.199,
+                    type=float,
                     help='The min x value (in nm).')
-parser.add_argument('-m', '--maxx', action='store', default=692, type=float,
+parser.add_argument('-m', '--maxx', action='store', default=691.289,
+                    type=float,
                     help='The max x value (in nm).')
 parser.add_argument('-i', '--miny', action='store', type=float,
                     help='The minimum y value.')
