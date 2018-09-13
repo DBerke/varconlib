@@ -146,110 +146,6 @@ def fitParabola(xnorm, ynorm, enorm, centralwl, radvel, verbose=False):
             'popt_par': popt_par}
 
 
-def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
-                fluxrange, verbose=False):
-    """Fit a Gaussian to the given data
-
-    xnorm: an array of x-values (wavelength), normalized from -0.03 to 0.03
-    ynorm: an array of y-values (photon counts) normalized from 0 to 1
-    enorm: an array of error values for the y-values, noralized the same way
-    centralwl: the pixel with the lowest flux value in the absorption feature
-    radvel: the radial velocity of the source (km/s)
-    continuum: the flux of the highest pixel within 20 km/s of the central wl
-    linebottom: the flux of the lowest pixel in the feature (same as centralwl)
-    fluxrange: the absolute value between the highest pixel in the wavelength
-               range selected (+- 3 pixels around centralwl) and the lowest
-               (same as linebottom)
-    verbose: prints out diagnostic info on the process
-    """
-
-    # Fit a Gaussian to the line center
-    popt_gauss, pcov_gauss = curve_fit(gaussian, xnorm,
-                                       ynorm-continuum+linebottom,
-                                       p0=(-1*(continuum-linebottom), 0, 1e3),
-                                       sigma=enorm,
-                                       absolute_sigma=True)
-
-    # Get the errors in the fitted parameters from the covariance matrix
-    perr_gauss = np.sqrt(np.diag(pcov_gauss))
-    r_gauss = (ynorm - continuum + linebottom) - gaussian(xnorm, *popt_gauss)
-    chisq_gauss = sum((r_gauss / enorm) ** 2)
-    chisq_nu_gauss = chisq_gauss / 4  # nu = 7 - 3
-
-    # Find center of Gaussian &
-    # correct for fitting normalized data
-    gausscenterwl = popt_gauss[1] / 1000 + centralwl
-    wl_err_gauss = perr_gauss[1] / 1000
-
-    if chisq_nu_gauss > 1:
-        wl_err_gauss *= math.sqrt(chisq_nu_gauss)
-
-    # Multiply by 1e-9 to get nm to m for getvelseparation which requires m
-    vel_err_gauss = vcl.getvelseparation(gausscenterwl*1e-9,
-                                         (gausscenterwl+wl_err_gauss)*1e-9)
-    # Shift line to stellar rest frame
-    gaussrestframeline = vcl.lineshift(gausscenterwl, -1*radvel)
-
-    # Get the width (sigma) of the Gaussian
-    gauss_sigma = abs(popt_gauss[2] / 1000)
-    gauss_sigma_err = perr_gauss[2] / 1000
-
-    # Get the full width at half maximum (approximately 2.355 * sigma)
-    gauss_fwhm = 2 * sqrt(2 * log(2)) * gauss_sigma
-    gauss_fwhm_err = 2 * sqrt(2 * log(2)) * gauss_sigma_err
-
-
-    # Convert sigma and FWHM to velocity space
-    sigma_vel = vcl.getvelseparation(gausscenterwl*1e-9,
-                                     (gausscenterwl+gauss_sigma)*1e-9)
-    sigma_vel_err = vcl.getvelseparation(gausscenterwl*1e-9,
-                                         (gausscenterwl+gauss_sigma_err)*1e-9)
-
-    fwhm_vel = vcl.getvelseparation(gausscenterwl*1e-9,
-                                     (gausscenterwl+gauss_fwhm)*1e-9)
-    fwhm_vel_err = vcl.getvelseparation(gausscenterwl*1e-9,
-                                         (gausscenterwl+gauss_fwhm_err)*1e-9)
-
-    # Get the aplitude of the Gaussian
-    amp = popt_gauss[0]
-    amp_err = perr_gauss[0]
-
-    if verbose:
-        print('-----------')
-        print("Continuum level = {}".format(continuum))
-        print('Depth of line = {}'.format(continuum - linebottom))
-        print('fluxrange = {}'.format(fluxrange))
-        print("Covariance matrix for Gaussian:")
-        print(pcov_gauss)
-        print('popt_gauss = {}'.format(popt_gauss))
-        print('perr_gauss = {}'.format(perr_gauss))
-        print(u'χ^2 (Gaussian) = {:.7f}'.format(chisq_gauss))
-        print(u'χ_ν^2 (Gaussian) = {:.7f}'.format(chisq_nu_gauss))
-        print('Gaussian central wl: {:.6f} nm'.format(gausscenterwl))
-        print("1 stddev Gaussian = {:.6e} nm".format(wl_err_gauss))
-        print("1 stddev Gaussian velspace = {:.7f} m/s".format(vel_err_gauss))
-        print('1 sigma = {:.6f} nm'.format(gauss_sigma))
-        print('1 sigma velspace = {:.7f} m/s'.format(sigma_vel))
-        print('FWHM = {:.6f}'.format(gauss_fwhm))
-        print('FWHM velspace = {:.7f} m/s'.format(fwhm_vel))
-        print('Gaussian amplitude = {:.6f} photons'.format(amp))
-        print('Gaussian amp err = {:.6f} photons'.format(amp_err))
-        print("Found line center at {:.6f} nm.".format(gausscenterwl))
-        print("Corrected for rad vel: {:.6f} nm".format(gaussrestframeline))
-
-    return {'restframe_line_gauss': gaussrestframeline,
-            'vel_err_gauss': vel_err_gauss,
-            'amplitude_gauss': amp,
-            'amplitude_err_gauss': amp_err,
-            'width_gauss': sigma_vel,
-            'width_err_gauss': sigma_vel_err,
-            'fwhm_gauss': fwhm_vel,
-            'fwhm_gauss_err': fwhm_vel_err,
-            'chisq_nu_gauss': chisq_nu_gauss,
-            'gausscenterwl': gausscenterwl,
-            'popt_gauss': popt_gauss}
-
-
 def fitSimpleParabola(xnorm, ynorm, enorm, centralwl, radvel, verbose=False):
     """Fit a parabola constrained to shift along the x-axis
 
@@ -308,49 +204,49 @@ def linefind(line, vac_wl, flux, err, radvel, filename,
 
     Parameters
     ----------
-    line: string
+    line : string
         The wavelength line to look for, in nm.
-    vac_wl: array_like
+    vac_wl : array_like
         The wavelength array of the spectrum to search (in vacuum wavelengths).
-    flux: array_like
+    flux : array_like
         The flux array of the spectrum to search.
-    err: array_like
+    err : array_like
         The error array of the spectrum to search.
-    radvel: float
+    radvel : float
         The radial velocity of the star in km/s (to nearest tenth is fine).
-    pixrange: int
+    pixrange : int
         The number of pixels to search either side of the main wavelength given
         as `line`.
-    velsep: int or float
+    velsep : int or float
         The range in m/s in velocity space around the central wavelength given
         as `line` to search for the deepest point.
 
     Optional
     --------
-    plot: bool. Default: True
+    plot : bool. Default: True
         If *True*, save two plots per function used to fit the line: one of the
         area within ± velsep m/s around the line, and another showing the
         normalized pixels from the line core.
-    par_fit: bool. Default: False
+    par_fit : bool. Default: False
         If *True*, fit the line with a parabola.
-    gauss_fit: bool. Default: False
+    gauss_fit : bool. Default: False
         If *True, fit the line with a Gaussian.
-    spar_fit: bool. Default: True
+    spar_fit : bool. Default: True
         If *True*, fit the line with a parabola constrained to translate on the
         x-axis only.
-    plot_dir: string. Default: *None*
+    plot_dir : string. Default: *None*
         A directory to store output plots in. Will have no effect if plot is
         *False*. If left as *None* will show the plots instead of saving them.
-    date: string: Default: *None*
+    date : string: Default: *None*
         A string representing the date the observation was taken, to be used as
         part of the output filename. Has no effect if plot_dir is not defined.
-    save_arrays: bool. Default: False
+    save_arrays : bool. Default: False
         If *True*, write out the normalized arrays and information necessary to
         reconstruct a fit from them in a CSV file.
 
     Returns
     -------
-    results: dictionary
+    dict
         A dictionary containing the results of the various fitting actions
         performed. Results from different fitting functions have different
         name prefixes to prevent duplication.
@@ -389,10 +285,6 @@ def linefind(line, vac_wl, flux, err, radvel, filename,
 
     normdepth = (continuum - linebottom) / continuum
     results['norm_depth'] = normdepth
-#    print("fluxrange = {}".format(fluxrange))
-#    print(x)
-#    print(y)
-#    print(e)
 
     # Normalize data for Scipy fitting
     xnorm = x - centralwl
