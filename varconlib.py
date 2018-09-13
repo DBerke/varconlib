@@ -12,6 +12,8 @@ import numpy as np
 import datetime as dt
 from astropy.io import fits
 from astropy.constants import c
+from scipy.optimize import curve_fit
+from math import sqrt, log
 
 # Some generic information useful in different scripts
 
@@ -294,6 +296,17 @@ def getvelseparation(wl1, wl2):
     return (wl2 - wl1) * c.value / ((wl1 + wl2) / 2)
 
 
+def gaussian(x, a, b, c):
+    """Return the value of a Gaussian function with parameters a, b, and c
+
+    x: independent variable
+    a: amplitude of Gaussian
+    b: center of Gaussian
+    c: standard deviation of Gaussian
+    """
+    return a * np.exp(-1 * ((x - b)**2 / (2 * c * c)))
+
+
 def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
                 fluxrange, verbose=False):
     """
@@ -352,13 +365,13 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
     wl_err_gauss = perr_gauss[1] / 1000
 
     if chisq_nu_gauss > 1:
-        wl_err_gauss *= math.sqrt(chisq_nu_gauss)
+        wl_err_gauss *= sqrt(chisq_nu_gauss)
 
     # Multiply by 1e-9 to get nm to m for getvelseparation which requires m
-    vel_err_gauss = vcl.getvelseparation(gausscenterwl*1e-9,
-                                         (gausscenterwl+wl_err_gauss)*1e-9)
+    vel_err_gauss = getvelseparation(gausscenterwl*1e-9,
+                                     (gausscenterwl+wl_err_gauss)*1e-9)
     # Shift line to stellar rest frame
-    gaussrestframeline = vcl.lineshift(gausscenterwl, -1*radvel)
+    gaussrestframeline = lineshift(gausscenterwl, -1*radvel)
 
     # Get the width (sigma) of the Gaussian
     gauss_sigma = abs(popt_gauss[2] / 1000)
@@ -369,15 +382,15 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
     gauss_fwhm_err = 2 * sqrt(2 * log(2)) * gauss_sigma_err
 
     # Convert sigma and FWHM to velocity space
-    sigma_vel = vcl.getvelseparation(gausscenterwl*1e-9,
-                                     (gausscenterwl+gauss_sigma)*1e-9)
-    sigma_vel_err = vcl.getvelseparation(gausscenterwl*1e-9,
-                                         (gausscenterwl+gauss_sigma_err)*1e-9)
+    sigma_vel = getvelseparation(gausscenterwl*1e-9,
+                                 (gausscenterwl+gauss_sigma)*1e-9)
+    sigma_vel_err = getvelseparation(gausscenterwl*1e-9,
+                                     (gausscenterwl+gauss_sigma_err)*1e-9)
 
-    fwhm_vel = vcl.getvelseparation(gausscenterwl*1e-9,
-                                    (gausscenterwl+gauss_fwhm)*1e-9)
-    fwhm_vel_err = vcl.getvelseparation(gausscenterwl*1e-9,
-                                        (gausscenterwl+gauss_fwhm_err)*1e-9)
+    fwhm_vel = getvelseparation(gausscenterwl*1e-9,
+                                (gausscenterwl+gauss_fwhm)*1e-9)
+    fwhm_vel_err = getvelseparation(gausscenterwl*1e-9,
+                                    (gausscenterwl+gauss_fwhm_err)*1e-9)
 
     # Get the aplitude of the Gaussian
     amp = popt_gauss[0]

@@ -16,7 +16,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticks
 import pandas as pd
-from math import sqrt, log
 from scipy.optimize import curve_fit
 from astropy.visualization import hist as astrohist
 from pathlib import Path
@@ -46,17 +45,6 @@ def simpleparabola(x, x0, a, c):
     c: zeroth-order coefficient
     """
     return a * (x - x0)**2 + c
-
-
-def gaussian(x, a, b, c):
-    """Return the value of a Gaussian function with parameters a, b, and c
-
-    x: independent variable
-    a: amplitude of Gaussian
-    b: center of Gaussian
-    c: standard deviation of Gaussian
-    """
-    return a * np.exp(-1 * ((x - b)**2 / (2 * c * c)))
 
 
 def getpairlist(listfile):
@@ -312,9 +300,9 @@ def linefind(line, vac_wl, flux, err, radvel, filename,
 
     # Fit a Gaussian to the normalized data
     if gauss_fit:
-        gaussData = fitGaussian(xnorm, ynorm, enorm, centralwl, radvel,
-                                continuum, linebottom, fluxrange,
-                                verbose=False)
+        gaussData = vcl.fitGaussian(xnorm, ynorm, enorm, centralwl, radvel,
+                                    continuum, linebottom, fluxrange,
+                                    verbose=False)
         results['restframe_line_gauss'] = gaussData['restframe_line_gauss']
         results['vel_err_gauss'] = gaussData['vel_err_gauss']
         results['amplitude_gauss'] = gaussData['amplitude_gauss']
