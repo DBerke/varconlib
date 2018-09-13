@@ -11,18 +11,14 @@ Created on Tue Apr 24 11:41:58 2018
 
 import numpy as np
 import varconlib as vcl
-import os.path
-import datetime as dt
 import math
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticks
-import matplotlib.dates as dates
 import pandas as pd
 from math import sqrt, log
 from scipy.optimize import curve_fit
 from astropy.visualization import hist as astrohist
-from glob import glob
 from pathlib import Path
 from tqdm import tqdm
 plt.rcParams['text.usetex'] = True
@@ -304,16 +300,60 @@ def fitSimpleParabola(xnorm, ynorm, enorm, centralwl, radvel, verbose=False):
 
 def linefind(line, vac_wl, flux, err, radvel, filename,
              pixrange=3, velsep=5000, plot=True, par_fit=False,
-             gauss_fit=False, spar_fit=False, plot_dir=None, date=None):
-    """Find a given line in a HARPS spectrum after correcting for rad. vel.
+             gauss_fit=False, spar_fit=False, plot_dir=None, date_string=None,
+             save_arrays=False):
+    """
+    Find a given line in a HARPS spectrum after correcting for the star's
+    radial velocity.
 
-    line: the line to look for, in nm
-    vac_wl: an array of vacuum wavelengths
-    flux: an array of fluxes
-    err: an error array
-    radvel: the radial velocity of the star in km/s
-    pixrange: the number of "pixels" to search either side of the main wl
-    plot: create a plot of the area surrounding the line
+    Parameters
+    ----------
+    line: string
+        The wavelength line to look for, in nm.
+    vac_wl: array_like
+        The wavelength array of the spectrum to search (in vacuum wavelengths).
+    flux: array_like
+        The flux array of the spectrum to search.
+    err: array_like
+        The error array of the spectrum to search.
+    radvel: float
+        The radial velocity of the star in km/s (to nearest tenth is fine).
+    pixrange: int
+        The number of pixels to search either side of the main wavelength given
+        as `line`.
+    velsep: int or float
+        The range in m/s in velocity space around the central wavelength given
+        as `line` to search for the deepest point.
+
+    Optional
+    --------
+    plot: bool. Default: True
+        If *True*, save two plots per function used to fit the line: one of the
+        area within ± velsep m/s around the line, and another showing the
+        normalized pixels from the line core.
+    par_fit: bool. Default: False
+        If *True*, fit the line with a parabola.
+    gauss_fit: bool. Default: False
+        If *True, fit the line with a Gaussian.
+    spar_fit: bool. Default: True
+        If *True*, fit the line with a parabola constrained to translate on the
+        x-axis only.
+    plot_dir: string. Default: *None*
+        A directory to store output plots in. Will have no effect if plot is
+        *False*. If left as *None* will show the plots instead of saving them.
+    date: string: Default: *None*
+        A string representing the date the observation was taken, to be used as
+        part of the output filename. Has no effect if plot_dir is not defined.
+    save_arrays: bool. Default: False
+        If *True*, write out the normalized arrays and information necessary to
+        reconstruct a fit from them in a CSV file.
+
+    Returns
+    -------
+    results: dictionary
+        A dictionary containing the results of the various fitting actions
+        performed. Results from different fitting functions have different
+        name prefixes to prevent duplication.
     """
 
     # Create a dictionary to store the results
@@ -361,6 +401,16 @@ def linefind(line, vac_wl, flux, err, radvel, filename,
     ynorm /= fluxrange
     enorm = e / fluxrange
 
+    if save_arrays:
+        outfile = Path('/Users/dberke/code/tables/linearray_{}.csv'.
+                       format(line))
+        d = {'xnorm': xnorm, 'ynorm': ynorm, 'enorm': enorm, 'centralwl':
+             centralwl, 'radvel': radvel, 'continuum': continuum, 'linebottom':
+             linebottom, 'fluxrange': fluxrange}
+        df = pd.DataFrame(d)
+        df.to_csv(path_or_buf=outfile, header=True, index=False, mode='w',
+                  float_format='%.4f')
+
     # Fit a parabola to the normalized data
     if par_fit:
         parData = fitParabola(xnorm, ynorm, enorm, centralwl, radvel,
@@ -394,7 +444,7 @@ def linefind(line, vac_wl, flux, err, radvel, filename,
 
     if plot:
         # Create the plots for the line
-        datestring = date.strftime('%Y%m%dT%H%M%S.%f')
+        datestring = date_string.strftime('%Y%m%dT%H%M%S.%f')
         fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(1, 1, 1)
         ax.set_xlim(left=lowerwllim, right=upperwllim)
@@ -452,7 +502,6 @@ def linefind(line, vac_wl, flux, err, radvel, filename,
                    color='grey', alpha=0.25)
         ax.legend()
 
-
         if plot_dir:
             line_dir = plot_dir / filename
             if not line_dir.exists():
@@ -509,12 +558,12 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, filename, pbar,
     line1 = linefind(linepair[0], *params,
                      plot=plot, velsep=5000, pixrange=3,
                      par_fit=False, gauss_fit=True, spar_fit=False,
-                     plot_dir=plot_dir, date=date)
+                     plot_dir=plot_dir, date_string=date, save_arrays=True)
     pbar.update(1)
     line2 = linefind(linepair[1], *params,
                      plot=plot, velsep=5000, pixrange=3,
                      par_fit=False, gauss_fit=True, spar_fit=False,
-                     plot_dir=plot_dir, date=date)
+                     plot_dir=plot_dir, date_string=date, save_arrays=True)
     pbar.update(1)
 
     if line1 is None:
@@ -834,12 +883,15 @@ global unfittablelines
 filepath = baseDir / 'HD146233'  # 18 Sco, G2 (151 files)
 #filepath = baseDir / 'HD126525'  # (132 files)
 filepath = baseDir / 'HD78660'  # 1 file
-filepath = baseDir / 'HD183658' # 12 files
-filepath = baseDir / 'HD45184' # 116 files
-filepath = baseDir / 'HD138573' # 31 files
+#filepath = baseDir / 'HD183658' # 12 files
+#filepath = baseDir / 'HD45184' # 116 files
+#filepath = baseDir / 'HD138573' # 31 files
 #filepath = Path('/Users/dberke/HD146233')
 files = [file for file in filepath.glob('*.fits')]
 #files = [Path('/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits')]
+# Used this file with SNR = 200.3 to get flux arrays for simulating scatter
+# in line positions.
+#files = [Path('/Volumes/External Storage/HARPS/HD146233/ADP.2014-09-23T11:04:00.547.fits')]
 
 total_results = []
 
@@ -848,7 +900,7 @@ for infile in files:
     tqdm.write('Processing file {} of {}.'.format(num_file, len(files)))
     tqdm.write('filepath = {}'.format(infile))
     unfittablelines = 0
-    results = searchFITSfile(infile, pairlist, columns, plot=True)
+    results = searchFITSfile(infile, pairlist, columns, plot=False)
     if results is not None:
         total_results.extend(results)
         tqdm.write('\nFound {} unfittable lines.'.format(unfittablelines))
