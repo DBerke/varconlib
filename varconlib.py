@@ -79,22 +79,76 @@ badlines = frozenset(['506.8562', '507.4086', '593.1823', '593.6299',
 
 
 def readHARPSfile(FITSfile, obj=False, wavelenmin=False, date_obs=False,
-                  spec_bin=False, med_snr=False, hdnum=False, radvel=False):
+                  spec_bin=False, med_snr=False, hdnum=False, radvel=False,
+                  coeffs=False):
     """Read a HARPS FITS file and return a dictionary of information.
 
-    FITSfile: a path to a HARPS FITS file to be read.
+    Parameters
+    ----------
+    FITSfile : str or Path object
+        A path to a HARPS FITS file to be read.
+    obj : bool, Default: False
+        If *True*, the output will contain the contents of the OBJECT FITS
+        header card.
+    wavelenmin : bool, Default: False
+        If *True*, the output will contain the contents of the WAVELMIN FITS
+        header card.
+    date_obs : bool, Default: False
+        If *True*, the output will contain the contents of the DATE-OBS FITS
+        header card.
+    spec_bin : bool, Default: False
+        If *True*, the output will contain the contents of the SPEC_BIN FITS
+        header card.
+    med_snr : bool, Default: False
+        If *True*, the output will contain the contents of the SNR FITS header
+        card.
+    hdnum : bool, Default: False
+        If *True*, the output will contain the contents of the custom-added
+        HDNUM FITS header card. (Added to unify object identifiers across all
+        stars, some of which were occasionally identified by things other than
+        HD number.)
+    radvel : bool, Default: False
+        If *True*, the output will contain the contents of the custom-added
+        RADVEL FITS header card. (Added to unify the radial velocity for each
+        star, as a small minority of stars had different radial velocity
+        information in their HIERARCH ESO TEL TAFG RADVEL header cards.)
+    coeffs : bool, Default: False
+        If *True*, the output will contain the contents of the various
+        *ESO DRS CAL TH COEFF LLX* header cards, where *X* ranges from 0 to
+        287.
 
-    output: a dictionary containing the following information:
-        obj: the object name from the 'OBJECT' flag
-        w: the wavelength array
-        f: the flux array
-        e: the estimated error array (HARPS has no error array)
-        wlmin: the minimum wavelength
-        date_obs: the date the file was observed
-        spec_bin: the wavelength bin size
-        med_snr: the median SNR of the flux array
-        hd_num: the HD number of the star
-        radvel: the radial velocity of the star
+    Returns
+    -------
+    dict
+        A dictionary containing the following key-value pairs:
+
+        w : Numpy array
+            The wavelength array.
+        f : Numpy array
+            The flux array.
+        e : Numpy array
+            The estimated error array (HARPS returns no error array by
+            default).
+
+        Optionally
+        ==========
+        obj : str
+            The object name from the 'OBJECT' flag.
+        wlmin : float
+            The minimum wavelength.
+        date_obs : datetime object
+            The date the file was observed.
+        spec_bin : float
+            The wavelength bin size.
+        med_snr : float
+            The median SNR of the flux array.
+        hd_num : str
+            The HD identifier of the star in the format "HDxxxxxx".
+        radvel : float
+            The radial velocity of the star in km/s.
+        If the `coeffs` keyword argument is *True*, there will be 288 entries
+        of the form "ESO DRS CAL TH COEFF LLX": *value*, where X will range
+        from 0 to 287.
     """
 
     result = {}
@@ -107,10 +161,16 @@ def readHARPSfile(FITSfile, obj=False, wavelenmin=False, date_obs=False,
         # Multiply by the gain to convert from ADUs to photoelectrons
         f = data.FLUX[0] * gain
         e = 1.e6 * np.absolute(f)
-        # Construct an error array by taking the square root of each flux
-        for i in np.arange(0, len(f), 1):
-            if (f[i] > 0.0):
-                e[i] = np.sqrt(f[i])
+        # Construct an error array by taking the square root of each flux value
+        try:
+            # First assume no negative flux values and use Numpy array
+            # magic to speed up the process.
+            e = np.sqrt(f)
+        except ValueError:
+            # If that raises an error, do it element-by-element.
+            for i in np.arange(0, len(f), 1):
+                if (f[i] > 0.0):
+                    e[i] = np.sqrt(f[i])
         result['w'] = w
         result['f'] = f
         result['e'] = e
@@ -129,6 +189,13 @@ def readHARPSfile(FITSfile, obj=False, wavelenmin=False, date_obs=False,
             result['hdnum'] = header0['HDNUM']
         if radvel:
             result['radvel'] = header0['RADVEL']
+
+        # If the coeffs keyword is given, returna all 288 wavelength solution
+        # coefficients.
+        if coeffs:
+            for i in range(0, 288, 1):
+                key_string = 'ESO DRS CAL TH COEFF LL{0}'.format(str(i))
+                result[key_string] = header0[key_string]
 
     return result
 
@@ -447,3 +514,42 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
             'chisq_nu_gauss': chisq_nu_gauss,
             'gausscenterwl': gausscenterwl,
             'popt_gauss': popt_gauss}
+
+
+def pix_order_to_wavelength(pixel, order, coeffs_dict):
+    """
+    Returns the wavelength measured on the given pixel in the given order.
+
+    Parameters
+    ----------
+    pixel : int, Range: 0 to 4095
+        The pixel in the dispersion direction where the wavelength will be
+        measured.
+    order : int, Range: 0 to 71
+        The spectral order to measure the wavelength in.
+    coeff_dict: dict
+        A dictionary containing wavelength solution coefficients in the form
+        *ESO DRS CAL TH COEFF LLX*, where *X* ranges from 0 to 287.
+
+    Returns
+    -------
+    float
+        The wavelength observed at the given pixel and order in nanometers.
+
+    Notes
+    -----
+    The algorithm used is derived from Dumusque 2018 [1]_
+
+    References
+    ----------
+    [1] Dumusque, X. "Measuring precise radial velocities on individual
+    spectral lines I. Validation of the method and application to mitigate
+    stellar activity", Astronomy & Astrophysics, 2018
+    """
+
+    wavelength = 0.
+    for k in range(0, 4, 1):
+        dict_key = 'ESO DRS CAL TH COEFF LL{0}'.format((4 * order) + k)
+        wavelength += coeffs_dict[dict_key] * (pixel ** k)
+
+    return wavelength / 10.
