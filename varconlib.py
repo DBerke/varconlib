@@ -14,6 +14,7 @@ from astropy.io import fits
 from astropy.constants import c
 from scipy.optimize import curve_fit
 from math import sqrt, log
+import matplotlib.pyplot as plt
 
 # Some generic information useful in different scripts
 
@@ -347,11 +348,27 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
     """
 
     # Fit a Gaussian to the line center
-    popt_gauss, pcov_gauss = curve_fit(gaussian, xnorm,
-                                       ynorm-continuum+linebottom,
-                                       p0=(-1*(continuum-linebottom), 0, 1e3),
-                                       sigma=enorm,
-                                       absolute_sigma=True)
+    linedepth = continuum - linebottom
+    neg_linedepth = -1 * linedepth
+    gauss_params = (neg_linedepth, 0, 1e3)
+    try:
+        popt_gauss, pcov_gauss = curve_fit(gaussian, xnorm,
+                                           ynorm-continuum+linebottom,
+                                           p0=gauss_params, sigma=enorm,
+                                           absolute_sigma=True)
+    except RuntimeError:
+        print(continuum)
+        print(linebottom)
+        print(linedepth)
+        print(neg_linedepth)
+        print(gauss_params)
+        fig = plt.figure(figsize=(8, 8))
+        ax = fig.add_subplot(1, 1, 1)
+        ax.errorbar(xnorm, ynorm, yerr=enorm,
+                    color='blue', marker='o', linestyle='')
+        ax.plot(xnorm, (gaussian(xnorm, *gauss_params)), color='Black')
+        plt.show()
+        raise
 
     # Get the errors in the fitted parameters from the covariance matrix
     perr_gauss = np.sqrt(np.diag(pcov_gauss))

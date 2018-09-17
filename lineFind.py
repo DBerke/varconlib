@@ -357,7 +357,7 @@ def linefind(line, vac_wl, flux, err, radvel, filename,
                       ymax=continuum,
                       linestyle=':', label='Gaussian center')
             ax.plot((xnorm / 1000) + centralwl,
-                    ((gaussian(xnorm, *gaussData['popt_gauss'])
+                    ((vcl.gaussian(xnorm, *gaussData['popt_gauss'])
                      + continuum - linebottom)
                      * fluxrange) + linebottom,
                     color='black', linestyle='-',
@@ -408,7 +408,7 @@ def linefind(line, vac_wl, flux, err, radvel, filename,
             ax2.plot(xnorm, parabola(xnorm, *parData['popt_par']), color='red',
                      label='parabola')
         if gauss_fit:
-            ax2.plot(xnorm, gaussian(xnorm, *gaussData['popt_gauss'])
+            ax2.plot(xnorm, vcl.gaussian(xnorm, *gaussData['popt_gauss'])
                      + continuum - linebottom, color='green', linestyle='--',
                      label='Gaussian')
         if spar_fit:
@@ -762,7 +762,7 @@ global unfittablelines
 #files = glob(os.path.join(baseDir, 'HD138573/*.fits')) # G5
 filepath = baseDir / 'HD146233'  # 18 Sco, G2 (151 files)
 #filepath = baseDir / 'HD126525'  # (132 files)
-filepath = baseDir / 'HD78660'  # 1 file
+#filepath = baseDir / 'HD78660'  # 1 file
 #filepath = baseDir / 'HD183658' # 12 files
 #filepath = baseDir / 'HD45184' # 116 files
 #filepath = baseDir / 'HD138573' # 31 files
@@ -780,7 +780,8 @@ for infile in files:
     tqdm.write('Processing file {} of {}.'.format(num_file, len(files)))
     tqdm.write('filepath = {}'.format(infile))
     unfittablelines = 0
-    results = searchFITSfile(infile, pairlist, columns, plot=False)
+    results = searchFITSfile(infile, pairlist, columns, plot=False,
+                             save_arrays=False)
     if results is not None:
         total_results.extend(results)
         tqdm.write('\nFound {} unfittable lines.'.format(unfittablelines))
