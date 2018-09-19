@@ -20,6 +20,8 @@ import matplotlib.lines as lines
 from scipy.optimize import curve_fit
 from tqdm import tqdm
 from adjustText import adjust_text
+from simulateScatter import injectGaussianNoise
+
 
 def polynomial1D(x, m, b):
     """Return the value of a line with slope m and offset b
@@ -336,8 +338,8 @@ def plot_as_function_of_depth(infile, individual_lines=True,
     individual_lines: boolean: whether to plot individual lines or line pairs
     """
 
-    stars = ('HD146233', 'HD45184', 'HD183658', 'HD138573')
-    colors = ('FireBrick', 'Chocolate', 'DodgerBlue', 'ForestGreen')
+    stars = ('HD146233', )  # 'HD45184')
+    colors = ('ForestGreen', )  # 'DodgerBlue')
 
 #    ax.set_title(name)
     if individual_lines:
@@ -361,7 +363,7 @@ def plot_as_function_of_depth(infile, individual_lines=True,
             ax.set_xlabel('Normalized line depth')
             ax.set_ylabel(ylabel)
             ax.set_xlim(left=0.26, right=0.72)
-            ax.set_ylim(bottom=0, top=112)
+            ax.set_ylim(bottom=0, top=74)
             legend_elements = []
             labels = []
             legend_elements = []
@@ -369,10 +371,14 @@ def plot_as_function_of_depth(infile, individual_lines=True,
         data = pd.read_csv(infile, header=0, parse_dates=[1], engine='c',
                            converters={'line1_nom_wl': str,
                                        'line2_nom_wl': str})
+        offsets = {}
+        all_lines = []
+        all_scatters = []
+        all_sim_scatters = []
         for pair in tqdm(vcl.pairlist):
             if not vcl.badlines.isdisjoint(pair):
-                tqdm.write('Bad lines! {}, {}'.format(pair,
-                           vcl.elemdict[pair]))
+#                tqdm.write('Bad lines! {}, {}'.format(pair,
+#                           vcl.elemdict[pair]))
                 continue
             filtdata = data[(data['line1_nom_wl'] == pair[0]) &
                             (data['line2_nom_wl'] == pair[1])]
@@ -382,22 +388,52 @@ def plot_as_function_of_depth(infile, individual_lines=True,
             gaussvel = filtdata['vel_diff_gauss']
             scatter = np.std(gaussvel)
             if individual_lines:
+                file1 = Path('/Users/dberke/code/tables/linearray_{}.csv'.
+                             format(pair[0]))
+                file2 = Path('/Users/dberke/code/tables/linearray_{}.csv'.
+                             format(pair[1]))
+                data1 = pd.read_csv(file1, header=0, engine='c')
+                data2 = pd.read_csv(file2, header=0, engine='c')
+                wl1, vels1 = injectGaussianNoise(data1, pair[0], num_iter=1000,
+                                                 plot=False)
+                wl2, vels2 = injectGaussianNoise(data2, pair[0], num_iter=1000,
+                                                 plot=False)
+                sim_scatter1 = np.std(vels1)
+                sim_scatter2 = np.std(vels2)
+                sim_scatters = (sim_scatter1, sim_scatter2)
                 scatter1 = np.std(filtdata['line1_gauss_vel_offset'])
                 scatter2 = np.std(filtdata['line2_gauss_vel_offset'])
                 depths = (depth1, depth2)
                 scatters = (scatter1, scatter2)
+                offsets[depth1] = scatter1 - sim_scatter1
+                offsets[depth2] = scatter2 - sim_scatter2
+                all_lines.extend(pair)
+                all_scatters.extend(scatters)
+                all_sim_scatters.extend(sim_scatters)
+                for depth, s, s_s in zip(depths, scatters, sim_scatters):
+                    ax.vlines(depth, ymin=s_s, ymax=s, color='Gray', alpha=0.4)
                 ax.plot(depths, scatters, marker='.', color=color,
-                        markerfacecolor=color, markersize=8,
-                        markeredgecolor='Black', linewidth=1)
-                labels.append(plt.text(depth1, scatter1, '{}'.format(pair[0]),
-                                       fontsize=6, alpha=0.5))
-                labels.append(plt.text(depth2, scatter2, '{}'.format(pair[1]),
-                                       fontsize=6, alpha=0.5))
+                        markerfacecolor=color, markersize=9,
+                        markeredgecolor='Black', linewidth=1, alpha=0.7)
+                ax.plot(depths, sim_scatters, marker='.', color='DarkOrange',
+                        markeredgecolor='Black',
+                        markersize=9, linewidth=1, linestyle='')
+#                labels.append(plt.text(depth1, scatter1, '{}'.format(pair[0]),
+#                                       fontsize=6, alpha=0.5))
+#                labels.append(plt.text(depth2, scatter2, '{}'.format(pair[1]),
+#                                       fontsize=6, alpha=0.5))
+                labels.append(plt.text(depth1, sim_scatter1, '{}'.
+                                       format(pair[0]),
+                                       fontsize=8, alpha=0.9))
+                labels.append(plt.text(depth2, sim_scatter2, '{}'.
+                                       format(pair[1]),
+                                       fontsize=8, alpha=0.9))
                 if individual_stars:
                     outfile = Path('/Users/dberke/Pictures/linedepths/{}_linedepthvsscatter.png'.
                                    format(star))
                 else:
-                    outfile = Path('/Users/dberke/Pictures/linedepths/linedepthvsscatter.png')
+                    outfile = Path('/Users/dberke/Pictures/linedepths/\
+                                   linedepthvsscatter.png')
             else:
                 ax.plot(meddepth, scatter, marker='.', color=color,
                         markersize=10)
@@ -408,24 +444,33 @@ def plot_as_function_of_depth(infile, individual_lines=True,
                     outfile = Path('/Users/dberke/Pictures/linedepths/{}_linepairdepthvsscatter.png'.
                                    format(star))
                 else:
-                    outfile = Path('/Users/dberke/Pictures/linedepths/linepairdepthvsscatter.png')
+                    outfile = Path('/Users/dberke/Pictures/linedepths/\
+                                   linepairdepthvsscatter.png')
         legend_elements.append(lines.Line2D([0], [0], marker='o', color=color,
                                             linestyle='',
                                             label='{}, {} observations'.
                                             format(star, len(gaussvel))))
         if individual_stars:
+#            sorted_keys = sorted(offsets.keys())
+#            items = []
+#            for key in sorted_keys:
+#                items.append(offsets[key])
+#            ax.plot(sorted_keys, items, color='DarkOrange', marker='.',
+#                    linestyle='--', markeredgecolor='Black', markersize=10)
             ax.legend(handles=legend_elements, loc='upper right')
             adjust_text(labels, arrowprops=dict(arrowstyle='->', color='gray',
-                                                alpha=0.5))
-
+                                                alpha=0.4))
             plt.savefig(str(outfile))
             plt.close(fig)
+        for line, scat, sim_scat in zip(all_lines, all_scatters,
+                                        all_sim_scatters):
+            print('{0}: std.: {1:.4f}, sim. std.: {2:.4f}'.format(line,
+                  scat, sim_scat))
 
     if not individual_stars:
         ax.legend(handles=legend_elements, loc='upper right')
         adjust_text(labels, arrowprops=dict(arrowstyle='->', color='gray',
                                             alpha=0.5))
-
         plt.savefig(str(outfile))
         plt.close(fig)
 
@@ -538,5 +583,5 @@ file = filepath / '{}.csv'.format(filepath.stem)
 #plot_line_offsets(vcl.pairlist, data, filepath)
 
 #plot_scatter_by_atomic_number(baseDir)
-plot_as_function_of_depth(file, individual_lines=True, individual_stars=False)
-plot_as_function_of_depth(file, individual_lines=False, individual_stars=False)
+plot_as_function_of_depth(file, individual_lines=True, individual_stars=True)
+#plot_as_function_of_depth(file, individual_lines=False, individual_stars=True)

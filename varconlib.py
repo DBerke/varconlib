@@ -14,6 +14,7 @@ from astropy.io import fits
 from astropy.constants import c
 from scipy.optimize import curve_fit
 from math import sqrt, log
+from pathlib import Path
 import matplotlib.pyplot as plt
 
 # Some generic information useful in different scripts
@@ -73,9 +74,16 @@ elemdict = {('443.9589', '444.1128'): 26,
             ('625.9833', '626.2831'): 22,
             ('647.0980', '647.7413'): 26}
 
+# Lines known to be compromised by telluric lines.
 badlines = frozenset(['506.8562', '507.4086', '593.1823', '593.6299',
                       '595.4367', '595.8344', '600.4673', '601.0220',
                       '647.0980', '647.7413'])
+
+# Spectral format files for HARPS blue and red CCDs.
+blueCCDpath = Path('/Users/dberke/code/tables/HARPS_CCD_blue.csv')
+redCCDpath = Path('/Users/dberke/code/tables/HARPS_CCD_red.csv')
+
+# Functions
 
 
 def readHARPSfile(FITSfile, obj=False, wavelenmin=False, date_obs=False,
@@ -323,7 +331,7 @@ def wavelength2index(wl_arr, wl, reverse=False):
             # Then check if it's closest to this index or the previous one
             # Note that the way it's set up it should always be
             # wl_arr[i-1] <= wl <= wl_arr[i]
-            if wl_arr[i]-wl > wl-wl_arr[i-1]:
+            if wl_arr[i] - wl > wl - wl_arr[i-1]:
                 return i-1
             else:
                 return i
@@ -538,7 +546,7 @@ def pix_order_to_wavelength(pixel, order, coeffs_dict):
 
     Notes
     -----
-    The algorithm used is derived from Dumusque 2018 [1]_
+    The algorithm used is derived from Dumusque 2018 [1]_.
 
     References
     ----------
@@ -546,6 +554,12 @@ def pix_order_to_wavelength(pixel, order, coeffs_dict):
     spectral lines I. Validation of the method and application to mitigate
     stellar activity", Astronomy & Astrophysics, 2018
     """
+    if not (0 <= pixel <= 4095):
+        print('pixel = {}, must be between 0 and 4095.'.format(pixel))
+        raise ValueError
+    if not (0 <= order <= 71):
+        print('order = {}, must be between 0 and 71.'.format(order))
+        raise ValueError
 
     wavelength = 0.
     for k in range(0, 4, 1):
@@ -553,3 +567,56 @@ def pix_order_to_wavelength(pixel, order, coeffs_dict):
         wavelength += coeffs_dict[dict_key] * (pixel ** k)
 
     return wavelength / 10.
+
+
+def wavelength_to_pix(wavelength, coeffs_dict, red_spec_form,
+                      blue_spec_form):
+    """
+    """
+    formats = (blue_spec_form, red_spec_form)
+    orders = []
+    for spec_form in formats:
+        matched = 0
+        for minwl, maxwl, order in zip(spec_form['startwl'],
+                                       spec_form['endwl'], spec_form['order']):
+            if minwl <= wavelength <= maxwl:
+                orders.append(order)
+                matched += 1
+            if matched == 2:
+                break
+    pixels = []
+    for order in orders:
+        # Convert nanometers to Angstroms here.
+        pixels.append(invertWavelengthMap(wavelength * 10, order, coeffs_dict))
+    return pixels
+
+
+def invertWavelengthMap(wavelength, order, coeffs_dict):
+    """
+    Returns the x-pixel of the CCD where the given wavelength is observed.
+
+    Parameters
+    ----------
+    wavelength : float
+        The wavelength to find the pixel of observation for.
+    order : int
+        The spectral order to search for the wavelength in.
+    coeff_dict : dict
+        A dictionary containing the coefficients for the wavelength solutions
+        from an observation.
+
+    Returns
+    -------
+    int
+        The pixel in the x-direction (along the dispersion) where the given
+        wavelength was measured.
+    """
+    oldwl = 0.
+    for k in range(0, 4096, 1):
+        newwl = pix_order_to_wavelength(k, order, coeffs_dict)
+        if newwl > wavelength:
+            if newwl - wavelength > oldwl - wavelength:
+                return k - 1
+            else:
+                return k
+
