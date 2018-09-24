@@ -505,7 +505,7 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
     fwhm_vel_err = getvelseparation(gausscenterwl*1e-9,
                                     (gausscenterwl+gauss_fwhm_err)*1e-9)
 
-    # Get the aplitude of the Gaussian
+    # Get the amplitude of the Gaussian
     amp = popt_gauss[0]
     amp_err = perr_gauss[0]
 
