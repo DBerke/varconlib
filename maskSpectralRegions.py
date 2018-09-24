@@ -18,7 +18,7 @@ from tqdm import tqdm, trange
 
 
 def find_telluric_lines(wavelength, flux, smallwindow, largewindow, threshold,
-                          start=None, end=None):
+                        start=None, end=None):
     """
     Steps through a spectrum returning pixels likely to be part of telluric
     absorption lines.
@@ -42,10 +42,11 @@ def find_telluric_lines(wavelength, flux, smallwindow, largewindow, threshold,
     start : float
         The wavelength to begin at.
     end : float
+        The wavelength to end at.
     """
 
     masked_pixels = []
-    for i in trange(start_point, end_point):
+    for i in trange(start, end):
         s_win_start, s_win_end = i - smallwindow, i + smallwindow
         l_win_start, l_win_end = i - largewindow, i + largewindow
         continuum = np.median(flux[l_win_start:l_win_end])
@@ -56,56 +57,137 @@ def find_telluric_lines(wavelength, flux, smallwindow, largewindow, threshold,
     tqdm.write('Found {0} possible line locations.'.format(len(masked_pixels)))
     tqdm.write('Marking masked pixels...')
     wl_ranges = []
-    range_start = masked_pixels[0]
-    for x in trange(len(masked_pixels[:-1])):
-        if masked_pixels[x+1] == masked_pixels[x]+1:
+    if len(masked_pixels) > 0:
+        range_start = masked_pixels[0]
+        for x in trange(len(masked_pixels[:-1])):
+            if masked_pixels[x+1] == masked_pixels[x]+1:
+                continue
+            else:
+                range_end = masked_pixels[x]
+                wl_ranges.append((range_start, range_end))
+                range_start = masked_pixels[x+1]
+        print('Found {0} restricted wavelength ranges.'.format(len(wl_ranges)))
+        return wl_ranges
+    else:
+        return None
+
+
+def find_CCD_boundaries(proximity, blueformat, redformat):
+    """Finds wavelengths close to the CCD boundaries in HARPS.
+
+    Parameters
+    ----------
+    proximity : int
+        How close a pixel can be to a CCD (internal) boundary before it is
+        flagged as potentially problematic.
+    blueformat : :class:`~pandas.DataFrame`
+        A DataFrame containing the spectral format of the HARPS blue CCD.
+    redformat : pandas DataFrame
+        A DataFrame containing the spectral format of the HARPS red CCD.
+    """
+    coeffs_file = '/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits'
+    coeffs_dict = vcl.readHARPSfile(coeffs_file, coeffs=True)
+    masked_wls = []
+    x_boundaries = [512, 1024, 1536, 2048, 2560, 3072, 3584]
+    for order in trange(0, 72, 1):
+        order_num = vcl.map_spectral_order(order)
+        if order < 46:
+            order_row = blueformat[blueformat['order'] == order_num]
+        else:
+            order_row = redformat[redformat['order'] == order_num]
+        for pixel in range(0, 4096, 1):
+            distances = [abs(bound - pixel) for bound in x_boundaries]
+            if any(dist <= proximity for dist in distances):
+                wl = vcl.pix_order_to_wavelength(pixel, order, coeffs_dict)
+                fsrmin = float(order_row['FSRmin'])
+                fsrmax = float(order_row['FSRmax'])
+                if (wl < fsrmin) or (wl > fsrmax):
+                    continue
+                else:
+                    masked_wls.append(wl)
+
+    wl_ranges = []
+    range_start = masked_wls[0]
+    for x in range(len(masked_wls[:-1])):
+        if abs(masked_wls[x+1] - masked_wls[x]) <= 0.01:
             continue
         else:
-            range_end = masked_pixels[x]
+            range_end = masked_wls[x]
             wl_ranges.append((range_start, range_end))
-            range_start = masked_pixels[x+1]
+            range_start = masked_wls[x+1]
     print('Found {0} restricted wavelength ranges.'.format(len(wl_ranges)))
     return wl_ranges
 
 
 ############
-start, end = None, None
+
+start, end = 650, 692
+
+# The small window size
 smallwindow = 2
+# The larger window size to check for the continuum
 largewindow = 50
+# How much the median fluxes in the two windows can vary before the central
+# pixel in the small window is flagged
 tolerance = 0.001
+# How close pixels can be to CCD boundaries before they get flagged
+proximity = 42
 
-infile = Path('/Users/dberke/code/spectra/tapas_HARPS_res.ipac')
-data = pd.read_csv(infile, sep='\s+', header=28, names=('wavelength',
-                                                        'transmittance'))
+blueCCDdata = pd.read_csv(vcl.blueCCDpath, header=0, engine='c')
+redCCDdata = pd.read_csv(vcl.redCCDpath, header=0, engine='c')
 
-wl = np.array([w for w in tqdm(reversed(data['wavelength']))])
-flux = np.array([f for f in tqdm(reversed(data['transmittance']))])
+spectral_windows = [(377, 400), (400, 425), (425, 450), (450, 475), (475, 500),
+                    (500, 525), (525, 550), (550, 575), (575, 600), (600, 625),
+                    (625, 650), (650, 675), (675, 692)]
 
-if start is not None:
-    start_point = vcl.wavelength2index(wl, start)
-else:
-    start_point = largewindow + 1
-if end is not None:
-    end_point = vcl.wavelength2index(wl, end)
-else:
-    end_point = len(wl) - largewindow
+bound_wl_ranges = find_CCD_boundaries(proximity, blueCCDdata, redCCDdata)
 
-fig = plt.figure(figsize=(10, 8))
-ax = fig.add_subplot(1, 1, 1)
-ax.set_xlim(left=wl[start_point-1], right=wl[end_point+1])
-ax.set_ylim(bottom=0., top=1.02)
-ax.plot(wl, flux, marker='', color='DodgerBlue', linestyle='-',
-        linewidth=1)
+specfile = Path('/Users/dberke/code/spectra/tapas_HARPS_res.ipac')
+data = pd.read_csv(specfile, sep='\s+', header=28, names=('wavelength',
+                                                          'transmittance'))
 
-wl_ranges = find_telluric_lines(wl, flux, smallwindow, largewindow,
-                                tolerance, start=start, end=end)
+wl = [w for w in tqdm(reversed(data['wavelength']))]
+flux = [f for f in tqdm(reversed(data['transmittance']))]
 
-for wl_range in tqdm(wl_ranges):
+for i, window in enumerate(spectral_windows, start=1):
+    start, end = window
+    if start is not None:
+        start_point = max(vcl.wavelength2index(wl, start), largewindow + 1)
+    else:
+        start_point = largewindow + 1
+    if end is not None:
+        end_point = min(vcl.wavelength2index(wl, end), len(wl) - largewindow)
+    else:
+        end_point = len(wl) - largewindow
 
-    ax.axvspan(xmin=wl[wl_range[0]], xmax=wl[wl_range[1]], ymin=0.50,
-               ymax=0.95, color='ForestGreen', alpha=0.5)
-ax.grid(which='both')
+    tl_wl_ranges = find_telluric_lines(wl, flux, smallwindow, largewindow,
+                                       tolerance, start=start_point,
+                                       end=end_point)
 
-outfile = Path('/Users/dberke/Pictures/TAPAS_spectrum.png')
-fig.savefig(str(outfile))
-plt.close(fig)
+    fig = plt.figure(figsize=(10, 8), dpi=100, tight_layout=True)
+    ax = fig.add_subplot(1, 1, 1)
+    ax.set_xlim(left=wl[start_point-1], right=wl[end_point+1])
+    ax.set_ylim(bottom=0.94, top=1.05)
+    ax.plot(wl, flux, marker='', color='DodgerBlue', linestyle='-',
+            linewidth=2, zorder=0)
+    ax.grid(which='both')
+
+    if tl_wl_ranges is not None:
+        for wl_range in tl_wl_ranges:
+            ax.axvspan(xmin=wl[wl_range[0]], xmax=wl[wl_range[1]],
+                       ymin=0.55, ymax=0.6,
+                       color='ForestGreen', alpha=0.6, zorder=1)
+
+    for wl_range in bound_wl_ranges:
+        ax.axvspan(xmin=wl_range[0], xmax=wl_range[1],
+                   ymin=0.6, ymax=0.7,
+                   color='Crimson', alpha=0.6, zorder=2)
+
+    outfile = Path('/Users/dberke/Pictures/TAPAS_spectrum_{0}nm_{1}nm.png'.
+                   format(start, end))
+    #outfile = Path('/Users/dberke/Pictures/TAPAS_spectrum_all.png')
+    fig.savefig(str(outfile))
+    plt.close(fig)
+
+total_range = 691.225 - 378.122
+
