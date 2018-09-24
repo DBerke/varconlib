@@ -83,7 +83,28 @@ badlines = frozenset(['506.8562', '507.4086', '593.1823', '593.6299',
 blueCCDpath = Path('/Users/dberke/code/tables/HARPS_CCD_blue.csv')
 redCCDpath = Path('/Users/dberke/code/tables/HARPS_CCD_red.csv')
 
+
 # Functions
+def map_spectral_order(order):
+    """
+    Converts from HARPS' internal 0-71 order numbers to those in the HARPS
+    spectral format (89-114, 116-161).
+
+    Parameters
+    ----------
+    order : int
+        An order number in the range [0, 71]
+    """
+    if not type(order) is int:
+        raise ValueError("order parameter must be an integer in [0, 71]")
+    if 0 <= order <= 45:
+        new_order = 161 - order
+        return new_order
+    elif 46 <= order <= 71:
+        new_order = 160 - order
+        return new_order
+    else:
+        raise ValueError("Given order not in range [0, 71].")
 
 
 def readHARPSfile(FITSfile, obj=False, wavelenmin=False, date_obs=False,
