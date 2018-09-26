@@ -172,22 +172,55 @@ for i, window in enumerate(spectral_windows, start=1):
             linewidth=2, zorder=0)
     ax.grid(which='both')
 
+    for wl_range in bound_wl_ranges:
+        ax.axvspan(xmin=wl_range[0], xmax=wl_range[1],
+                   ymin=0.6, ymax=0.65,
+                   color='DarkViolet', alpha=0.6, zorder=2)
+
     if tl_wl_ranges is not None:
         for wl_range in tl_wl_ranges:
             ax.axvspan(xmin=wl[wl_range[0]], xmax=wl[wl_range[1]],
                        ymin=0.55, ymax=0.6,
                        color='ForestGreen', alpha=0.6, zorder=1)
 
-    for wl_range in bound_wl_ranges:
+        tl_wl = [(wl[x[0]], wl[x[1]]) for x in tl_wl_ranges]
+
+        sorted_by_lower_bound = sorted(tl_wl + bound_wl_ranges,
+                                       key=lambda tup: tup[0])
+    else:
+        sorted_by_lower_bound = sorted(bound_wl_ranges, key=lambda tup: tup[0])
+
+    merged = []
+    for higher in sorted_by_lower_bound:
+        if not merged:
+            merged.append(higher)
+        else:
+            lower = merged[-1]
+            if higher[0] <= lower[1]:
+                upper_bound = max(lower[1], higher[1])
+                merged[-1] = (lower[0], upper_bound)
+            else:
+                merged.append(higher)
+
+    for wl_range in merged:
         ax.axvspan(xmin=wl_range[0], xmax=wl_range[1],
-                   ymin=0.6, ymax=0.7,
-                   color='Crimson', alpha=0.6, zorder=2)
+                   ymin=0.65, ymax=0.7,
+                   color='Crimson', alpha=0.6, zorder=3)
 
     outfile = Path('/Users/dberke/Pictures/TAPAS_spectrum_{0}nm_{1}nm.png'.
                    format(start, end))
-    #outfile = Path('/Users/dberke/Pictures/TAPAS_spectrum_all.png')
     fig.savefig(str(outfile))
     plt.close(fig)
 
+    outfile = Path('/Users/dberke/Documents/usable_spectrum.txt')
+    with open(outfile, 'w') as f:
+        for wl_range in merged:
+            f.write('{:.3f},{:.3f}\n'.format(*wl_range))
+
 total_range = 691.225 - 378.122
+ranges = [x[1] -  x[0] for x in merged]
+total = sum(ranges)
+print('Total spectral range is {} nm.'.format(total_range))
+print('Total unuseable spectrum is {:.4f} nm, or {:.4f}%.'.format(total,
+      total / total_range))
 
