@@ -182,7 +182,7 @@ def fitSimpleParabola(xnorm, ynorm, enorm, centralwl, radvel, verbose=False):
             'popt_spar': popt_spar}
 
 
-def linefind(line, vac_wl, flux, err, radvel, filename,
+def linefind(line, vac_wl, flux, err, radvel, filename, starname,
              pixrange=3, velsep=5000, plot=True, par_fit=False,
              gauss_fit=False, spar_fit=False, plot_dir=None, date_string=None,
              save_arrays=False):
@@ -193,7 +193,7 @@ def linefind(line, vac_wl, flux, err, radvel, filename,
     Parameters
     ----------
     line : string
-        The wavelength line to look for, in nm.
+        The wavelength of the line to look for, in nanometers.
     vac_wl : array_like
         The wavelength array of the spectrum to search (in vacuum wavelengths).
     flux : array_like
@@ -202,6 +202,12 @@ def linefind(line, vac_wl, flux, err, radvel, filename,
         The error array of the spectrum to search.
     radvel : float
         The radial velocity of the star in km/s (to nearest tenth is fine).
+    filename : Path object
+        The name of the file being analyzed, without suffix. Used to create
+        the directory to store information related to that specific file.
+        Example: ADP.2014-09-16T11:06:39.660
+    starname : str
+        The string identifier used for the star being analyzed, e.g. HD146233.
     pixrange : int
         The number of pixels to search either side of the main wavelength given
         as `line`.
@@ -230,7 +236,8 @@ def linefind(line, vac_wl, flux, err, radvel, filename,
         part of the output filename. Has no effect if plot_dir is not defined.
     save_arrays : bool. Default: False
         If *True*, write out the normalized arrays and information necessary to
-        reconstruct a fit from them in a CSV file.
+        reconstruct a fit from them in a CSV file. If *True*, `plot_dir` should
+        also be given.
 
     Returns
     -------
@@ -282,14 +289,18 @@ def linefind(line, vac_wl, flux, err, radvel, filename,
     enorm = e / fluxrange
 
     if save_arrays:
-        outfile = Path('/Users/dberke/code/tables/linearray_{}.csv'.
-                       format(line))
-        d = {'xnorm': xnorm, 'ynorm': ynorm, 'enorm': enorm, 'centralwl':
-             centralwl, 'radvel': radvel, 'continuum': continuum, 'linebottom':
-             linebottom, 'fluxrange': fluxrange}
-        df = pd.DataFrame(d)
-        df.to_csv(path_or_buf=outfile, header=True, index=False, mode='w',
-                  float_format='%.4f')
+        if plot_dir is None:
+            raise
+            print('No directory given for plot dir, no plots will be output.')
+        else:
+            outfile = plot_dir / '{}/line_{}.csv'.format(filename, line)
+            df = pd.DataFrame({'xnorm': xnorm, 'ynorm': ynorm, 'enorm': enorm,
+                               'centralwl': centralwl, 'radvel': radvel,
+                               'continuum': continuum,
+                               'linebottom': linebottom,
+                               'fluxrange': fluxrange})
+            df.to_csv(path_or_buf=outfile, header=True, index=False, mode='w',
+                      float_format='%.5f')
 
     # Fit a parabola to the normalized data
     if par_fit:
@@ -424,9 +435,43 @@ def linefind(line, vac_wl, flux, err, radvel, filename,
     return results
 
 
-def measurepairsep(linepair, vac_wl, flux, err, radvel, filename, pbar,
-                   plot=False, plot_dir=None, date=None):
-    """Return the distance between a pair of lines
+def measurepairsep(linepair, vac_wl, flux, err, radvel, filename, starname,
+                   progressbar, plot=False, plot_dir=None, date=None,
+                   save_arrays=False):
+    """Return the distance between a pair of absorption lines.
+
+    Parameters
+    ----------
+    linepair : tuple
+        A tuple containing the wavelengths of a pair of absorption lines to
+        analyze, as strings, in nanometers.
+    vac_wl : array_like
+        A wavelength array (in vacuum wavelengths) in which to search for the
+        given lines.
+    flux : array_like
+        A flux array corresponding to the wavelength array.
+    err : array_like
+        An error array corresponding to the flux array.
+    radvel : float
+        The radial velocity of the star, in km/s.
+    filename : Path object or str
+        The name of the file from whence the arrays came.
+    starname : str
+        A string identifier for the star being analyzed, usually its HD number
+        (e.g., HD146233).
+    progressbar : a tqdm progress bar instance
+        A progress bar to update on a per-line basis.
+    plot : bool, Default: False
+        A flag to pass to `~linefind` to indicate whether to plot the results
+        of analysis or not.
+    plot_dir : Path object
+        A path representing the base directory for where to put any created
+        plots, to be passed to `~linefind`.
+    date : str
+        A date representing the time of observation of the file being analyzed.
+    save_arrays : bool, Default: False
+        A flag to pass to `~linefind` to tell it whether to save out data
+        about the measured lines or not.
 
     """
 
@@ -434,17 +479,19 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, filename, pbar,
     results = {}
 
     global unfittablelines
-    params = (vac_wl, flux, err, radvel, filename)
+    params = (vac_wl, flux, err, radvel, filename, starname)
     line1 = linefind(linepair[0], *params,
                      plot=plot, velsep=5000, pixrange=3,
                      par_fit=False, gauss_fit=True, spar_fit=False,
-                     plot_dir=plot_dir, date_string=date, save_arrays=True)
-    pbar.update(1)
+                     plot_dir=plot_dir, date_string=date,
+                     save_arrays=save_arrays)
+    progressbar.update(1)
     line2 = linefind(linepair[1], *params,
                      plot=plot, velsep=5000, pixrange=3,
                      par_fit=False, gauss_fit=True, spar_fit=False,
-                     plot_dir=plot_dir, date_string=date, save_arrays=True)
-    pbar.update(1)
+                     plot_dir=plot_dir, date_string=date,
+                     save_arrays=save_arrays)
+    progressbar.update(1)
 
     if line1 is None:
         unfittablelines += 1
@@ -513,17 +560,36 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, filename, pbar,
         return None
 
 
-def searchFITSfile(FITSfile, pairlist, index, plot=False):
-    """Measure line pair separations in given file with given list
+def searchFITSfile(FITSfile, pairlist, index, plot=False, save_arrays=False):
+    """
+    Measure line pair separations in a given file from a given list.
 
+    Parameters
+    ----------
+    FITSfile : Path object
+        The path to the FITS file to analyze.
+    pairlist : tuple
+        An arbitrary-length tuple of tuples each containing a pair of strings
+        capable of being converted to floats, representing the wavelengths
+        in nanometers of a pair of absorption lines to analyze.
+    index : tuple
+        A tuple of strings containing columns names for the pandas DataFrame
+        object returned by this function.
+    plot : bool, Default: False
+        A flag to pass to further functions to tell them whether to create
+        plots during the analysis or not.
+    save_arrays : bool, Default: False
+        A flag to pass to further functions to tell them whether to save and
+        write out data related to the measured lines during analysis or not.
     """
 
     filename = FITSfile.stem
 
     data = vcl.readHARPSfile(str(FITSfile), radvel=True, date_obs=True,
                              hdnum=True, med_snr=True)
-    vac_wl = vcl.air2vacESO(data['w']) / 10 #Convert from Angstroms to nm AFTER
-                                            #converting to vacuum wavelengths
+    # Convert from Angstroms to nm AFTER converting to vacuum wavelengths
+    vac_wl = vcl.air2vacESO(data['w']) / 10
+
     flux = data['f']
     err = data['e']
     radvel = data['radvel']
@@ -535,7 +601,7 @@ def searchFITSfile(FITSfile, pairlist, index, plot=False):
         print('SNR less than 200 for {}, not analyzing.'.format(filename))
         return None
 
-    params = (vac_wl, flux, err, radvel, filename)
+    params = (vac_wl, flux, err, radvel, filename, hdnum)
 
     # Create a list to store the Series objects in
     lines = []
@@ -557,7 +623,7 @@ def searchFITSfile(FITSfile, pairlist, index, plot=False):
                     'line1_nom_wl': linepair[0], 'line2_nom_wl': linepair[1]}
             line.update(measurepairsep(linepair, *params, pbar,
                                        plot=plot, plot_dir=graph_path,
-                                       date=date))
+                                       date=date, save_arrays=save_arrays))
             lines.append(pd.Series(line, index=index))
 
 #    for line in lines:
@@ -700,7 +766,7 @@ def plot_line_comparisons(mseps, linepairs):
 #pairlistfile = "/Users/dberke/code/tables/GoldStandardLineList_vac_working.txt"
 #pairlist = getpairlist(pairlistfile)
 
-pairlist = [('443.9589', '444.1128'), ('450.0151', '450.3467'),
+pairlist = (('443.9589', '444.1128'), ('450.0151', '450.3467'),
             ('459.9405', '460.3290'), ('460.5846', '460.6877'),
             ('465.8889', '466.2840'), ('473.3122', '473.3780'),
             ('475.9448', '476.0601'), ('480.0073', '480.0747'),
@@ -717,9 +783,9 @@ pairlist = [('443.9589', '444.1128'), ('450.0151', '450.3467'),
             ('616.3002', '616.8146'), ('617.2213', '617.5042'),
             ('617.7065', '617.8498'), ('623.9045', '624.6193'),
             ('625.9833', '626.0427'), ('625.9833', '626.2831'),
-            ('647.0980', '647.7413')]
+            ('647.0980', '647.7413'))
 
-columns = ['object',
+columns = ('object',
            'date',
            'line1_nom_wl',
            'line2_nom_wl',
@@ -748,7 +814,7 @@ columns = ['object',
            'line2_chisq_nu_gauss',
            'line2_gauss_vel_offset',
            'line2_continuum',
-           'line2_norm_depth']
+           'line2_norm_depth')
 
 #pairlist = [(537.5203, 538.1069)]
 #pairlist = [(579.4679, 579.9464)]
@@ -781,7 +847,7 @@ for infile in files:
     tqdm.write('filepath = {}'.format(infile))
     unfittablelines = 0
     results = searchFITSfile(infile, pairlist, columns, plot=False,
-                             save_arrays=False)
+                             save_arrays=True)
     if results is not None:
         total_results.extend(results)
         tqdm.write('\nFound {} unfittable lines.'.format(unfittablelines))
