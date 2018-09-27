@@ -347,6 +347,9 @@ def plot_as_function_of_depth(base_dir):
     stars = ('HD146233', )  # 'HD45184')
     colors = ('ForestGreen', )  # 'DodgerBlue')
 
+    # Number of iterations to use when simulating scatter.
+    num_iters = 5
+
     for star, color in zip(stars, colors):
         fig = plt.figure(figsize=(12, 10))
         ax = fig.add_subplot(1, 1, 1)
@@ -377,23 +380,29 @@ def plot_as_function_of_depth(base_dir):
             scatter = np.std(gaussvel)
 
             search_str1 = base_dir / 'graphs/*/line_{}.csv'.format(pair[0])
-            line_arrays1 = [file for file in glob(str(search_str1))]
+            line_arrays1 = sorted([file for file in glob(str(search_str1))])
             search_str2 = base_dir / 'graphs/*/line_{}.csv'.format(pair[1])
-            line_arrays2 = [file for file in glob(str(search_str2))]
+            line_arrays2 = sorted([file for file in glob(str(search_str2))])
             for file1, file2 in tqdm(zip(line_arrays1, line_arrays2),
                                      total=len(line_arrays1)):
                 data1 = pd.read_csv(file1, header=0, engine='c')
                 data2 = pd.read_csv(file2, header=0, engine='c')
-                wavelengths1, vels1 = injectGaussianNoise(data1, pair[0],
-                                                          num_iter=50,
-                                                          plot=False)
-                wavelengths2, vels2 = injectGaussianNoise(data2, pair[1],
-                                                          num_iter=50,
-                                                          plot=False)
-                for wl1, wl2 in zip(wavelengths1, wavelengths2):
+                sim_data1 = injectGaussianNoise(data1, pair[0],
+                                                num_iter=num_iters,
+                                                plot=False)
+                sim_data2 = injectGaussianNoise(data2, pair[1],
+                                                num_iter=num_iters,
+                                                plot=False)
+                for wl1, wl2 in zip(sim_data1['measured_wavelengths'],
+                                    sim_data2['measured_wavelengths']):
                     pair_vel_seps.append(vcl.getvelseparation(wl1*1e-9,
                                                               wl2*1e-9))
+                fitSep = vcl.getvelseparation(sim_data1['fit_wavelength']*1e-9,
+                                              sim_data2['fit_wavelength']*1e-9)
+
+            pair_vel_seps -= fitSep
             sim_scatter = np.std(pair_vel_seps)
+
             all_lines.append(pair)
             all_scatters.append(scatter)
             all_sim_scatters.append(sim_scatter)
@@ -407,18 +416,21 @@ def plot_as_function_of_depth(base_dir):
             ax.plot(meandepth, sim_scatter, marker='.', color='DarkOrange',
                     markeredgecolor='DimGray',
                     markersize=8, linewidth=1, linestyle='')
-            labels.append(plt.text(meandepth, scatter, '{}'.format(pair),
-                                   fontsize=8, alpha=0.9))
+            labels.append(plt.text(meandepth, scatter, '{0}, {1}'.
+                                   format(*pair),
+                                   fontsize=8, alpha=0.8))
 
         legend_elements.append(lines.Line2D([0], [0], marker='o', color=color,
                                             linestyle='',
                                             label='{}, {} observations'.
                                             format(star, len(gaussvel))))
 
+        ax.grid(which='major', axis='both')
         ax.legend(handles=legend_elements, loc='upper right')
         adjust_text(labels, arrowprops=dict(arrowstyle='->', color='gray',
                                             alpha=0.4))
-        outfile = plot_dir / '{}_linepairdepth_scatter.png'.format(star)
+        outfile = plot_dir / '{0}_linepairdepth_scatter+n={1}.png'.\
+                  format(star, num_iters)
         plt.savefig(str(outfile))
         plt.close(fig)
     for linepair, scat, sim_scat in zip(all_lines, all_scatters,

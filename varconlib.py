@@ -446,7 +446,7 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
     # Fit a Gaussian to the line center
     linedepth = continuum - linebottom
     neg_linedepth = -1 * linedepth
-    gauss_params = (neg_linedepth, 0, 1e3)
+    gauss_params = (neg_linedepth, 0, 1e2)
     try:
         popt_gauss, pcov_gauss = curve_fit(gaussian, xnorm,
                                            ynorm-continuum+linebottom,
@@ -463,7 +463,9 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
         ax.errorbar(xnorm, ynorm, yerr=enorm,
                     color='blue', marker='o', linestyle='')
         ax.plot(xnorm, (gaussian(xnorm, *gauss_params)), color='Black')
-        plt.show()
+        outfile = Path('/Users/dberke/Pictures/debug.png')
+        fig.savefig(str(outfile))
+        plt.close(fig)
         raise
 
     # Get the errors in the fitted parameters from the covariance matrix
@@ -543,6 +545,97 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
             'chisq_nu_gauss': chisq_nu_gauss,
             'gausscenterwl': gausscenterwl,
             'popt_gauss': popt_gauss}
+
+
+def injectGaussianNoise(data, nom_wavelength, num_iter=1000, plot=False):
+    """
+    Inject Gaussian error into an array of flux values
+
+    Parameters
+    ----------
+    data : dataFrame
+        A pandas DataFrame containing a normalized wavelength, flux,
+        and error array for a line core, and the wavelength of the
+        lowest pixel, radial velocity of the star, continuum (highest
+        measured pixel in a range around the central wavelength), and
+        linebottom (flux of the lowest pixel).
+    nom_wavelength : float
+        The nominal wavelength of the absorption line.
+    num_iter : int, Default: 1000.
+        Number of times to inject noise and fit the resulting array to
+        measure the wavelength of the absorption line.
+    plot : bool. Default: False
+        If *True*, the function will create a series of histograms showing
+        the range of wavelengths measured for each line.
+
+    Returns
+    -------
+    dict
+        A dictionary containing:
+            fit_wavelength : float
+                The wavelength originally measured from the fit to the
+                observational data.
+            measured_wavelengths : list
+                A list of floats of len(`num_iter`) of all the wavelengths
+                measured during the simulations.
+            vel_offsets : list
+                A list of floats of len(`num_iter`) of all the velocity
+                separations between `fit_wavelength` and the wavelengths in
+                `measured_wavelength`.
+    """
+    if not type(num_iter) is int:
+        raise TypeError("num_iter must be an integer.")
+    xnorm = data['xnorm']
+    ynorm = data['ynorm']
+    enorm = data['enorm']
+    centralwl = data['centralwl'][0]
+    radvel = data['radvel'][0]
+    continuum = data['continuum'][0]
+    linebottom = data['linebottom'][0]
+    fluxrange = data['fluxrange'][0]
+    e_orig = enorm * fluxrange
+
+    gauss_measured_data = fitGaussian(xnorm, ynorm, enorm, centralwl, radvel,
+                                      continuum, linebottom, fluxrange,
+                                      verbose=False)
+    fit_wavelength = gauss_measured_data['restframe_line_gauss']
+    popt_gauss = gauss_measured_data['popt_gauss']
+    yfitted = gaussian(xnorm, *popt_gauss)
+
+    measured_wavelengths = []
+    vel_offsets = []
+
+    for i in range(0, num_iter, 1):
+        noise = np.random.normal(loc=0, scale=e_orig)
+        noise /= fluxrange
+        ynoisy = yfitted + noise
+        gauss_sim_data = fitGaussian(xnorm, ynoisy, enorm, centralwl, radvel,
+                                     continuum, linebottom, fluxrange,
+                                     verbose=False)
+        measured_wl = gauss_sim_data['restframe_line_gauss']
+        measured_wavelengths.append(measured_wl)
+        vel_sep = getvelseparation(fit_wavelength*1e-9,
+                                   measured_wl*1e-9)
+        vel_offsets.append(vel_sep)
+
+    if plot:
+        fig = plt.figure(figsize=(8, 8))
+        ax = fig.add_subplot(1, 1, 1)
+        ax.hist(measured_wavelengths - np.median(measured_wavelengths),
+                bins=15, edgecolor='Black')
+        stddev = np.std(measured_wavelengths)
+
+        ax.axvspan(xmin=-1*stddev,
+                   xmax=stddev,
+                   color='Gray', alpha=0.3)
+        outfile = Path('/Users/dberke/Pictures/sim_{}.png'.format(
+                nom_wavelength))
+        fig.savefig(str(outfile))
+        plt.close(fig)
+
+    return {'fit_wavelength': fit_wavelength,
+            'measured_wavelengths': measured_wavelengths,
+            'vel_offsets': vel_offsets}
 
 
 def pix_order_to_wavelength(pixel, order, coeffs_dict):
@@ -640,4 +733,3 @@ def invertWavelengthMap(wavelength, order, coeffs_dict):
                 return k - 1
             else:
                 return k
-
