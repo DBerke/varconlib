@@ -621,15 +621,16 @@ def injectGaussianNoise(data, nom_wavelength, num_iter=1000, plot=False):
     if plot:
         fig = plt.figure(figsize=(8, 8))
         ax = fig.add_subplot(1, 1, 1)
-        ax.hist(measured_wavelengths - np.median(measured_wavelengths),
-                bins=15, edgecolor='Black')
-        stddev = np.std(measured_wavelengths)
+        stddev = np.std(vel_offsets)
+        ax.hist(vel_offsets - np.median(vel_offsets),
+                bins=15, edgecolor='Black', label='std = {}'.format(stddev))
 
         ax.axvspan(xmin=-1*stddev,
                    xmax=stddev,
                    color='Gray', alpha=0.3)
-        outfile = Path('/Users/dberke/Pictures/sim_{}.png'.format(
+        outfile = Path('/Users/dberke/Pictures/sims/sim_{0}.png'.format(
                 nom_wavelength))
+        ax.legend()
         fig.savefig(str(outfile))
         plt.close(fig)
 

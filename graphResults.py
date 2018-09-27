@@ -345,15 +345,15 @@ def plot_as_function_of_depth(base_dir):
     plot_dir = Path('/Users/dberke/Pictures/linedepths')
 
     stars = ('HD146233', )  # 'HD45184')
-    colors = ('ForestGreen', )  # 'DodgerBlue')
+    color = 'ForestGreen'
 
     # Number of iterations to use when simulating scatter.
-    num_iters = 5
+    num_iters = 15
 
-    for star, color in zip(stars, colors):
+    for star in stars:
         fig = plt.figure(figsize=(12, 10))
         ax = fig.add_subplot(1, 1, 1)
-        ax.set_xlabel('Normalized line depth')
+        ax.set_xlabel('Mean line depth (normalized)')
         ax.set_ylabel('RMS scatter in pair velocity separation [m/s]')
         ax.set_xlim(left=0.26, right=0.72)
 #        ax.set_ylim(bottom=0, top=74)
@@ -385,12 +385,12 @@ def plot_as_function_of_depth(base_dir):
             line_arrays2 = sorted([file for file in glob(str(search_str2))])
             for file1, file2 in tqdm(zip(line_arrays1, line_arrays2),
                                      total=len(line_arrays1)):
-                data1 = pd.read_csv(file1, header=0, engine='c')
-                data2 = pd.read_csv(file2, header=0, engine='c')
-                sim_data1 = injectGaussianNoise(data1, pair[0],
+                line_data1 = pd.read_csv(file1, header=0, engine='c')
+                line_data2 = pd.read_csv(file2, header=0, engine='c')
+                sim_data1 = injectGaussianNoise(line_data1, pair[0],
                                                 num_iter=num_iters,
                                                 plot=False)
-                sim_data2 = injectGaussianNoise(data2, pair[1],
+                sim_data2 = injectGaussianNoise(line_data2, pair[1],
                                                 num_iter=num_iters,
                                                 plot=False)
                 for wl1, wl2 in zip(sim_data1['measured_wavelengths'],
@@ -429,7 +429,7 @@ def plot_as_function_of_depth(base_dir):
         ax.legend(handles=legend_elements, loc='upper right')
         adjust_text(labels, arrowprops=dict(arrowstyle='->', color='gray',
                                             alpha=0.4))
-        outfile = plot_dir / '{0}_linepairdepth_scatter+n={1}.png'.\
+        outfile = plot_dir / '{0}_linepairdepth_scatter_n={1}.png'.\
                   format(star, num_iters)
         plt.savefig(str(outfile))
         plt.close(fig)
