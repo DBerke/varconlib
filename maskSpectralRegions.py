@@ -131,7 +131,11 @@ largewindow = 50
 # pixel in the small window is flagged
 tolerance = 0.001
 # How close pixels can be to CCD boundaries before they get flagged
-proximity = 42
+proximity = 5
+
+# The maximum and minimum radial velocities of stars in our sample
+maxradvel = 143500
+minradvel = -68800
 
 blueCCDdata = pd.read_csv(vcl.blueCCDpath, header=0, engine='c')
 redCCDdata = pd.read_csv(vcl.redCCDpath, header=0, engine='c')
@@ -164,7 +168,7 @@ for i, window in enumerate(spectral_windows, start=1):
                                        tolerance, start=start_point,
                                        end=end_point)
 
-    fig = plt.figure(figsize=(10, 8), dpi=100, tight_layout=True)
+    fig = plt.figure(figsize=(10, 7), dpi=100, tight_layout=True)
     ax = fig.add_subplot(1, 1, 1)
     ax.set_xlim(left=wl[start_point-1], right=wl[end_point+1])
     ax.set_ylim(bottom=0.94, top=1.05)
@@ -175,13 +179,15 @@ for i, window in enumerate(spectral_windows, start=1):
     for wl_range in bound_wl_ranges:
         ax.axvspan(xmin=wl_range[0], xmax=wl_range[1],
                    ymin=0.6, ymax=0.65,
-                   color='DarkViolet', alpha=0.6, zorder=2)
+                   color='DarkViolet', alpha=0.7, zorder=2,
+                   edgecolor=None)
 
     if tl_wl_ranges is not None:
         for wl_range in tl_wl_ranges:
             ax.axvspan(xmin=wl[wl_range[0]], xmax=wl[wl_range[1]],
                        ymin=0.55, ymax=0.6,
-                       color='ForestGreen', alpha=0.6, zorder=1)
+                       color='ForestGreen', alpha=0.7, zorder=1,
+                       edgecolor=None)
 
         tl_wl = [(wl[x[0]], wl[x[1]]) for x in tl_wl_ranges]
 
@@ -190,8 +196,18 @@ for i, window in enumerate(spectral_windows, start=1):
     else:
         sorted_by_lower_bound = sorted(bound_wl_ranges, key=lambda tup: tup[0])
 
+    expanded = []
+    for region in sorted_by_lower_bound:
+        blueshift = vcl.getwlseparation(-30000 + minradvel,
+                                        region[0]) + region[0]
+        redshift = vcl.getwlseparation(30000 + maxradvel,
+                                       region[1]) + region[1]
+
+        expanded.append((blueshift, redshift))
+
     merged = []
-    for higher in sorted_by_lower_bound:
+#    for higher in sorted_by_lower_bound:
+    for higher in expanded:
         if not merged:
             merged.append(higher)
         else:
@@ -205,10 +221,12 @@ for i, window in enumerate(spectral_windows, start=1):
     for wl_range in merged:
         ax.axvspan(xmin=wl_range[0], xmax=wl_range[1],
                    ymin=0.65, ymax=0.7,
-                   color='Crimson', alpha=0.6, zorder=3)
+                   color='Crimson', alpha=0.7, zorder=3,
+                   edgecolor=None)
 
-    outfile = Path('/Users/dberke/Pictures/TAPAS_spectrum_{0}nm_{1}nm.png'.
-                   format(start, end))
+    outdir = Path('/Users/dberke/Pictures/spectral_masking')
+    outfile = outdir / 'TAPAS_spectrum_velocity_spread_BERV_{0}nm_{1}nm.png'.\
+                   format(start, end)
     fig.savefig(str(outfile))
     plt.close(fig)
 
@@ -218,9 +236,8 @@ for i, window in enumerate(spectral_windows, start=1):
             f.write('{:.3f},{:.3f}\n'.format(*wl_range))
 
 total_range = 691.225 - 378.122
-ranges = [x[1] -  x[0] for x in merged]
+ranges = [x[1] - x[0] for x in merged]
 total = sum(ranges)
 print('Total spectral range is {} nm.'.format(total_range))
 print('Total unuseable spectrum is {:.4f} nm, or {:.4f}%.'.format(total,
-      total / total_range))
-
+      total / total_range * 100))
