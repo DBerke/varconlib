@@ -348,7 +348,7 @@ def plot_as_function_of_depth(base_dir):
     color = 'ForestGreen'
 
     # Number of iterations to use when simulating scatter.
-    num_iters = 15
+    num_iters = 100
 
     for star in stars:
         fig = plt.figure(figsize=(12, 10))
@@ -424,6 +424,12 @@ def plot_as_function_of_depth(base_dir):
                                             linestyle='',
                                             label='{}, {} observations'.
                                             format(star, len(gaussvel))))
+        legend_elements.append(lines.Line2D([0], [0], marker='o',
+                                            color='DarkOrange',
+                                            markeredgecolor='DimGray',
+                                            linestyle='',
+                                            label='simulation, {} iterations'.
+                                            format(num_iters)))
 
         ax.grid(which='major', axis='both')
         ax.legend(handles=legend_elements, loc='upper right')

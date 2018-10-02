@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import varconlib as vcl
 from pathlib import Path
 from tqdm import tqdm, trange
+from adjustText import adjust_text
 
 
 def find_telluric_lines(wavelength, flux, smallwindow, largewindow, threshold,
@@ -54,7 +55,8 @@ def find_telluric_lines(wavelength, flux, smallwindow, largewindow, threshold,
         if continuum - chunk > threshold:
             masked_pixels.append(i)
 
-    tqdm.write('Found {0} possible line locations.'.format(len(masked_pixels)))
+    tqdm.write('Found {0} possible telluric line locations.'.
+               format(len(masked_pixels)))
     tqdm.write('Marking masked pixels...')
     wl_ranges = []
     if len(masked_pixels) > 0:
@@ -88,7 +90,7 @@ def find_CCD_boundaries(proximity, blueformat, redformat):
     coeffs_file = '/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits'
     coeffs_dict = vcl.readHARPSfile(coeffs_file, coeffs=True)
     masked_wls = []
-    x_boundaries = [512, 1024, 1536, 2048, 2560, 3072, 3584]
+    x_boundaries = [0, 512, 1024, 1536, 2048, 2560, 3072, 3584, 4096]
     for order in trange(0, 72, 1):
         order_num = vcl.map_spectral_order(order)
         if order < 46:
@@ -103,14 +105,9 @@ def find_CCD_boundaries(proximity, blueformat, redformat):
                     wl = vcl.pix_order_to_wavelength(pixel, order, coeffs_dict)
                     fsrmin = float(order_row['FSRmin'])
                     fsrmax = float(order_row['FSRmax'])
-    #                print(distances)
-    #                print(fsrmin, wl, fsrmax)
                     if (wl < fsrmin) or (wl > fsrmax):
                         continue
                     else:
-#                        print(pixel)
-#                        print(distances)
-#                        print(fsrmin, wl, fsrmax)
                         masked_wls.append(wl)
 
     wl_ranges = []
@@ -205,15 +202,14 @@ for i, window in enumerate(spectral_windows, start=1):
 
     expanded = []
     for region in sorted_by_lower_bound:
-        blueshift = vcl.getwlseparation(-30000 + minradvel,
+        blueshift = vcl.getwlseparation(-30000 + -1*maxradvel,
                                         region[0]) + region[0]
-        redshift = vcl.getwlseparation(30000 + maxradvel,
+        redshift = vcl.getwlseparation(30000 + -1*minradvel,
                                        region[1]) + region[1]
 
         expanded.append((blueshift, redshift))
 
     merged = []
-#    for higher in sorted_by_lower_bound:
     for higher in expanded:
         if not merged:
             merged.append(higher)
@@ -225,15 +221,31 @@ for i, window in enumerate(spectral_windows, start=1):
             else:
                 merged.append(higher)
 
+    # Plot the combined spectral regions to avoid.
     for wl_range in merged:
         ax.axvspan(xmin=wl_range[0], xmax=wl_range[1],
                    ymin=0.65, ymax=0.7,
-                   color='Crimson', alpha=0.7, zorder=3,
+                   color='Tomato', alpha=0.7, zorder=3,
                    edgecolor=None)
 
+    labels = []
+    # Plot the spectral lines chosen.
+    for linepair in vcl.pairlist:
+        for line in linepair:
+            line_wl = float(line)
+            if start < line_wl < end:
+                ax.axvline(line_wl, ymin=0.54, ymax=0.73, color='Black',
+                           linestyle='-', linewidth=1, zorder=4)
+                labels.append(ax.text(line_wl, 1.02, '{}'.format(line),
+                                      fontsize=10, color='Navy',
+                                      ha='center', va='center'))
+
+    if labels:
+        adjust_text(labels, arrowprops=dict(arrowstyle='->', color='gray',
+                                            alpha=0.4))
     outdir = Path('/Users/dberke/Pictures/spectral_masking')
     outfile = outdir / 'TAPAS_spectrum_velocity_spread_BERV_{0}nm_{1}nm.png'.\
-                   format(start, end)
+              format(start, end)
     fig.savefig(str(outfile))
     plt.close(fig)
 
@@ -246,5 +258,5 @@ total_range = 691.225 - 378.122
 ranges = [x[1] - x[0] for x in merged]
 total = sum(ranges)
 print('Total spectral range is {} nm.'.format(total_range))
-print('Total unuseable spectrum is {:.4f} nm, or {:.4f}%.'.format(total,
+print('Total unuseable spectrum is {:.3f} nm, or {:.2f}%.'.format(total,
       total / total_range * 100))
