@@ -97,14 +97,21 @@ def find_CCD_boundaries(proximity, blueformat, redformat):
             order_row = redformat[redformat['order'] == order_num]
         for pixel in range(0, 4096, 1):
             distances = [abs(bound - pixel) for bound in x_boundaries]
-            if any(dist <= proximity for dist in distances):
-                wl = vcl.pix_order_to_wavelength(pixel, order, coeffs_dict)
-                fsrmin = float(order_row['FSRmin'])
-                fsrmax = float(order_row['FSRmax'])
-                if (wl < fsrmin) or (wl > fsrmax):
-                    continue
-                else:
-                    masked_wls.append(wl)
+            for dist in distances:
+                if dist <= proximity:
+#            if any(dist <= proximity for dist in distances):
+                    wl = vcl.pix_order_to_wavelength(pixel, order, coeffs_dict)
+                    fsrmin = float(order_row['FSRmin'])
+                    fsrmax = float(order_row['FSRmax'])
+    #                print(distances)
+    #                print(fsrmin, wl, fsrmax)
+                    if (wl < fsrmin) or (wl > fsrmax):
+                        continue
+                    else:
+#                        print(pixel)
+#                        print(distances)
+#                        print(fsrmin, wl, fsrmax)
+                        masked_wls.append(wl)
 
     wl_ranges = []
     range_start = masked_wls[0]
