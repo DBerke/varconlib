@@ -17,6 +17,7 @@ from astropy.io import fits
 import matplotlib.pyplot as plt
 from pathlib import Path
 from numpy.polynomial.polynomial import polyfit
+from adjustText import adjust_text
 
 
 def threshold(pixel, color):
@@ -54,10 +55,9 @@ colors = ('Blue', 'Red')
 peaklists = (bluepeaks, redpeaks)
 
 slicepoints = [int(n) for n in np.linspace(1023, 3071, num=20, endpoint=True)]
-
+slicepoints = (4, 1023, 2047, 3071, 4091)
 for array, color, peaklist in zip(arrays, colors, peaklists):
-    for i in (4, 1023, 2047, 3071, 4091):
-#    for i in slicepoints:
+    for i in slicepoints:
         # Take a thin slice of the array around each of the points,
         # then take its mean in the dispersion direction to help avoid
         # the effects of noise spikes.
@@ -98,27 +98,39 @@ for array, color, peaklist in zip(arrays, colors, peaklists):
             for k in range(0, len(peaks), 2):
                 slicelist.append((i, peaks[k]))
         elif color == 'Blue':
-            for k in range(1, len(peaks), 2):
-                slicelist.append((i, peaks[k]))
+            if (i == 4) or (i == 4091):
+                for k in range(0, len(peaks), 2):
+                    slicelist.append((i, peaks[k]))
+            else:
+                for k in range(1, len(peaks), 2):
+                    slicelist.append((i, peaks[k]))
         peaklist.append(slicelist)
 
-#plotrange = np.linspace(0, 4096, num=20)
-#print(plotrange)
-#for peaklist, color in zip(peaklists, colors):
-#    slice1, slice2, slice3 = peaklist
-#    fig2 = plt.figure(figsize=(16, 14))
-#    ax2 = fig2.add_subplot(1, 1, 1)
-#    for point1, point2, point3 in zip(slice1, slice2, slice3):
-#        points = (point1, point2, point3)
-#        x = [point[0] for point in points]
-#        y = [point[1] for point in points]
-#        coeffs = polyfit(x, y, 5)
-##        poly = np.polynomial.polynomial.Polynomial(coeffs,
-##                                                   domain=[0, 4095],
-##                                                   window=[0, 4095])
-#        ax2.plot(plotrange, np.polynomial.polynomial.polyval(plotrange,
-#                                                             coeffs),
-#                 marker='o')
-#    outfile = '/Users/dberke/Pictures/Fit_{}.png'.format(color)
-#    fig2.savefig(outfile)
-#    plt.close(fig2)
+plotrange = np.linspace(0, 4096, num=100)
+#plotrange = slicepoints
+for peaklist, color, array in zip(peaklists, colors, arrays):
+    slices = zip(*peaklist)
+    fig2 = plt.figure(figsize=(40.96, 20.48), dpi=100, tight_layout=True)
+    ax2 = fig2.add_subplot(1, 1, 1)
+    ax2.set_xlim(left=0, right=4095)
+    ax2.imshow(np.log(np.fliplr(np.rot90(array, k=3))), cmap='inferno')
+    labels = []
+    for points in slices:
+        x = [point[0] for point in points]
+        y = [point[1] for point in points]
+        coeffs = polyfit(x, y, 5)
+        ax2.plot(x, y, marker='+', color='Cyan', markersize=8, alpha=1,
+                 linestyle='')
+        for xpos, ypos in zip(x, y):
+            labels.append(plt.text(xpos, ypos+10, '{}, {}'.format(xpos, ypos),
+                                   fontsize=10, color='Red'))
+        ax2.plot(plotrange, np.polynomial.polynomial.polyval(plotrange,
+                                                             coeffs),
+                 marker='x', markersize=6,
+                 linewidth=1, linestyle='--', color='White',
+                 alpha=1)
+
+#    adjust_text(labels)
+    outfile = '/Users/dberke/Pictures/Fit_{}.png'.format(color)
+    fig2.savefig(outfile)
+    plt.close(fig2)
