@@ -132,11 +132,12 @@ def line_fixed(x, m):
 # Start main body.
 outPicDir = "/Users/dberke/Pictures/"
 
-objects = ("HD68168", "HD126525", "HD138573")
+objects = ("HD68168", "HD126525", "HD138573", "HD101197", "HD101348",
+           "HD105938")
 start_wavelengths = (561, 620.24, 623.2) # Adjusted for offset.
 
 # Uncomment this to run just over a single object.
-#objects = ("HD68168",)
+objects = ("HD53705",)
 
 
 search_window = 0.6
