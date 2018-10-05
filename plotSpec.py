@@ -147,7 +147,9 @@ for obj in args.filenames:
             maxflux = 1
         # Plot the spectrum
         ax.errorbar(wl, flux, yerr=err,
-                    linestyle='', marker='.', alpha=1,
+                    marker='.', markersize=4,
+                    linestyle='-', linewidth=1,
+                    alpha=1,
                     label=spectrum['obj'])
 
 if not (args.miny or args.maxy):
