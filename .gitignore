@@ -100,7 +100,7 @@ ENV/
 # mypy
 .mypy_cache/
 
-# Ignore the 'spectra' and 'tables' folders, as they contain data files
+# Ignore the 'spectra' and 'data' folders, as they contain data files
 # that might change or at least don't need to be version controlled.
 spectra/
-tables/
+data/
