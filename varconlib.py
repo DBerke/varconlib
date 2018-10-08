@@ -80,8 +80,8 @@ badlines = frozenset(['506.8562', '507.4086', '593.1823', '593.6299',
                       '647.0980', '647.7413'])
 
 # Spectral format files for HARPS blue and red CCDs.
-blueCCDpath = Path('/Users/dberke/code/tables/HARPS_CCD_blue.csv')
-redCCDpath = Path('/Users/dberke/code/tables/HARPS_CCD_red.csv')
+blueCCDpath = Path('/Users/dberke/code/data/HARPS_CCD_blue.csv')
+redCCDpath = Path('/Users/dberke/code/data/HARPS_CCD_red.csv')
 
 
 # Functions
