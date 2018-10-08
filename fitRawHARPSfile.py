@@ -17,6 +17,7 @@ from astropy.io import fits
 import matplotlib.pyplot as plt
 from pathlib import Path
 from numpy.polynomial.polynomial import polyfit
+import csv
 from adjustText import adjust_text
 
 
@@ -109,16 +110,19 @@ for array, color, peaklist in zip(arrays, colors, peaklists):
 plotrange = np.linspace(0, 4096, num=100)
 #plotrange = slicepoints
 for peaklist, color, array in zip(peaklists, colors, arrays):
+    coeffslist = []
     slices = zip(*peaklist)
     fig2 = plt.figure(figsize=(40.96, 20.48), dpi=100, tight_layout=True)
     ax2 = fig2.add_subplot(1, 1, 1)
     ax2.set_xlim(left=0, right=4095)
     ax2.imshow(np.log(np.fliplr(np.rot90(array, k=3))), cmap='inferno')
+#    ax2.imshow(np.log(array), cmap='magma')
     labels = []
     for points in slices:
         x = [point[0] for point in points]
         y = [point[1] for point in points]
         coeffs = polyfit(x, y, 5)
+        coeffslist.append(coeffs)
         ax2.plot(x, y, marker='+', color='Cyan', markersize=8, alpha=1,
                  linestyle='')
         for xpos, ypos in zip(x, y):
@@ -134,3 +138,10 @@ for peaklist, color, array in zip(peaklists, colors, arrays):
     outfile = '/Users/dberke/Pictures/Fit_{}.png'.format(color)
     fig2.savefig(outfile)
     plt.close(fig2)
+
+    print(coeffslist)
+    datafile = 'data/HARPS_Fit_Coeffs_{}.txt'.format(color)
+    with open(datafile, 'w', newline='') as f:
+        csvwriter = csv.writer(f, delimiter=',')
+        for item in coeffslist:
+            csvwriter.writerow(item)
