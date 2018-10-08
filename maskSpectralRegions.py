@@ -314,7 +314,7 @@ for i, window in enumerate(spectral_windows, start=1):
     plt.close(fig)
 
 # Output the results to a file.
-datafile_base = Path('/Users/dberke/code/tables/')
+datafile_base = Path('/Users/dberke/code/data/')
 
 if CCD_bounds:
     file_append = '_CCDbounds'
