@@ -178,6 +178,12 @@ minradvel = -68800
 blueCCDdata = pd.read_csv(vcl.blueCCDpath, header=0, engine='c')
 redCCDdata = pd.read_csv(vcl.redCCDpath, header=0, engine='c')
 
+blueCoeffsFile = Path('data/HARPS_Fit_Coeffs_Blue.txt')
+redCoeffsFile = Path('data/HARPS_Fit_Coeffs_Red.txt')
+
+blueCoeffs = np.genfromtxt(blueCoeffsFile, delimiter=',')
+redCoeffs = np.genfromtxt(redCoeffsFile, delimiter=',')
+
 spectral_windows = [(377, 400), (400, 425), (425, 450), (450, 475), (475, 500),
                     (500, 525), (525, 550), (550, 575), (575, 600), (600, 625),
                     (625, 650), (650, 675), (675, 692)]
