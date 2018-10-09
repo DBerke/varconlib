@@ -59,13 +59,6 @@ parser.add_argument('-l', '--lines', nargs='+',
                     help='Plot vertical lines at the given positions.')
 
 args = parser.parse_args()
-#args = parser.parse_args('-n 588.1 -m 588.7 -sb 50000\
-#                         HD117618/ADP.2014-09-16T11:07:25.643.fits\
-#                         HD117618/ADP.2014-09-24T09:42:16.870.fits\
-#                         HD117618/ADP.2014-09-24T09:44:01.477.fits\
-#                         HD117618/ADP.2014-10-02T10:03:45.660.fits\
-#                         -o HD117618_BRASS_air_sun.png'.split())
-
 
 outPicDir = "/Users/dberke/Pictures/"
 FITSfileDir = "/Volumes/External Storage/HARPS/"
@@ -97,7 +90,7 @@ if args.transmission:
     trans_norm_flux = np.flipud(np.array(trans_norm_flux))
     print('done.')
 
-fig = plt.figure(figsize=(12,9))
+fig = plt.figure(figsize=(12, 9))
 ax = fig.add_subplot(1, 1, 1)
 ax.set_xlabel("Wavelength (nm)", fontsize=20)
 ax.set_ylabel("Intensity", fontsize=20)
@@ -105,9 +98,6 @@ ax.set_ylabel("Intensity", fontsize=20)
 
 ax.grid(which='major', axis='both')
 ax.set_xlim(left=args.minx, right=args.maxx)
-if (args.miny and args.maxy) or args.maxy:
-    ax.set_ylim(bottom=args.miny, top=args.maxy)
-    print('Top and bottom set to {} and {}.'.format(args.miny, args.maxy))
 outfile = os.path.join(outPicDir, args.name)
 
 for obj in args.filenames:
@@ -121,14 +111,14 @@ for obj in args.filenames:
             spectrum = vcl.readESPRESSOfile(infile)
         else:
             spectrum = vcl.readHARPSfile(infile, obj=True)
-        w = np.array(spectrum['w']) # In Angstroms here!
+        w = np.array(spectrum['w'])  # In Angstroms here!
         f = np.array(spectrum['f'])
         e = spectrum['e']
         vac_wl = np.array(vcl.air2vacESO(w))
         if args.vacuum:
-            wl = vac_wl / 10 # Convert to nm.
+            wl = vac_wl / 10  # Convert to nm.
         else:
-            wl = np.array(vcl.vac2airMorton00(vac_wl))/10 # Convert to nm
+            wl = np.array(vcl.vac2airMorton00(vac_wl))/10  # Convert to nm
         if args.radvel:
             wl = vcl.lineshift(wl, -1*args.radvel)
         leftpos = vcl.wavelength2index(wl, args.minx)
@@ -141,10 +131,12 @@ for obj in args.filenames:
             err = e
         try:
             maxflux = flux[leftpos:rightpos].max()
+            minflux = flux[leftpos:rightpos].min()
         except ValueError:
-            print("Couldn't find a maximum flux in the given region.")
+            print("Couldn't find a max or min flux in the given region.")
             print("Region exceeds the spectral array, try a smaller region?")
             maxflux = 1
+            minflux = 0
         # Plot the spectrum
         ax.errorbar(wl, flux, yerr=err,
                     marker='.', markersize=4,
@@ -152,9 +144,19 @@ for obj in args.filenames:
                     alpha=1,
                     label=spectrum['obj'])
 
+if (args.miny and args.maxy):
+    ax.set_ylim(bottom=args.miny, top=args.maxy)
+    print('Top and bottom set to {} and {}.'.format(args.miny, args.maxy))
+elif args.maxy and not args.miny:
+    ax.set_ylim(bottom=minflux*0.85, top=args.maxy)
+    print('Top and bottom set to {} and {}.'.format(minflux*0.85, args.maxy))
+elif args.miny and not args.maxy:
+    ax.set_ylim(bottom=args.miny, top=maxflux*1.15)
+    print('Top and bottom set to {} and {}.'.format(args.miny, maxflux*1.15))
 if not (args.miny or args.maxy):
-    print('No y-limits givens, set to 0 and {}.'.format(maxflux*1.15))
-    ax.set_ylim(bottom=0, top=maxflux*1.15)
+    ax.set_ylim(bottom=minflux*0.95, top=maxflux*1.05)
+    print('Top and bottom set to {} and {}.'.format(minflux*0.85,
+          maxflux*1.15))
 
 if args.sun:
     print(args)
