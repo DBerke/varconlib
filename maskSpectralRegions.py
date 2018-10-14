@@ -74,7 +74,8 @@ def find_telluric_lines(wavelength, flux, smallwindow, largewindow, threshold,
         return None
 
 
-def find_CCD_boundaries(proximity, blueformat, redformat):
+def find_CCD_boundaries(proximity, blueformat, redformat,
+                        bluecoeffs, redcoeffs):
     """Finds wavelengths close to the CCD boundaries in HARPS.
 
     Parameters
@@ -86,27 +87,76 @@ def find_CCD_boundaries(proximity, blueformat, redformat):
         A DataFrame containing the spectral format of the HARPS blue CCD.
     redformat : pandas DataFrame
         A DataFrame containing the spectral format of the HARPS red CCD.
+    bluecoeffs : array-like
+        A list of coefficients for fits to the x-y pixel positions of the
+        spectral orders on the blue CCD.
+    redcoeffs : array-like
+        A list of coefficients for fits to the x-y pixel positions of the
+        spectral orders on the red CCD.
     """
     coeffs_file = '/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits'
     coeffs_dict = vcl.readHARPSfile(coeffs_file, coeffs=True)
     masked_wls = []
     x_boundaries = [0, 512, 1024, 1536, 2048, 2560, 3072, 3584, 4096]
+    y_boundaries = [50, 1074, 2148]
+
+    # Create a figure for consistency checking.
+    fig = plt.figure(figsize=(40.96, 20.48), dpi=100, tight_layout=True)
+    ax = fig.add_subplot(1, 1, 1)
+    ax.set_ylim(bottom=0, top=2148)
+    ax.set_xlim(left=0, right=4096)
+    ax.set_xlabel('x (pixels)')
+    ax.set_ylabel('y (pixels)')
+    ax.hlines(1024, xmin=0, xmax=4096, color='Black', linewidth=1)
+    ax.vlines([x_boundaries[1:-1]], ymin=0, ymax=2148, color='Black',
+              linewidth=1)
+    ax.axhspan(ymin=1024-proximity, ymax=1024+proximity, xmin=0, xmax=1,
+               color='Gray', alpha=0.5)
+
     for order in trange(0, 72, 1):
         order_num = vcl.map_spectral_order(order)
         if order < 46:
             order_row = blueformat[blueformat['order'] == order_num]
+            y_fit_coeffs = bluecoeffs[order]
+            color = 'Blue'
         else:
             order_row = redformat[redformat['order'] == order_num]
-        for pixel in range(0, 4096, 1):
-            distances = [abs(bound - pixel) for bound in x_boundaries]
-            if any([dist <= proximity for dist in distances]):
-                    wl = vcl.pix_order_to_wavelength(pixel, order, coeffs_dict)
-                    fsrmin = float(order_row['FSRmin'])
-                    fsrmax = float(order_row['FSRmax'])
-                    if (wl < fsrmin) or (wl > fsrmax):
-                        continue
-                    else:
-                        masked_wls.append(wl)
+            y_fit_coeffs = redcoeffs[order - 47]
+            color = 'Red'
+
+#        print(y_fit_coeffs)
+        fsrmin = float(order_row['FSRmin'])
+        fsrmax = float(order_row['FSRmax'])
+#        print('fsrmin: {}, fsrmax: {}'.format(fsrmin, fsrmax))
+        pix_range = [i for i in range(0, 4096, 1)]
+        y_fit = np.polynomial.polynomial.polyval(pix_range, y_fit_coeffs)
+        for xpos in pix_range:
+            ypos = int(y_fit[xpos])
+            x_distances = [abs(boundx - xpos) for boundx in x_boundaries]
+            y_distances = [abs(boundy - ypos) for boundy in y_boundaries]
+#            print(y_distances)
+            if any([distx <= proximity for distx in x_distances]) or\
+               any([disty <= proximity for disty in y_distances]):
+
+                wl = vcl.pix_order_to_wavelength(xpos, order, coeffs_dict)
+
+                if (wl < fsrmin) or (wl > fsrmax):
+                    continue
+                else:
+                    if any([disty <= proximity for disty in y_distances]):
+                        if not xpos % 100:
+                            print(xpos, ypos)
+                            print('{} too close in y: {}'.format(wl, ypos))
+                    masked_wls.append(wl)
+        ax.plot(pix_range, y_fit, color=color, alpha=0.7, linewidth=2)
+#        FSRleft, FSRright = np.polynomial.polynomial.polyval([fsrmin, fsrmax],
+#                                                             y_fit_coeffs)
+#        ax.plot([fsrmin, fsrmax], [FSRleft, FSRright], linestyle='',
+#                marker='|', color=color, markersize=18)
+
+    outfile = '/Users/dberke/Pictures/spectral_masking/Fitting_check.png'
+    fig.savefig(outfile)
+    plt.close(fig)
 
     wl_ranges = []
     range_start = masked_wls[0]
@@ -175,6 +225,10 @@ CCD_gap = (530.51, 533.81)
 maxradvel = 143500
 minradvel = -68800
 
+# Values to use as cutoffs in radial veclocity.
+maxradvel = 70000
+minradvel = -70000
+
 blueCCDdata = pd.read_csv(vcl.blueCCDpath, header=0, engine='c')
 redCCDdata = pd.read_csv(vcl.redCCDpath, header=0, engine='c')
 
@@ -188,7 +242,8 @@ spectral_windows = [(377, 400), (400, 425), (425, 450), (450, 475), (475, 500),
                     (500, 525), (525, 550), (550, 575), (575, 600), (600, 625),
                     (625, 650), (650, 675), (675, 692)]
 if CCD_bounds:
-    bound_wl_ranges = find_CCD_boundaries(proximity, blueCCDdata, redCCDdata)
+    bound_wl_ranges = find_CCD_boundaries(proximity, blueCCDdata, redCCDdata,
+                                          blueCoeffs, redCoeffs)
     bound_wl_ranges.append(CCD_gap)
 else:
     bound_wl_ranges = []
@@ -223,7 +278,7 @@ for i, window in enumerate(spectral_windows, start=1):
                                        tolerance, start=start_point,
                                        end=end_point)
 
-    fig = plt.figure(figsize=(10, 7), dpi=100, tight_layout=True)
+    fig = plt.figure(figsize=(12, 7), dpi=100, tight_layout=True)
     ax = fig.add_subplot(1, 1, 1)
     ax.set_xlim(left=wl[start_point-1], right=wl[end_point+1])
     ax.set_ylim(bottom=0.94, top=1.05)
@@ -261,28 +316,14 @@ for i, window in enumerate(spectral_windows, start=1):
         # avoidance regions.
         temp_sort_list.extend(tl_wl)
 
-#    sorted_by_lower_bound = sorted(temp_sort_list, key=lambda tup: tup[0])
-
     expanded = []
     for region in temp_sort_list:
-        blueshift = vcl.getwlseparation(-30000 + -1*maxradvel,
+        blueshift = vcl.getwlseparation(-31984 + -1*maxradvel,
                                         region[0]) + region[0]
-        redshift = vcl.getwlseparation(30000 + -1*minradvel,
+        redshift = vcl.getwlseparation(31984 + -1*minradvel,
                                        region[1]) + region[1]
 
         expanded.append((blueshift, redshift))
-
-#    merged = []
-#    for higher in expanded:
-#        if not merged:
-#            merged.append(higher)
-#        else:
-#            lower = merged[-1]
-#            if higher[0] <= lower[1]:
-#                upper_bound = max(lower[1], higher[1])
-#                merged[-1] = (lower[0], upper_bound)
-#            else:
-#                merged.append(higher)
 
     merged = merge_list_entries(expanded)
 
