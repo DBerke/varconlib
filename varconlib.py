@@ -194,12 +194,17 @@ def readHARPSfile(FITSfile, obj=False, wavelenmin=False, date_obs=False,
         try:
             # First assume no negative flux values and use Numpy array
             # magic to speed up the process.
-            e = np.sqrt(f)
+
+            # According to Dumusque 2018 HARPS has a dark-current and read-out
+            # noise of 12 photo-electrons, so first add the square of that to
+            # the flux, then take the square root to add them in quadrature:
+            f_plus_err = f + 144
+            e = np.sqrt(f_plus_err)
         except ValueError:
             # If that raises an error, do it element-by-element.
             for i in np.arange(0, len(f), 1):
                 if (f[i] > 0.0):
-                    e[i] = np.sqrt(f[i])
+                    e[i] = np.sqrt(f[i] + 144)
         result['w'] = w
         result['f'] = f
         result['e'] = e
