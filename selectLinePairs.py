@@ -9,7 +9,6 @@ Created on Wed Mar 21 15:57:52 2018
 # Code to interate through BRASS list of "red" lines (specially curated)
 # to identify pairs given various constraints.
 
-import subprocess
 import numpy as np
 from math import trunc
 from scipy.constants import lambda2nu, h, e
@@ -169,7 +168,7 @@ def matchKuruczLines(wavelength, elem, ion, eLow):
 
 def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
                velSeparation=400000, lineDepthDiff=0.05,
-               spectralMask=None):
+               spectralMask=None, CCD_bounds=False):
     """Return a list of line matches given the input parameters
 
     lines: list of lines to look through
@@ -233,8 +232,8 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
             # the spectrum, if a mask is given.
             if spectralMask:
                 if line_is_masked(line[0] / 10, spectralMask):
-                    print('Line {:.3f} fell in masked region, rejecting.'.format(
-                            line[0] / 10))
+#                    print('Line {:.3f} fell in masked region, rejecting.'.format(
+#                            line[0] / 10))
                     continue
 
             # If it makes it through all the checks, get the lines' info.
@@ -246,7 +245,7 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
                               format(*vac_wl, elem, ion, *lineInfo)
                     output_lines.append(lineStr)
                     output_lines.append("\n")
-                    print(lineStr)
+#                    print(lineStr)
                 except TypeError:
                     print("\nCouldn't find orbital info for")
                     print("\n{} {}{} {}eV".format(wl, elem, ion, eLow))
@@ -260,7 +259,7 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
                            format(*vac_wl, line[1], line[2], *lineInfo)
                 output_lines.append(matchStr)
                 output_lines.append("\n")
-                print(matchStr)
+#                print(matchStr)
             except TypeError:
                 print("\nCouldn't find orbital info for")
                 print("  {} {}{} {}eV".format(
@@ -269,18 +268,30 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
             if elem == 'Fe' and ion == 1:
                 n_iron += 1
 
-    with open(outFile, 'w') as f:
+    with open(str(outFile), 'w') as f:
+        print('Writing linefile {}'.format(outFile))
         f.write("#wl(air)   wave#   ion    eL     JL     orbL       eH     JH    orbH\n")
         f.writelines(output_lines)
 
     print("\n{} matches found.".format(n))
     print("{}/{} were FeI".format(n_iron, n))
-
-#    print(prematchedLines)
     print(elements)
     print("Min depth = {}, max depth = {}".format(minDepth, maxDepth))
-    print("Vel separation = {} [m/s], line depth diff = {}".format(
-          velSeparation, lineDepthDiff))
+    print("Vel separation = {} [km/s], line depth diff = {}".format(
+          velSeparation / 1000, lineDepthDiff))
+    print('CCD bounds used: {}'.format('yes' if CCD_bounds else 'no'))
+
+    logfile = 'data/linelists/line_selection_logfile.txt'
+    with open(logfile, 'a') as g:
+        g.write("{} matches found.\n".format(n))
+        g.write("{}/{} were FeI\n".format(n_iron, n))
+        g.write(str(elements))
+        g.write('\n')
+        g.write("Min depth = {}, max depth = {}\n".format(minDepth, maxDepth))
+        g.write("Vel separation = {} [km/s], line depth diff = {}\n".format(
+              velSeparation / 1000, lineDepthDiff))
+        g.write('CCD bounds used: {}\n\n'.format('yes' if CCD_bounds
+                else 'no'))
 
 
 # Main body of code
@@ -325,15 +336,30 @@ print("Read Kurucz line list.")
 
 goldStandard = "data/GoldStandardLineList.txt"
 testStandard = "data/GoldStandardLineList_test.txt"
-matchLines(redData, testStandard, minDepth=0.3, maxDepth=0.7,
-            velSeparation=400000, lineDepthDiff=0.05,
-            spectralMask=mask_CCD_bounds)
+outDir = Path('data/linelists')
+
+depths = ((0.3, 0.7), (0.2, 0.7), (0.3, 0.8),
+          (0.2, 0.8), (0.3, 0.9), (0.2, 0.9))
+seps = (400000, 500000, 600000)
+bounds = (mask_no_CCD_bounds, mask_CCD_bounds)
+diffs = (0.05, 0.06, 0.07, 0.08, 0.09, 0.1)
+for depth in depths:
+    for sep in seps:
+        for bound, value in zip(bounds, (False, True)):
+            for diff in diffs:
+                CCD_tag = '_CCD' if value else ''
+                fileName = 'Lines_{0}-{1}_{2}kms_{3}{4}.txt'.format(
+                            depth[0], depth[1], int(sep/1000), diff, CCD_tag)
+                outFile = outDir / fileName
+                matchLines(redData, outFile,
+                           minDepth=depth[0], maxDepth=depth[1],
+                           velSeparation=sep, lineDepthDiff=diff,
+                           spectralMask=bound, CCD_bounds=value)
+#matchLines(redData, testStandard, minDepth=0.3, maxDepth=0.7,
+#            velSeparation=400000, lineDepthDiff=0.05,
+#            spectralMask=mask_CCD_bounds, CCD_bounds=True)
 #goldSystematic = "/Users/dberke/Documents/GoldSystematicLineList.txt"
 #matchLines(redData, goldSystematic, minDepth=0.2, maxDepth=0.8,
 #           velSeparation=800000, lineDepthDiff=0.1)
 #matchLines(blueData, minDepth=0.3, maxDepth=0.7, velSeparation=400000,
 #               lineDepthDiff=0.05)
-
-
-print('Testing output file for differences')
-subprocess.run(['diff', '-q', goldStandard, testStandard])
