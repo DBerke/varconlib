@@ -488,19 +488,19 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
                                            p0=gauss_params, sigma=enorm,
                                            absolute_sigma=True)
     except RuntimeError:
-        print(continuum)
-        print(linebottom)
-        print(linedepth)
-        print(neg_linedepth)
-        print(gauss_params)
-        fig = plt.figure(figsize=(8, 8))
-        ax = fig.add_subplot(1, 1, 1)
-        ax.errorbar(xnorm, ynorm, yerr=enorm,
-                    color='blue', marker='o', linestyle='')
-        ax.plot(xnorm, (gaussian(xnorm, *gauss_params)), color='Black')
-        outfile = Path('/Users/dberke/Pictures/debug.png')
-        fig.savefig(str(outfile))
-        plt.close(fig)
+#        print(continuum)
+#        print(linebottom)
+#        print(linedepth)
+#        print(neg_linedepth)
+#        print(gauss_params)
+#        fig = plt.figure(figsize=(8, 8))
+#        ax = fig.add_subplot(1, 1, 1)
+#        ax.errorbar(xnorm, ynorm, yerr=enorm,
+#                    color='blue', marker='o', linestyle='')
+#        ax.plot(xnorm, (gaussian(xnorm, *gauss_params)), color='Black')
+#        outfile = Path('/Users/dberke/Pictures/debug.png')
+#        fig.savefig(str(outfile))
+#        plt.close(fig)
         raise
 
     # Get the errors in the fitted parameters from the covariance matrix
@@ -687,7 +687,7 @@ def fitSimpleParabola(xnorm, ynorm, enorm, centralwl, radvel, verbose=False):
 
 def linefind(line, vac_wl, flux, err, radvel, filename, starname,
              pixrange=3, velsep=5000, plot=True, par_fit=False,
-             gauss_fit=False, spar_fit=False, plot_dir=None, date_string=None,
+             gauss_fit=False, spar_fit=False, plot_dir=None, date_obs=None,
              save_arrays=False):
     """
     Find a given line in a HARPS spectrum after correcting for the star's
@@ -734,11 +734,10 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
     plot_dir : string. Default: *None*
         A directory to store output plots in. Will have no effect if plot is
         *False*. If left as *None* will show the plots instead of saving them.
-    date_string : string: Default: *None*
-        A string representing the date the observation was taken, to be used as
-        part of the output filename, with format %Y%m%dT%H%M%S.%f.
-        Has no effect if plot_dir is not defined.
-        Example: 20060716T050635.253000
+    date_obs : datetime: Default: *None*
+        A datetime object representing the date the observation was taken, to
+        be used as part of the output filename. Has no effect if plot_dir is
+        not defined.
     save_arrays : bool. Default: False
         If *True*, write out the normalized arrays and information necessary to
         reconstruct a fit from them in a CSV file. If *True*, `plot_dir` should
@@ -804,6 +803,8 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
                                'continuum': continuum,
                                'linebottom': linebottom,
                                'fluxrange': fluxrange})
+            if not outfile.parent.exists():
+                outfile.parent.mkdir()
             df.to_csv(path_or_buf=outfile, header=True, index=False, mode='w',
                       float_format='%.5f')
 
@@ -840,7 +841,7 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
 
     if plot:
         # Create the plots for the line
-        datestring = date_string.strftime('%Y%m%dT%H%M%S.%f')
+        datestring = date_obs.strftime('%Y%m%dT%H%M%S.%f')
         fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(1, 1, 1)
         ax.set_xlim(left=lowerwllim, right=upperwllim)
@@ -908,12 +909,12 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
                     raise
             if not line_dir.exists():
                 line_dir.mkdir()
-            filepath1 = line_dir / '{}_{}_{}nm.png'.format(
+            filepath1 = line_dir / '{}_{}_{:.3f}nm.png'.format(
                                                     plot_dir.parent.stem,
-                                                    datestring, line)
-            filepath2 = line_dir / '{}_{}_norm_{}nm.png'.format(
+                                                    datestring, float(line))
+            filepath2 = line_dir / '{}_{}_norm_{:.3f}nm.png'.format(
                                                     plot_dir.parent.stem,
-                                                    datestring, line)
+                                                    datestring, float(line))
             plt.savefig(str(filepath1), format='png')
         else:
             plt.show()
@@ -994,13 +995,13 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, filename, starname,
     line1 = linefind(linepair[0], *params,
                      plot=plot, velsep=5000, pixrange=3,
                      par_fit=False, gauss_fit=True, spar_fit=False,
-                     plot_dir=plot_dir, date_string=date,
+                     plot_dir=plot_dir, date_obs=date,
                      save_arrays=save_arrays)
     progressbar.update(1)
     line2 = linefind(linepair[1], *params,
                      plot=plot, velsep=5000, pixrange=3,
                      par_fit=False, gauss_fit=True, spar_fit=False,
-                     plot_dir=plot_dir, date_string=date,
+                     plot_dir=plot_dir, date_obs=date,
                      save_arrays=save_arrays)
     progressbar.update(1)
 
