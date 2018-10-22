@@ -26,8 +26,15 @@ matplotlib.rc('ytick', labelsize=20)
 
 
 def getpairlist(listfile):
-    """Return a list of pairs of lines to check from the given file
+    """Parse a list of pairs of lines from a given input file.
 
+    Parameters
+    ----------
+    listfile : Path object or str
+        A path to a file containing a list of line pairs.
+
+    Examples
+    --------
     The format for the given file should be
 
     pair1a
@@ -36,7 +43,19 @@ def getpairlist(listfile):
     pair2a
     pair2b
 
-    etc. Any columns after the first are ignored.
+    etc. Any columns after the first, which should contain the wavelength of
+    the line, are ignored.
+
+    Higher multiplets than two are allowed, where it is assumed that of a
+    stucture such as:
+
+    line A
+    line B
+    line C
+    line D...
+
+    the line pairs to be returned are (line A, line B), (line A, line C),
+    (line A, line D), etc.
     """
     pairlist = []
     print(listfile)
@@ -51,7 +70,13 @@ def getpairlist(listfile):
             if not line == '\n':
                 temppair.append(line.split()[0])
             else:
-                pairlist.append((temppair[0], temppair[1]))
+                if len(temppair) == 2:
+                    pairlist.append((temppair[0], temppair[1]))
+                elif len(temppair) > 2:
+                    for wl in temppair[1:]:
+                        pairlist.append((temppair[0], wl))
+                else:
+                    raise Error("Single unpaired line.")
                 temppair = []
 
     return pairlist
@@ -186,26 +211,30 @@ def plot_line_comparisons(mseps, linepairs):
 
 ############
 #pairlistfile = "/Users/dberke/code/tables/GoldStandardLineList_vac_working.txt"
-#pairlist = getpairlist(pairlistfile)
+pairlistfile = '/Users/dberke/code/data/linelists/Lines_0.15-0.9_800kms_0.2.txt'
+pairlist = getpairlist(pairlistfile)
 
-pairlist = (('443.9589', '444.1128'), ('450.0151', '450.3467'),
-            ('459.9405', '460.3290'), ('460.5846', '460.6877'),
-            ('465.8889', '466.2840'), ('473.3122', '473.3780'),
-            ('475.9448', '476.0601'), ('480.0073', '480.0747'),
-            ('484.0896', '484.4496'), ('488.6794', '488.7696'),
-            ('490.9102', '491.0754'), ('497.1304', '497.4489'),
-            ('500.5115', '501.1420'), ('506.8562', '507.4086'),
-            ('507.3492', '507.4086'), ('513.2898', '513.8813'),
-            ('514.8912', '515.3619'), ('524.8510', '525.1670'),
-            ('537.5203', '538.1069'), ('554.4686', '554.5475'),
-            ('563.5510', '564.3000'), ('571.3716', '571.9418'),
-            ('579.4679', '579.9464'), ('579.5521', '579.9779'),
-            ('580.8335', '581.0828'), ('593.1823', '593.6299'),
-            ('595.4367', '595.8344'), ('600.4673', '601.0220'),
-            ('616.3002', '616.8146'), ('617.2213', '617.5042'),
-            ('617.7065', '617.8498'), ('623.9045', '624.6193'),
-            ('625.9833', '626.0427'), ('625.9833', '626.2831'),
-            ('647.0980', '647.7413'))
+for item in pairlist:
+    print(item)
+raise
+#pairlist = (('443.9589', '444.1128'), ('450.0151', '450.3467'),
+#            ('459.9405', '460.3290'), ('460.5846', '460.6877'),
+#            ('465.8889', '466.2840'), ('473.3122', '473.3780'),
+#            ('475.9448', '476.0601'), ('480.0073', '480.0747'),
+#            ('484.0896', '484.4496'), ('488.6794', '488.7696'),
+#            ('490.9102', '491.0754'), ('497.1304', '497.4489'),
+#            ('500.5115', '501.1420'), ('506.8562', '507.4086'),
+#            ('507.3492', '507.4086'), ('513.2898', '513.8813'),
+#            ('514.8912', '515.3619'), ('524.8510', '525.1670'),
+#            ('537.5203', '538.1069'), ('554.4686', '554.5475'),
+#            ('563.5510', '564.3000'), ('571.3716', '571.9418'),
+#            ('579.4679', '579.9464'), ('579.5521', '579.9779'),
+#            ('580.8335', '581.0828'), ('593.1823', '593.6299'),
+#            ('595.4367', '595.8344'), ('600.4673', '601.0220'),
+#            ('616.3002', '616.8146'), ('617.2213', '617.5042'),
+#            ('617.7065', '617.8498'), ('623.9045', '624.6193'),
+#            ('625.9833', '626.0427'), ('625.9833', '626.2831'),
+#            ('647.0980', '647.7413'))
 
 columns = ('object',
            'date',
@@ -254,7 +283,7 @@ filepath = baseDir / 'HD146233'  # 18 Sco, G2 (151 files)
 #filepath = baseDir / 'HD183658' # 12 files
 #filepath = baseDir / 'HD45184' # 116 files
 #filepath = baseDir / 'HD138573' # 31 files
-filepath = Path('/Users/dberke/HD146233')
+#filepath = Path('/Users/dberke/HD146233')
 files = [file for file in filepath.glob('ADP*.fits')]
 #files = [Path('/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits')]
 # Used this file with SNR = 200.3 to get flux arrays for simulating scatter
@@ -268,7 +297,7 @@ for infile in files:
     tqdm.write('Processing file {} of {}.'.format(num_file, len(files)))
     tqdm.write('filepath = {}'.format(infile))
     unfittablelines = 0
-    results = vcl.searchFITSfile(infile, pairlist, columns, plot=False,
+    results = vcl.searchFITSfile(infile, pairlist, columns, plot=True,
                                  save_arrays=True)
     if results is not None:
         total_results.extend(results)
