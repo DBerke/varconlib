@@ -14,8 +14,10 @@ from math import trunc
 from scipy.constants import lambda2nu, h, e
 import varconlib as vcl
 from pathlib import Path
+from tqdm import tqdm
 
-elements = {"Si": 14,
+elements = {"Na": 11,
+            "Si": 14,
             "Ca": 20,
             "Sc": 21,
             "Ti": 22,
@@ -156,14 +158,11 @@ def matchKuruczLines(wavelength, elem, ion, eLow):
                     highE = line['energy1']
                     highOrb = line['label1']
                     highJ = line['J1']
-#                print("{}eV, {} eV".format(lowE, eLow))
                 if abs(eLow - energy1) < 0.03 or abs(eLow - energy2) < 0.03:
-#                    print("Match found for line at {}!".format(wavelength))
-#                    print(line)
                     wavenumber = round((1e8 / (line['wavelength'] * 10)), 3)
                     PeckReederWL = vac2airPeckReeder(line['wavelength'])
-                    return (round(PeckReederWL, 4), wavenumber), (lowE, lowJ,
-                           lowOrb, highE, highJ, highOrb)
+                    return (round(PeckReederWL, 4), wavenumber),\
+                           (lowE, lowJ, lowOrb, highE, highJ, highOrb)
 
 
 def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
@@ -186,7 +185,7 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
 
     output_lines = []
 
-    for item in lines:
+    for item in tqdm(lines):
         line_matched = False
         wl = item[0]
         elem = item[1]
@@ -195,24 +194,33 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
         depth = item[4]
 
         if spectralMask:
+            # If the line falls in masked region, skip it.
             if line_is_masked(wl / 10, spectralMask):
-#                print('Line {:.3f} in mask.'.format(wl / 10))
                 continue
+
+        # Check line depth first
+        if not (minDepth <= depth <= maxDepth):
+            continue
 
         # Figure out the wavelength separation at this line's wavelength
         # for the given velocity separation. Ignore lines outside of this.
         delta_wl = vcl.getwlseparation(velSeparation, wl)
 
-        # Check line depth first
-        if not (minDepth <= depth <= maxDepth):
-            continue
         for line in lines:
-            # Check to see line hasn't been matched already
+
+            # See if it is in a masked portion of the spectrum,
+            # if a mask is given.
+            if spectralMask:
+                if line_is_masked(line[0] / 10, spectralMask):
+                    # Reject the line and move on to the next one.
+                    continue
+
+            # Check to see line hasn't been matched already.
             if int(line[0] * 10) in prematchedLines:
                 continue
 
             # Check that the lines are within the wavelength
-            # separation but not the same
+            # separation but not the same.
             if not (0. < abs(line[0] - wl) < delta_wl):
                 continue
 
@@ -228,17 +236,11 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
             if (elem != line[1]) or (ion != line[2]):
                 continue
 
-            # If it passes those checks, see if it is in a masked portion of
-            # the spectrum, if a mask is given.
-            if spectralMask:
-                if line_is_masked(line[0] / 10, spectralMask):
-#                    print('Line {:.3f} fell in masked region, rejecting.'.format(
-#                            line[0] / 10))
-                    continue
+
 
             # If it makes it through all the checks, get the lines' info.
             if not line_matched:
-                # If this is the first match for this line, get it's info first
+                # If this is the first match for this line, get its info first.
                 try:
                     vac_wl, lineInfo = matchKuruczLines(wl, elem, ion, eLow)
                     lineStr = "\n{:0<8} {:0<9} {}{} {:0<9} {} {:10} {:0<9} {} {:10}".\
@@ -314,6 +316,29 @@ print("Read red line list.")
 #blueData = np.genfromtxt(blueFile, delimiter=",", skip_header=1,
 #                     dtype=(float, "U2", int, float, float))
 #print("Read blue line list.")
+
+# Code to match up the red and blue lists.
+#num_matched = 0
+#unmatched = 0
+#for line1 in redData:
+#    matched = False
+#    wl1 = line1[0]
+#    energy1 = line1[3]
+#    for line2 in blueData:
+#        wl2 = line2[0]
+#        energy2 = line2[3]
+#        if (abs(wl1 - wl2) <= 0.1) and (abs(energy1 - energy2) <= 0.0015):
+##            print('{} in red matches {} in blue'.format(wl1, wl2))
+#            num_matched += 1
+#            matched = True
+#            break
+#    if not matched:
+#        print('{} not matched'.format(wl1))
+#        unmatched += 1
+#print('{} total matched'.format(num_matched))
+#print('{} not matched'.format(unmatched))
+
+
 KuruczData = np.genfromtxt(KuruczFile, delimiter=colWidths, autostrip=True,
                            skip_header=842959, skip_footer=987892,
                            names=["wavelength", "log gf", "elem", "energy1",
@@ -338,26 +363,27 @@ goldStandard = "data/GoldStandardLineList.txt"
 testStandard = "data/GoldStandardLineList_test.txt"
 outDir = Path('data/linelists')
 
-depths = ((0.3, 0.7), (0.2, 0.7), (0.3, 0.8),
-          (0.2, 0.8), (0.3, 0.9), (0.2, 0.9))
-seps = (400000, 500000, 600000)
-bounds = (mask_no_CCD_bounds, mask_CCD_bounds)
-diffs = (0.05, 0.06, 0.07, 0.08, 0.09, 0.1)
-for depth in depths:
-    for sep in seps:
-        for bound, value in zip(bounds, (False, True)):
-            for diff in diffs:
-                CCD_tag = '_CCD' if value else ''
-                fileName = 'Lines_{0}-{1}_{2}kms_{3}{4}.txt'.format(
-                            depth[0], depth[1], int(sep/1000), diff, CCD_tag)
-                outFile = outDir / fileName
-                matchLines(redData, outFile,
-                           minDepth=depth[0], maxDepth=depth[1],
-                           velSeparation=sep, lineDepthDiff=diff,
-                           spectralMask=bound, CCD_bounds=value)
-#matchLines(redData, testStandard, minDepth=0.3, maxDepth=0.7,
-#            velSeparation=400000, lineDepthDiff=0.05,
-#            spectralMask=mask_CCD_bounds, CCD_bounds=True)
+#depths = ((0.3, 0.7), (0.2, 0.7), (0.3, 0.8),
+#          (0.2, 0.8), (0.3, 0.9), (0.2, 0.9))
+#seps = (400000, 500000, 600000)
+#bounds = (mask_no_CCD_bounds, mask_CCD_bounds)
+#diffs = (0.05, 0.06, 0.07, 0.08, 0.09, 0.1)
+#for depth in depths:
+#    for sep in seps:
+#        for bound, value in zip(bounds, (False, True)):
+#            for diff in diffs:
+#                CCD_tag = '_CCD' if value else ''
+#                fileName = 'Lines_{0}-{1}_{2}kms_{3}{4}.txt'.format(
+#                            depth[0], depth[1], int(sep/1000), diff, CCD_tag)
+#                outFile = outDir / fileName
+#                matchLines(redData, outFile,
+#                           minDepth=depth[0], maxDepth=depth[1],
+#                           velSeparation=sep, lineDepthDiff=diff,
+#                           spectralMask=bound, CCD_bounds=value)
+filename = outDir / 'Lines_0.15-0.9_800kms_0.2.txt'
+matchLines(redData, filename, minDepth=0.15, maxDepth=0.9,
+            velSeparation=800000, lineDepthDiff=0.2,
+            spectralMask=mask_no_CCD_bounds, CCD_bounds=False)
 #goldSystematic = "/Users/dberke/Documents/GoldSystematicLineList.txt"
 #matchLines(redData, goldSystematic, minDepth=0.2, maxDepth=0.8,
 #           velSeparation=800000, lineDepthDiff=0.1)
