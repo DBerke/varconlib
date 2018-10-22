@@ -120,20 +120,24 @@ def line_is_masked(line, mask):
     return False
 
 
-def matchKuruczLines(wavelength, elem, ion, eLow):
+def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True):
     """Return the line from Kurucz list matching given parameters.
 
     Parameters
     ----------
     wavelength : float
-    elem : float
+        The wavelength of the line to be matched, in vacuum, in Angstroms.
+    elem : str
+        A string representing the standard two-letter chemical abbreviation
+        for the chemical element responsible for the transition being matched.
     ion : int
+        An integer representing the ionization state of the the element
+        responsible for the transition being matched.
     eLow : float
+        The energy of the lower state of the transition being matched, in eV.
+    vacuum_wl : bool, Default : True
+        If *True*, return the wavelengths in vacuum; otherwise in air.
 
-    wavelength:
-    elem:
-    ion
-    eLow
     """
     for line in KuruczData:
         wl = round(10 * vac2air(line['wavelength']), 3)
@@ -160,13 +164,17 @@ def matchKuruczLines(wavelength, elem, ion, eLow):
                     highJ = line['J1']
                 if abs(eLow - energy1) < 0.03 or abs(eLow - energy2) < 0.03:
                     wavenumber = round((1e8 / (line['wavelength'] * 10)), 3)
-                    PeckReederWL = vac2airPeckReeder(line['wavelength'])
-                    return (round(PeckReederWL, 4), wavenumber),\
-                           (lowE, lowJ, lowOrb, highE, highJ, highOrb)
+                    if not vacuum_wl:
+                        PeckReederWL = vac2airPeckReeder(line['wavelength'])
+                        return (round(PeckReederWL, 4), wavenumber),\
+                               (lowE, lowJ, lowOrb, highE, highJ, highOrb)
+                    else:
+                        return (line['wavelength'], wavenumber),\
+                               (lowE, lowJ, lowOrb, highE, highJ, highOrb)
 
 
 def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
-               velSeparation=400000, lineDepthDiff=0.05,
+               velSeparation=400000, lineDepthDiff=0.05, vacuum_wl=True,
                spectralMask=None, CCD_bounds=False):
     """Return a list of line matches given the input parameters
 
@@ -242,7 +250,8 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
             if not line_matched:
                 # If this is the first match for this line, get its info first.
                 try:
-                    vac_wl, lineInfo = matchKuruczLines(wl, elem, ion, eLow)
+                    vac_wl, lineInfo = matchKuruczLines(wl, elem, ion, eLow,
+                                                        vacuum_wl=vacuum_wl)
                     lineStr = "\n{:0<8} {:0<9} {}{} {:0<9} {} {:10} {:0<9} {} {:10}".\
                               format(*vac_wl, elem, ion, *lineInfo)
                     output_lines.append(lineStr)
@@ -256,7 +265,8 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
                 line_matched = True
             try:
                 vac_wl, lineInfo = matchKuruczLines(line[0], line[1], line[2],
-                                                    line[3])
+                                                    line[3],
+                                                    vacuum_wl=vacuum_wl)
                 matchStr = "{:0<8} {:0<9} {}{} {:0<9} {} {:10} {:0<9} {} {:10}".\
                            format(*vac_wl, line[1], line[2], *lineInfo)
                 output_lines.append(matchStr)
@@ -272,7 +282,8 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
 
     with open(str(outFile), 'w') as f:
         print('Writing linefile {}'.format(outFile))
-        f.write("#wl(air)   wave#   ion    eL     JL     orbL       eH     JH    orbH\n")
+        f.write("#wl({})   wave#   ion    eL     JL     orbL       eH     JH    orbH\n".format(
+                'vac' if vacuum_wl else 'air'))
         f.writelines(output_lines)
 
     print("\n{} matches found.".format(n))
@@ -283,17 +294,17 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
           velSeparation / 1000, lineDepthDiff))
     print('CCD bounds used: {}'.format('yes' if CCD_bounds else 'no'))
 
-    logfile = 'data/linelists/line_selection_logfile.txt'
-    with open(logfile, 'a') as g:
-        g.write("{} matches found.\n".format(n))
-        g.write("{}/{} were FeI\n".format(n_iron, n))
-        g.write(str(elements))
-        g.write('\n')
-        g.write("Min depth = {}, max depth = {}\n".format(minDepth, maxDepth))
-        g.write("Vel separation = {} [km/s], line depth diff = {}\n".format(
-              velSeparation / 1000, lineDepthDiff))
-        g.write('CCD bounds used: {}\n\n'.format('yes' if CCD_bounds
-                else 'no'))
+#    logfile = 'data/linelists/line_selection_logfile.txt'
+#    with open(logfile, 'a') as g:
+#        g.write("{} matches found.\n".format(n))
+#        g.write("{}/{} were FeI\n".format(n_iron, n))
+#        g.write(str(elements))
+#        g.write('\n')
+#        g.write("Min depth = {}, max depth = {}\n".format(minDepth, maxDepth))
+#        g.write("Vel separation = {} [km/s], line depth diff = {}\n".format(
+#              velSeparation / 1000, lineDepthDiff))
+#        g.write('CCD bounds used: {}\n\n'.format('yes' if CCD_bounds
+#                else 'no'))
 
 
 # Main body of code
@@ -382,7 +393,7 @@ outDir = Path('data/linelists')
 #                           spectralMask=bound, CCD_bounds=value)
 filename = outDir / 'Lines_0.15-0.9_800kms_0.2.txt'
 matchLines(redData, filename, minDepth=0.15, maxDepth=0.9,
-            velSeparation=800000, lineDepthDiff=0.2,
+            velSeparation=800000, lineDepthDiff=0.2, vacuum_wl=True,
             spectralMask=mask_no_CCD_bounds, CCD_bounds=False)
 #goldSystematic = "/Users/dberke/Documents/GoldSystematicLineList.txt"
 #matchLines(redData, goldSystematic, minDepth=0.2, maxDepth=0.8,

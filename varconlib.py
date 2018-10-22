@@ -691,7 +691,8 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
     Parameters
     ----------
     line : string
-        The wavelength of the line to look for, in nanometers.
+        The wavelength of the line to look for, in nanometers, (*vacuum*
+        wavelength).
     vac_wl : array_like
         The wavelength array of the spectrum to search (in vacuum wavelengths).
     flux : array_like
