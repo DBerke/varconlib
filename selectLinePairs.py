@@ -21,6 +21,7 @@ elements = {"Na": 11,
             "Ca": 20,
             "Sc": 21,
             "Ti": 22,
+            "V": 23,
             "Cr": 24,
             "Mn": 25,
             "Fe": 26,
@@ -98,7 +99,8 @@ def parse_spectral_mask_file(file):
 
 
 def line_is_masked(line, mask):
-    """Checks if a given spectral line is in a masked region of the spectrum.
+    """
+    Checks if a given spectral line is in a masked region of the spectrum.
 
     Parameters
     ----------
@@ -113,7 +115,9 @@ def line_is_masked(line, mask):
     bool
         *True* if the line is within one of the masked regions, *False*
         otherwise.
+
     """
+
     for region in mask:
         if region[0] < line < region[1]:
             return True
@@ -136,11 +140,13 @@ def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True):
     eLow : float
         The energy of the lower state of the transition being matched, in eV.
     vacuum_wl : bool, Default : True
-        If *True*, return the wavelengths in vacuum; otherwise in air.
+        If *True*, return the wavelengths in vacuum.
 
     """
     for line in KuruczData:
-        wl = round(10 * vac2air(line['wavelength']), 3)
+        # For working with the purple list with its wavelengths in vac, nm.
+        wl = line['wavelength']
+#        wl = round(10 * vac2air(line['wavelength']), 3)
         if abs(wl - wavelength) < 0.03:
             elem_num = trunc(line['elem'])
             elem_ion = int((line['elem'] - elem_num) * 100 + 1)
@@ -190,6 +196,7 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
     elements = set()
     n = 0
     n_iron = 0
+    n_unmatchable = 0
 
     output_lines = []
 
@@ -260,6 +267,8 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
                 except TypeError:
                     print("\nCouldn't find orbital info for")
                     print("\n{} {}{} {}eV".format(wl, elem, ion, eLow))
+                    n_unmatchable += 1
+                    continue
                 prematchedLines.add(int(wl * 10))
                 elements.add(elem)
                 line_matched = True
@@ -282,12 +291,14 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
 
     with open(str(outFile), 'w') as f:
         print('Writing linefile {}'.format(outFile))
-        f.write("#wl({})   wave#   ion    eL     JL     orbL       eH     JH    orbH\n".format(
+        f.write("#wl({})   wave#   ion    eL     JL"
+                "     orbL       eH     JH    orbH\n".format(
                 'vac' if vacuum_wl else 'air'))
         f.writelines(output_lines)
 
     print("\n{} matches found.".format(n))
     print("{}/{} were FeI".format(n_iron, n))
+    print('{} unmatchable lines'.format(n_unmatchable))
     print(elements)
     print("Min depth = {}, max depth = {}".format(minDepth, maxDepth))
     print("Vel separation = {} [km/s], line depth diff = {}".format(
@@ -309,8 +320,13 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
 
 # Main body of code
 
+
+# These two files produces wavelengths in air, in Angstroms.
 redFile = "data/BRASS2018_Sun_PrelimGraded_Lobel.csv"
 blueFile = "data/BRASS2018_Sun_PrelimSpectroWeblines_Lobel.csv"
+
+# This file produces wavelengths in vacuum, in nm.
+purpleFile = 'data/BRASS_Vac_Line_Depths_All.csv'
 KuruczFile = "data/gfallvac08oct17.dat"
 colWidths = (11, 7, 6, 12, 5, 11, 12, 5, 11, 6, 6, 6, 4, 2, 2, 3, 6, 3, 6,
              5, 5, 3, 3, 4, 5, 5, 6)
@@ -318,8 +334,8 @@ colWidths = (11, 7, 6, 12, 5, 11, 12, 5, 11, 6, 6, 6, 4, 2, 2, 3, 6, 3, 6,
 CCD_bounds_file = Path('data/unusable_spectrum_CCDbounds.txt')
 no_CCD_bounds_file = Path('data/unusable_spectrum_noCCDbounds.txt')
 
-mask_CCD_bounds = parse_spectral_mask_file(CCD_bounds_file)
-mask_no_CCD_bounds = parse_spectral_mask_file(no_CCD_bounds_file)
+mask_CCD_bounds = vcl.parse_spectral_mask_file(CCD_bounds_file)
+mask_no_CCD_bounds = vcl.parse_spectral_mask_file(no_CCD_bounds_file)
 
 redData = np.genfromtxt(redFile, delimiter=",", skip_header=1,
                         dtype=(float, "U2", int, float, float, float))
@@ -327,6 +343,10 @@ print("Read red line list.")
 #blueData = np.genfromtxt(blueFile, delimiter=",", skip_header=1,
 #                     dtype=(float, "U2", int, float, float))
 #print("Read blue line list.")
+
+purpleData = np.genfromtxt(purpleFile, delimiter=",", skip_header=1,
+                     dtype=(float, "U2", int, float, float))
+print("Read purple line list.")
 
 # Code to match up the red and blue lists.
 #num_matched = 0
@@ -391,8 +411,8 @@ outDir = Path('data/linelists')
 #                           minDepth=depth[0], maxDepth=depth[1],
 #                           velSeparation=sep, lineDepthDiff=diff,
 #                           spectralMask=bound, CCD_bounds=value)
-filename = outDir / 'Lines_0.15-0.9_800kms_0.2.txt'
-matchLines(redData, filename, minDepth=0.15, maxDepth=0.9,
+filename = outDir / 'Lines_purple_0.15-0.9_800kms_0.2.txt'
+matchLines(purpleData, filename, minDepth=0.15, maxDepth=0.9,
             velSeparation=800000, lineDepthDiff=0.2, vacuum_wl=True,
             spectralMask=mask_no_CCD_bounds, CCD_bounds=False)
 #goldSystematic = "/Users/dberke/Documents/GoldSystematicLineList.txt"
