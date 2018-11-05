@@ -311,7 +311,8 @@ def air2vacESO(air_arr):
 
 
 def vac2airMorton00(wl_vac):
-    """Take an input vacuum wavelength in Angstroms and return the air wavelength.
+    """Take an input vacuum wavelength in Angstroms and return the air
+    wavelength.
 
     Formula taken from 'www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion'
     from Morton (2000, ApJ. Suppl., 130, 403) (IAU standard)
@@ -323,7 +324,8 @@ def vac2airMorton00(wl_vac):
 
 
 def air2vacMortonIAU(wl_air):
-    """Take an input air wavelength in Angstroms and return the vacuum wavelength.
+    """Take an input air wavelength in Angstroms and return the vacuum
+    wavelength.
 
     Formula taken from 'www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion'
     """
@@ -399,6 +401,35 @@ def getvelseparation(wl1, wl2):
                Should be in meters.
     """
     return (wl2 - wl1) * c.value / ((wl1 + wl2) / 2)
+
+
+def parse_spectral_mask_file(file):
+    """Parses a spectral mask file from maskSpectralRegions.py
+
+    Parameters
+    ----------
+    file : str or Path object
+        A path to a text file to parse. Normally this would come from
+        maskSpectralRegions.py, but the general format is a series of
+        comma-separated floats, two per line, that each define a 'bad'
+        region of the spectrum.
+
+    Returns
+    -------
+    list
+        A list of tuples parsed from the file, each one delimiting the
+        boundaries of a 'bad' spectral region.
+    """
+    with open(file, 'r') as f:
+        lines = f.readlines()
+    masked_regions = []
+    for line in lines:
+        if '#' in line:
+            continue
+        start, end = line.rstrip('\n').split(',')
+        masked_regions.append((float(start), float(end)))
+
+    return masked_regions
 
 
 def parabola(x, c0, c1, c2, x0):
@@ -747,6 +778,8 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
         name prefixes to prevent duplication.
     """
 
+    if type(plot_dir) == str:
+        plot_dir = Path(plot_dir)
     # Create a dictionary to store the results
     results = {}
 
@@ -842,7 +875,7 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
         ax = fig.add_subplot(1, 1, 1)
         ax.set_xlim(left=lowerwllim, right=upperwllim)
         ax.set_xlim(left=vac_wl[lowercont], right=vac_wl[uppercont])
-        ax.set_title('{} nm'.format(line), fontsize=14)
+        ax.set_title('{:.4f} nm'.format(line), fontsize=14)
         ax.get_xaxis().get_major_formatter().set_useOffset(False)
         ax.set_xlabel('Wavelength (nm)', fontsize=14)
         ax.set_ylabel('Photons', fontsize=14)
@@ -911,6 +944,8 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
             filepath2 = line_dir / '{}_{}_norm_{:.3f}nm.png'.format(
                                                     plot_dir.parent.stem,
                                                     datestring, float(line))
+            results['gauss_graph_path'] = filepath1
+            results['gauss_norm_graph_path'] = filepath2
             plt.savefig(str(filepath1), format='png')
         else:
             plt.show()
