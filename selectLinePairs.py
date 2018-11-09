@@ -6,8 +6,8 @@ Created on Wed Mar 21 15:57:52 2018
 @author: dberke
 """
 
-# Code to interate through BRASS list of "red" lines (specially curated)
-# to identify pairs given various constraints.
+# Code to iterate through a given line list to identify pairs given
+# various constraints.
 
 import numpy as np
 from math import trunc
@@ -17,6 +17,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 elements = {"Na": 11,
+            "Mg": 12,
             "Si": 14,
             "Ca": 20,
             "Sc": 21,
@@ -147,7 +148,8 @@ def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True):
         # For working with the purple list with its wavelengths in vac, nm.
         wl = line['wavelength']
 #        wl = round(10 * vac2air(line['wavelength']), 3)
-        if abs(wl - wavelength) < 0.03:
+        # This distance is VERY important: 0.003 for nm, 0.03 for Angstroms
+        if abs(wl - wavelength) < 0.003:
             elem_num = trunc(line['elem'])
             elem_ion = int((line['elem'] - elem_num) * 100 + 1)
 #            print(elem_num, elem_ion)
@@ -203,14 +205,15 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
     for item in tqdm(lines):
         line_matched = False
         wl = item[0]
+#        tqdm.write('Searching for matches for line {}'.format(wl))
         elem = item[1]
         ion = item[2]
         eLow = item[3]
-        depth = item[4]
+        depth = item[5]  # Use the measured depth.
 
         if spectralMask:
             # If the line falls in masked region, skip it.
-            if line_is_masked(wl / 10, spectralMask):
+            if line_is_masked(wl, spectralMask):
                 continue
 
         # Check line depth first
@@ -226,7 +229,7 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
             # See if it is in a masked portion of the spectrum,
             # if a mask is given.
             if spectralMask:
-                if line_is_masked(line[0] / 10, spectralMask):
+                if line_is_masked(line[0], spectralMask):
                     # Reject the line and move on to the next one.
                     continue
 
@@ -240,54 +243,58 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
                 continue
 
             # Make sure the second line is within depth limits.
-            if not (minDepth <= line[4] <= maxDepth):
+            if not (minDepth <= line[5] <= maxDepth):
                 continue
 
             # Check line depth differential, reject if outside threshold.
-            if not abs(depth - line[4]) < lineDepthDiff:
+            if not abs(depth - line[5]) < lineDepthDiff:
                 continue
 
             # Check to make sure both the element and ionization states match.
             if (elem != line[1]) or (ion != line[2]):
                 continue
 
-
-
             # If it makes it through all the checks, get the lines' info.
             if not line_matched:
                 # If this is the first match for this line, get its info first.
                 try:
+#                    print('wl = {}'.format(wl))
                     vac_wl, lineInfo = matchKuruczLines(wl, elem, ion, eLow,
                                                         vacuum_wl=vacuum_wl)
+#                    print('vac_wl = {}'.format(vac_wl))
                     lineStr = "\n{:0<8} {:0<9} {}{} {:0<9} {} {:10} {:0<9} {} {:10}".\
                               format(*vac_wl, elem, ion, *lineInfo)
                     output_lines.append(lineStr)
                     output_lines.append("\n")
 #                    print(lineStr)
                 except TypeError:
-                    print("\nCouldn't find orbital info for")
-                    print("\n{} {}{} {}eV".format(wl, elem, ion, eLow))
+                    tqdm.write("\nCouldn't find orbital info for")
+                    tqdm.write("\n{} {}{} {}eV".format(wl, elem, ion, eLow))
                     n_unmatchable += 1
                     continue
                 prematchedLines.add(int(wl * 10))
                 elements.add(elem)
                 line_matched = True
             try:
+#                print('line[0] = {}'.format(line[0]))
                 vac_wl, lineInfo = matchKuruczLines(line[0], line[1], line[2],
                                                     line[3],
                                                     vacuum_wl=vacuum_wl)
+#                print('vac_wl = {}'.format(vac_wl))
                 matchStr = "{:0<8} {:0<9} {}{} {:0<9} {} {:10} {:0<9} {} {:10}".\
                            format(*vac_wl, line[1], line[2], *lineInfo)
                 output_lines.append(matchStr)
                 output_lines.append("\n")
+#                print(line)
 #                print(matchStr)
             except TypeError:
-                print("\nCouldn't find orbital info for")
-                print("  {} {}{} {}eV".format(
+                tqdm.write("\nCouldn't find orbital info for")
+                tqdm.write("  {} {}{} {}eV".format(
                   line[0], line[1], line[2], line[3]))
             n += 1
             if elem == 'Fe' and ion == 1:
                 n_iron += 1
+
 
     with open(str(outFile), 'w') as f:
         print('Writing linefile {}'.format(outFile))
@@ -327,6 +334,7 @@ blueFile = "data/BRASS2018_Sun_PrelimSpectroWeblines_Lobel.csv"
 
 # This file produces wavelengths in vacuum, in nm.
 purpleFile = 'data/BRASS_Vac_Line_Depths_All.csv'
+
 KuruczFile = "data/gfallvac08oct17.dat"
 colWidths = (11, 7, 6, 12, 5, 11, 12, 5, 11, 6, 6, 6, 4, 2, 2, 3, 6, 3, 6,
              5, 5, 3, 3, 4, 5, 5, 6)
@@ -345,7 +353,7 @@ print("Read red line list.")
 #print("Read blue line list.")
 
 purpleData = np.genfromtxt(purpleFile, delimiter=",", skip_header=1,
-                     dtype=(float, "U2", int, float, float))
+                     dtype=(float, "U2", int, float, float, float))
 print("Read purple line list.")
 
 # Code to match up the red and blue lists.
@@ -411,7 +419,7 @@ outDir = Path('data/linelists')
 #                           minDepth=depth[0], maxDepth=depth[1],
 #                           velSeparation=sep, lineDepthDiff=diff,
 #                           spectralMask=bound, CCD_bounds=value)
-filename = outDir / 'Lines_purple_0.15-0.9_800kms_0.2.txt'
+filename = outDir / 'Lines_purple_0.15-0.9_800kms_0.2_CCD.txt'
 matchLines(purpleData, filename, minDepth=0.15, maxDepth=0.9,
             velSeparation=800000, lineDepthDiff=0.2, vacuum_wl=True,
             spectralMask=mask_no_CCD_bounds, CCD_bounds=False)
