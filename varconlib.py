@@ -316,7 +316,8 @@ def air2vacESO(air_arr):
 
 
 def vac2airMorton00(wl_vac):
-    """Take an input vacuum wavelength in Angstroms and return the air wavelength.
+    """Take an input vacuum wavelength in Angstroms and return the air
+    wavelength.
 
     Formula taken from 'www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion'
     from Morton (2000, ApJ. Suppl., 130, 403) (IAU standard)
@@ -328,7 +329,8 @@ def vac2airMorton00(wl_vac):
 
 
 def air2vacMortonIAU(wl_air):
-    """Take an input air wavelength in Angstroms and return the vacuum wavelength.
+    """Take an input air wavelength in Angstroms and return the vacuum
+    wavelength.
 
     Formula taken from 'www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion'
     """
@@ -404,6 +406,35 @@ def getvelseparation(wl1, wl2):
                Should be in meters.
     """
     return (wl2 - wl1) * c.value / ((wl1 + wl2) / 2)
+
+
+def parse_spectral_mask_file(file):
+    """Parses a spectral mask file from maskSpectralRegions.py
+
+    Parameters
+    ----------
+    file : str or Path object
+        A path to a text file to parse. Normally this would come from
+        maskSpectralRegions.py, but the general format is a series of
+        comma-separated floats, two per line, that each define a 'bad'
+        region of the spectrum.
+
+    Returns
+    -------
+    list
+        A list of tuples parsed from the file, each one delimiting the
+        boundaries of a 'bad' spectral region.
+    """
+    with open(file, 'r') as f:
+        lines = f.readlines()
+    masked_regions = []
+    for line in lines:
+        if '#' in line:
+            continue
+        start, end = line.rstrip('\n').split(',')
+        masked_regions.append((float(start), float(end)))
+
+    return masked_regions
 
 
 def parabola(x, c0, c1, c2, x0):
@@ -495,10 +526,10 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
 #        print(gauss_params)
 #        fig = plt.figure(figsize=(8, 8))
 #        ax = fig.add_subplot(1, 1, 1)
-#        ax.errorbar(xnorm, ynorm, yerr=enorm,
+#        ax.errorbar(xnorm, ynorm-continuum+linebottom, yerr=enorm,
 #                    color='blue', marker='o', linestyle='')
 #        ax.plot(xnorm, (gaussian(xnorm, *gauss_params)), color='Black')
-#        outfile = Path('/Users/dberke/Pictures/debug.png')
+#        outfile = Path('/Users/dberke/Pictures/debug_norm.png')
 #        fig.savefig(str(outfile))
 #        plt.close(fig)
         raise
@@ -695,8 +726,9 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
 
     Parameters
     ----------
-    line : string
-        The wavelength of the line to look for, in nanometers.
+    line : str
+        The wavelength of the line to look for, in nanometers, (*vacuum*
+        wavelength).
     vac_wl : array_like
         The wavelength array of the spectrum to search (in vacuum wavelengths).
     flux : array_like
@@ -751,6 +783,8 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
         name prefixes to prevent duplication.
     """
 
+    if type(plot_dir) == str:
+        plot_dir = Path(plot_dir)
     # Create a dictionary to store the results
     results = {}
 
@@ -760,7 +794,7 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
 #    print('Given radial velocity {} km/s, line {} should be at {:.4f}'.
 #          format(radvel, line, shiftedlinewl))
     wlrange = getwlseparation(velsep, shiftedlinewl)  # 5 km/s by default
-    continuumrange = getwlseparation(velsep+2e4, shiftedlinewl)  # +20 km/s
+    continuumrange = getwlseparation(velsep+2e4, shiftedlinewl)  # +25 km/s
     upperwllim = shiftedlinewl + wlrange
     lowerwllim = shiftedlinewl - wlrange
     upperguess = wavelength2index(vac_wl, upperwllim)
@@ -817,9 +851,29 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
 
     # Fit a Gaussian to the normalized data
     if gauss_fit:
-        gaussData = fitGaussian(xnorm, ynorm, enorm, centralwl, radvel,
-                                continuum, linebottom, fluxrange,
-                                verbose=False)
+        try:
+            gaussData = fitGaussian(xnorm, ynorm, enorm, centralwl, radvel,
+                                    continuum, linebottom, fluxrange,
+                                    verbose=False)
+        except RuntimeError:
+            fig_err = plt.figure(figsize=(8, 8))
+            ax_err = fig_err.add_subplot(1, 1, 1)
+            ax_err.set_xlim(left=lowerwllim-0.01, right=upperwllim+0.01)
+            ax_err.vlines(shiftedlinewl, color='crimson',
+                  ymin=flux[lowerguess:upperguess].min(),
+                  ymax=continuum,
+                  linestyle='--')
+            ax_err.axvspan(xmin=vac_wl[lowerlim], xmax=vac_wl[upperlim],
+                           color='red', alpha=0.2)
+            ax_err.axvspan(xmin=lowerwllim, xmax=upperwllim,
+                       color='grey', alpha=0.25)
+            ax_err.errorbar(vac_wl, flux, yerr=err,
+                            color='blue', marker='o', linestyle='')
+            #ax_err.plot(xnorm, (gaussian(xnorm, *gauss_params)), color='Black')
+            outfile = Path('/Users/dberke/Pictures/debug.png')
+            fig_err.savefig(str(outfile))
+            plt.close(fig_err)
+            raise
         results['restframe_line_gauss'] = gaussData['restframe_line_gauss']
         results['vel_err_gauss'] = gaussData['vel_err_gauss']
         results['amplitude_gauss'] = gaussData['amplitude_gauss']
@@ -915,6 +969,8 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
             filepath2 = line_dir / '{}_{}_norm_{:.3f}nm.png'.format(
                                                     plot_dir.parent.stem,
                                                     datestring, float(line))
+            results['gauss_graph_path'] = filepath1
+            results['gauss_norm_graph_path'] = filepath2
             plt.savefig(str(filepath1), format='png')
         else:
             plt.show()
@@ -993,13 +1049,13 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, filename, starname,
     global unfittablelines
     params = (vac_wl, flux, err, radvel, filename, starname)
     line1 = linefind(linepair[0], *params,
-                     plot=plot, velsep=5000, pixrange=3,
+                     plot=plot, velsep=2600, pixrange=3,
                      par_fit=False, gauss_fit=True, spar_fit=False,
                      plot_dir=plot_dir, date_obs=date,
                      save_arrays=save_arrays)
     progressbar.update(1)
     line2 = linefind(linepair[1], *params,
-                     plot=plot, velsep=5000, pixrange=3,
+                     plot=plot, velsep=2600, pixrange=3,
                      par_fit=False, gauss_fit=True, spar_fit=False,
                      plot_dir=plot_dir, date_obs=date,
                      save_arrays=save_arrays)

@@ -76,7 +76,7 @@ def getpairlist(listfile):
                     for wl in temppair[1:]:
                         pairlist.append((temppair[0], wl))
                 else:
-                    raise Error("Single unpaired line.")
+                    raise RuntimeError("Single unpaired line.")
                 temppair = []
 
     return pairlist
@@ -210,13 +210,12 @@ def plot_line_comparisons(mseps, linepairs):
 
 
 ############
-#pairlistfile = "/Users/dberke/code/tables/GoldStandardLineList_vac_working.txt"
-pairlistfile = '/Users/dberke/code/data/linelists/Lines_0.15-0.9_800kms_0.2.txt'
+#pairlistfile = 'data/GoldStandardLineList_vac_working.txt'
+pairlistfile = 'data/linelists/Lines_purple_0.15-0.9_800kms_0.2.txt'
 pairlist = getpairlist(pairlistfile)
 
-for item in pairlist:
-    print(item)
-raise
+print('{} total line pairs to analyze.'.format(len(pairlist)))
+
 #pairlist = (('443.9589', '444.1128'), ('450.0151', '450.3467'),
 #            ('459.9405', '460.3290'), ('460.5846', '460.6877'),
 #            ('465.8889', '466.2840'), ('473.3122', '473.3780'),
