@@ -211,7 +211,7 @@ def plot_line_comparisons(mseps, linepairs):
 
 ############
 #pairlistfile = 'data/GoldStandardLineList_vac_working.txt'
-pairlistfile = 'data/linelists/Lines_0.15-0.9_800kms_0.2.txt'
+pairlistfile = 'data/linelists/Lines_purple_0.15-0.9_800kms_0.2.txt'
 pairlist = getpairlist(pairlistfile)
 
 print('{} total line pairs to analyze.'.format(len(pairlist)))
