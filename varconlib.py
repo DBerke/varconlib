@@ -521,10 +521,10 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
 #        print(gauss_params)
 #        fig = plt.figure(figsize=(8, 8))
 #        ax = fig.add_subplot(1, 1, 1)
-#        ax.errorbar(xnorm, ynorm, yerr=enorm,
+#        ax.errorbar(xnorm, ynorm-continuum+linebottom, yerr=enorm,
 #                    color='blue', marker='o', linestyle='')
 #        ax.plot(xnorm, (gaussian(xnorm, *gauss_params)), color='Black')
-#        outfile = Path('/Users/dberke/Pictures/debug.png')
+#        outfile = Path('/Users/dberke/Pictures/debug_norm.png')
 #        fig.savefig(str(outfile))
 #        plt.close(fig)
         raise
@@ -721,7 +721,7 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
 
     Parameters
     ----------
-    line : string
+    line : str
         The wavelength of the line to look for, in nanometers, (*vacuum*
         wavelength).
     vac_wl : array_like
@@ -789,7 +789,7 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
 #    print('Given radial velocity {} km/s, line {} should be at {:.4f}'.
 #          format(radvel, line, shiftedlinewl))
     wlrange = getwlseparation(velsep, shiftedlinewl)  # 5 km/s by default
-    continuumrange = getwlseparation(velsep+2e4, shiftedlinewl)  # +20 km/s
+    continuumrange = getwlseparation(velsep+2e4, shiftedlinewl)  # +25 km/s
     upperwllim = shiftedlinewl + wlrange
     lowerwllim = shiftedlinewl - wlrange
     upperguess = wavelength2index(vac_wl, upperwllim)
@@ -846,9 +846,29 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
 
     # Fit a Gaussian to the normalized data
     if gauss_fit:
-        gaussData = fitGaussian(xnorm, ynorm, enorm, centralwl, radvel,
-                                continuum, linebottom, fluxrange,
-                                verbose=False)
+        try:
+            gaussData = fitGaussian(xnorm, ynorm, enorm, centralwl, radvel,
+                                    continuum, linebottom, fluxrange,
+                                    verbose=False)
+        except RuntimeError:
+            fig_err = plt.figure(figsize=(8, 8))
+            ax_err = fig_err.add_subplot(1, 1, 1)
+            ax_err.set_xlim(left=lowerwllim-0.01, right=upperwllim+0.01)
+            ax_err.vlines(shiftedlinewl, color='crimson',
+                  ymin=flux[lowerguess:upperguess].min(),
+                  ymax=continuum,
+                  linestyle='--')
+            ax_err.axvspan(xmin=vac_wl[lowerlim], xmax=vac_wl[upperlim],
+                           color='red', alpha=0.2)
+            ax_err.axvspan(xmin=lowerwllim, xmax=upperwllim,
+                       color='grey', alpha=0.25)
+            ax_err.errorbar(vac_wl, flux, yerr=err,
+                            color='blue', marker='o', linestyle='')
+            #ax_err.plot(xnorm, (gaussian(xnorm, *gauss_params)), color='Black')
+            outfile = Path('/Users/dberke/Pictures/debug.png')
+            fig_err.savefig(str(outfile))
+            plt.close(fig_err)
+            raise
         results['restframe_line_gauss'] = gaussData['restframe_line_gauss']
         results['vel_err_gauss'] = gaussData['vel_err_gauss']
         results['amplitude_gauss'] = gaussData['amplitude_gauss']
@@ -875,7 +895,7 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
         ax = fig.add_subplot(1, 1, 1)
         ax.set_xlim(left=lowerwllim, right=upperwllim)
         ax.set_xlim(left=vac_wl[lowercont], right=vac_wl[uppercont])
-        ax.set_title('{:.4f} nm'.format(line), fontsize=14)
+        ax.set_title('{} nm'.format(line), fontsize=14)
         ax.get_xaxis().get_major_formatter().set_useOffset(False)
         ax.set_xlabel('Wavelength (nm)', fontsize=14)
         ax.set_ylabel('Photons', fontsize=14)
@@ -1024,13 +1044,13 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, filename, starname,
     global unfittablelines
     params = (vac_wl, flux, err, radvel, filename, starname)
     line1 = linefind(linepair[0], *params,
-                     plot=plot, velsep=5000, pixrange=3,
+                     plot=plot, velsep=2600, pixrange=3,
                      par_fit=False, gauss_fit=True, spar_fit=False,
                      plot_dir=plot_dir, date_obs=date,
                      save_arrays=save_arrays)
     progressbar.update(1)
     line2 = linefind(linepair[1], *params,
-                     plot=plot, velsep=5000, pixrange=3,
+                     plot=plot, velsep=2600, pixrange=3,
                      par_fit=False, gauss_fit=True, spar_fit=False,
                      plot_dir=plot_dir, date_obs=date,
                      save_arrays=save_arrays)
