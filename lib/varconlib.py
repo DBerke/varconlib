@@ -96,6 +96,11 @@ def map_spectral_order(order):
     ----------
     order : int
         An order number in the range [0, 71]
+
+    Returns
+    -------
+    int
+        The number of the dispersed order.
     """
     if not type(order) is int:
         raise ValueError("order parameter must be an integer in [0, 71]")
@@ -109,10 +114,10 @@ def map_spectral_order(order):
         raise ValueError("Given order not in range [0, 71].")
 
 
-def readHARPSfile(FITSfile, obj=False, wavelenmin=False, date_obs=False,
-                  spec_bin=False, med_snr=False, hdnum=False, radvel=False,
-                  coeffs=False):
-    """Read a HARPS FITS file and return a dictionary of information.
+def readHARPSfile1d(FITSfile, obj=False, wavelenmin=False, date_obs=False,
+                    spec_bin=False, med_snr=False, hdnum=False, radvel=False,
+                    coeffs=False):
+    """Read a HARPS ADP FITS file and return a dictionary of information.
 
     Parameters
     ----------
