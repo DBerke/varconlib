@@ -17,37 +17,63 @@ from astropy.io import fits
 from pathlib import Path
 
 
-class HARPSFile2D:
+class HARPSFile2D(object):
     """
     Class to contain data from a HARPS 2D extracted spectrum file.
     """
-    def __init__(self, FITSfile, verbose=False):
+    def __init__(self, FITSfile):
         if type(FITSfile) is str:
             self.filename = Path(FITSfile)
         else:
             self.filename = FITSfile
         with fits.open(self.filename) as hdulist:
             self.header = hdulist[0].header
-            self.raw_flux_arr = hdulist[0].data
-
-        # Get the gain from the file header:
-#        gain = self.header['HIERARCH ESO DRS CCD CONAD']
-#        self.photon_flux_arr = self.raw_flux_arr * gain
-#        self.error_arr = self.make_error_array(self.photon_flux_arr,
-#                                               verbose)
-#
-#        self.wavelength_arr = self.make_wavelength_array(self.raw_flux_arr)
-#        tqdm.write('Finished constructing wavelength array.')
+            self.data = hdulist[0].data
 
     def __repr__(self):
-        return '{}, {}'.format(self.header['OBJECT'], self.filename.stem)
+        return "{}('{}')".format(self.__class__.__name__, self.filename)
 
+    def __str__(self):
+        return '{}, {}'.format(self.header['OBJECT'], self.filename.stem)
 
     def get_header_card(self, flag):
         """
         Return the value of the header card with the given flag.
         """
         return self.header[flag]
+
+
+class HARPSFile2DScience(HARPSFile2D):
+    """
+    Subclass of HARPSFile2D to handle observations specifically.
+    """
+    def __init__(self, blazefile=None):
+        super().__init__()
+
+    def calibrate_self(self, verbose=False):
+        """
+        Calibrate the data and create error and wavelength arrays for it.
+        """
+        # Calibrate ADUs to photoelectrons using the gain
+        self.photon_flux_arr = self.flux_calibrate_array(self.data)
+        # Construct an error array using the photon flux in each pixel
+        self.error_arr = self.make_error_array(self.photon_flux_arr,
+                                               verbose=verbose)
+        # Create a wavelengtha array using the headers in the file
+        self.wavelength_arr = self.make_wavelength_array(self.raw_flux_arr)
+        tqdm.write('Finished constructing wavelength array.')
+
+    def blaze_correct(self, blazefile):
+        """
+        Blaze-correct an observation using a separate blaze file.
+
+        Parameters
+        ----------
+        blazefile : HARPSFile2D instance
+            A blaze file imported as a HARPSFile2D instance.
+        """
+        self.photon_flux_arr / blazefile.data
+        self.effor_arr / blazefile.data
 
     def make_error_array(self, array, verbose=False):
         """
@@ -151,9 +177,8 @@ class HARPSFile2D:
         """
         # Get the gain from the file header:
         gain = self.header[card_title]
-        photon_flux_arr = self.raw_flux_arr * gain
+        photon_flux_arr = self.data * gain
         return photon_flux_arr
-
 
 
 def readHARPSfile1d(FITSfile, obj=False, wavelenmin=False, date_obs=False,
