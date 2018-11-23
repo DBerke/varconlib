@@ -29,6 +29,7 @@ class HARPSFile2D(object):
         with fits.open(self.filename) as hdulist:
             self.header = hdulist[0].header
             self.data = hdulist[0].data
+        self.header_cards = {}
 
     def __repr__(self):
         return "{}('{}')".format(self.__class__.__name__, self.filename)
@@ -40,7 +41,12 @@ class HARPSFile2D(object):
         """
         Return the value of the header card with the given flag.
         """
-        return self.header[flag]
+        try:
+            value = self.header_cards[flag]
+        except KeyError:
+            value = self.header[flag]
+            self.header_cards[flag] = value
+        return value
 
 
 class HARPSFile2DScience(HARPSFile2D):
@@ -49,6 +55,8 @@ class HARPSFile2DScience(HARPSFile2D):
     """
     def __init__(self, blazefile=None):
         super().__init__()
+        if blazefile:
+            self.blaze_correct(self, blazefile)
 
     def calibrate_self(self, verbose=False):
         """
