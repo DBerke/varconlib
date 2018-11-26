@@ -15,6 +15,7 @@ from scipy.constants import lambda2nu, h, e
 import varconlib as vcl
 from pathlib import Path
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 elements = {"Na": 11,
             "Mg": 12,
@@ -150,6 +151,7 @@ def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True):
 #        wl = round(10 * vac2air(line['wavelength']), 3)
         # This distance is VERY important: 0.003 for nm, 0.03 for Angstroms
         if abs(wl - wavelength) < 0.003:
+            line_offsets.append(abs(wl - wavelength))
             elem_num = trunc(line['elem'])
             elem_ion = int((line['elem'] - elem_num) * 100 + 1)
 #            print(elem_num, elem_ion)
@@ -170,7 +172,7 @@ def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True):
                     highE = line['energy1']
                     highOrb = line['label1']
                     highJ = line['J1']
-                if abs(eLow - energy1) < 0.03 or abs(eLow - energy2) < 0.03:
+                if abs(eLow - energy1) < 0.03 or abs(eLow - energy2) < 0.003:
                     wavenumber = round((1e8 / (line['wavelength'] * 10)), 3)
                     if not vacuum_wl:
                         PeckReederWL = vac2airPeckReeder(line['wavelength'])
@@ -326,7 +328,8 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
 
 
 # Main body of code
-
+global line_offsets
+line_offsets = []
 
 # These two files produces wavelengths in air, in Angstroms.
 redFile = "data/BRASS2018_Sun_PrelimGraded_Lobel.csv"
@@ -419,7 +422,7 @@ outDir = Path('data/linelists')
 #                           minDepth=depth[0], maxDepth=depth[1],
 #                           velSeparation=sep, lineDepthDiff=diff,
 #                           spectralMask=bound, CCD_bounds=value)
-filename = outDir / 'Lines_purple_0.15-0.9_800kms_0.2_CCD.txt'
+filename = outDir / 'Lines_purple_0.15-0.9_800kms_0.2_test.txt'
 matchLines(purpleData, filename, minDepth=0.15, maxDepth=0.9,
             velSeparation=800000, lineDepthDiff=0.2, vacuum_wl=True,
             spectralMask=mask_no_CCD_bounds, CCD_bounds=False)
@@ -428,3 +431,8 @@ matchLines(purpleData, filename, minDepth=0.15, maxDepth=0.9,
 #           velSeparation=800000, lineDepthDiff=0.1)
 #matchLines(blueData, minDepth=0.3, maxDepth=0.7, velSeparation=400000,
 #               lineDepthDiff=0.05)
+fig = plt.figure(figsize=(8, 8))
+ax = fig.add_subplot(1, 1, 1)
+ax.set_xlabel('$\Delta (\lambda - \lambda_0)$ nm')
+ax.hist(line_offsets, bins=20, linewidth=1, edgecolor='black')
+plt.show()
