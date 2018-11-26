@@ -900,7 +900,7 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
         ax = fig.add_subplot(1, 1, 1)
         ax.set_xlim(left=lowerwllim, right=upperwllim)
         ax.set_xlim(left=vac_wl[lowercont], right=vac_wl[uppercont])
-        ax.set_title('{} nm'.format(line), fontsize=14)
+        ax.set_title('{:.4f} nm'.format(line), fontsize=14)
         ax.get_xaxis().get_major_formatter().set_useOffset(False)
         ax.set_xlabel('Wavelength (nm)', fontsize=14)
         ax.set_ylabel('Photons', fontsize=14)
@@ -963,10 +963,10 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
                     raise
             if not line_dir.exists():
                 line_dir.mkdir()
-            filepath1 = line_dir / '{}_{}_{:.3f}nm.png'.format(
+            filepath1 = line_dir / '{}_{}_{:.4f}nm.png'.format(
                                                     plot_dir.parent.stem,
                                                     datestring, float(line))
-            filepath2 = line_dir / '{}_{}_norm_{:.3f}nm.png'.format(
+            filepath2 = line_dir / '{}_{}_norm_{:.4f}nm.png'.format(
                                                     plot_dir.parent.stem,
                                                     datestring, float(line))
             results['gauss_graph_path'] = filepath1
