@@ -75,6 +75,10 @@ def getpairlist(listfile):
                 elif len(temppair) > 2:
                     for wl in temppair[1:]:
                         pairlist.append((temppair[0], wl))
+                elif temppair == []:
+                    # This should skip the first blank line beneath the header
+                    # that's output by default in pair list files.
+                    pass
                 else:
                     raise RuntimeError("Single unpaired line.")
                 temppair = []
