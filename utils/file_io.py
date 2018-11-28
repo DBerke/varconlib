@@ -55,21 +55,29 @@ class HARPSFile2DScience(HARPSFile2D):
     """
     def __init__(self, blazefile=None):
         super().__init__()
-        if blazefile:
-            self.blaze_correct(self, blazefile)
+        self._raw_flux_array = self.data
+        self._wavelength_array = None
+        self._photon_flux_array = None
+        self._error_array = None
+#        if blazefile:
+#            self.blaze_correct(self, blazefile)
 
     def calibrate_self(self, verbose=False):
         """
         Calibrate the data and create error and wavelength arrays for it.
+
         """
+
         # Calibrate ADUs to photoelectrons using the gain
-        self.photon_flux_arr = self.flux_calibrate_array(self.data)
+        self._photon_flux_array = self.get_photon_flux_array(self.
+                                                             _raw_flux_array)
+
         # Construct an error array using the photon flux in each pixel
-        self.error_arr = self.make_error_array(self.photon_flux_arr,
+        self._error_arr = self.get_error_array(self._photon_flux_array,
                                                verbose=verbose)
+
         # Create a wavelengtha array using the headers in the file
-        self.wavelength_arr = self.make_wavelength_array(self.raw_flux_arr)
-        tqdm.write('Finished constructing wavelength array.')
+        self._wavelength_arr = self.get_wavelength_array(self._raw_flux_array)
 
     def blaze_correct(self, blazefile):
         """
@@ -79,67 +87,29 @@ class HARPSFile2DScience(HARPSFile2D):
         ----------
         blazefile : HARPSFile2D instance
             A blaze file imported as a HARPSFile2D instance.
+
         """
-        self.photon_flux_arr / blazefile.data
-        self.effor_arr / blazefile.data
 
-    def make_error_array(self, array, verbose=False):
-        """
-        Construct an error array based on the reported flux values for the
-        observation.
+        self._photon_flux_arr / blazefile.data
+        self._error_arr / blazefile.data
 
-        Parameters
-        ----------
-        array : array_like
-            The array to be used as the base to construct the error array from.
-            By default this should be the instances' `photon_flux_arr`, which
-            will require the `flux_calibrate_array` method to be run first.
-        verbose : bool, Default: False
-            If *True*, the method will print out how many pixels with negative
-            flux were found during the process of constructing the error array
-            (with the position of the pixel in the array and its flux) and
-            in a summary afterwards stating how many were found.
-
-        Returns
-        -------
-        NumPy array
-            An array with the same shape as the input array containing the
-            errors, assuming Poisson statistics for the noise. This is simply
-            the square root of the flux in each pixel.
-        """
-        bad_pixels = 0
-        error_arr = np.ones(array.shape)
-        for m in range(array.shape[0]):
-            for n in range(array.shape[1]):
-                if array[m, n] < 0:
-                    if verbose:
-                        tqdm.write(array[m, n], m, n)
-                    error_arr[m, n] = 999
-                    bad_pixels += 1
-                else:
-                    error_arr[m, n] = np.sqrt(array[m, n])
-        if verbose:
-            tqdm.write('{} pixels with negative flux found.'.
-                       format(bad_pixels))
-        return error_arr
-
-    def make_wavelength_array(self, array):
+    def make_wavelength_array(self, source_array):
         """
         Construct a wavelength array (in Angstroms) for the observation.
 
         Parameters
         ----------
-        array : array_like
+        source_array : array_like
             The array to be used to construct the wavelength array. Only the
             shape of the array is actually used so it just needs to be an array
             of the proper shape (72, 4096). The default value uses the
-            `raw_flux_arr` array which should always be available.
+            `_raw_flux_array` array which should always be available.
 
         Returns
         -------
         NumPy array
             An array of the same shape as the input array specifying the
-            wavelength of each pixel in Angstroms.
+            wavelength of each pixel (element in the array) in Angstroms.
 
         Notes
         -----
@@ -150,43 +120,97 @@ class HARPSFile2DScience(HARPSFile2D):
         [1] Dumusque, X. "Measuring precise radial velocities on individual
         spectral lines I. Validation of the method and application to mitigate
         stellar activity", Astronomy & Astrophysics, 2018
+
         """
-        wavelength_arr = np.zeros(array.shape) * unyt.angstrom
-        for order in trange(0, 72):
+
+        wavelength_array = np.zeros(source_array.shape) * unyt.angstrom
+        for order in trange(0, 72, total=72, unit='orders'):
             for i in range(0, 4, 1):
                 coeff = 'ESO DRS CAL TH COEFF LL{0}'.format((4 * order) + i)
                 coeff_val = self.header[coeff]
                 for pixel in range(0, 4096):
-                    wavelength_arr[order, pixel] += coeff_val *\
-                                                    (pixel ** i) *\
-                                                    unyt.angstrom
-        return wavelength_arr
+                    wavelength_array[order, pixel] += coeff_val *\
+                                                      (pixel ** i) *\
+                                                      unyt.angstrom
+        return wavelength_array
 
-    def flux_calibrate_array(self, array,
-                             card_title='HIERARCH ESO DRS CCD CONAD'):
+    def get_photon_flux_array(self, source_array=None,
+                              card_title='HIERARCH ESO DRS CCD CONAD'):
         """
         Calibrate the raw flux array using the gain to recover the
         photoelectron flux.
 
         Parameters
         ----------
-        array : array_like
-            The array containing the raw flux to calibrate. By default this
-            will be `self.raw_flux_arr`.
+        source_array : array_like
+            The array containing the raw flux to calibrate. If none is given
+            will default to `self._raw_flux_array`.
         card_title : str
             A string representing the value of the header card to read to find
-            the gain. By default set to the value found in HARPS e2ds files.
+            the gain. By default set to the value found in HARPS e2ds files,
+            'HIERARCH ESO DRS CCD CONAD'.
 
         Returns
         -------
         NumPy array
             An array created by multiplying the input array by the gain from
             the file header.
+
         """
+
+        if source_array is None:
+            source_array = self._raw_flux_array
         # Get the gain from the file header:
         gain = self.header[card_title]
-        photon_flux_arr = self.data * gain
-        return photon_flux_arr
+        assert type(gain) == float, f"Gain value is a {type(gain)}!"
+        photon_flux_array = source_array * gain
+        return photon_flux_array
+
+    def get_error_array(self, source_array=None, verbose=False):
+        """
+        Construct an error array based on the reported flux values for the
+        observation.
+
+        Parameters
+        ----------
+        source_array : array_like
+            The array to be used as the base to construct the error array from.
+            Will default to the instances' `_photon_flux_array`.
+        verbose : bool, Default: False
+            If *True*, the method will print out how many pixels with negative
+            flux were found during the process of constructing the error array
+            (with the position of the pixel in the array and its flux) and
+            in a summary afterwards state how many were found.
+
+        Returns
+        -------
+        NumPy array
+            An array with the same shape as the input array containing the
+            errors, assuming Poisson statistics for the noise. This is simply
+            the square root of the flux in each pixel.
+
+        """
+
+        if source_array is None:
+            if self.photon_flux_array is None:
+                source_array = self.get_photon_flux_array()
+            else:
+                source_array = self._photon_flux_array
+        bad_pixels = 0
+        error_array = np.ones(source_array.shape)
+        for m in range(source_array.shape[0]):
+            for n in range(source_array.shape[1]):
+                if source_array[m, n] < 0:
+                    if verbose:
+                        tqdm.write(source_array[m, n], m, n)
+                    error_array[m, n] = 1e5
+                    bad_pixels += 1
+                else:
+                    error_array[m, n] = np.sqrt(source_array[m, n])
+        if verbose:
+            tqdm.write('{} pixels with negative flux found.'.
+                       format(bad_pixels))
+        return error_array
 
 
 def readHARPSfile1d(FITSfile, obj=False, wavelenmin=False, date_obs=False,
