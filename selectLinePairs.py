@@ -9,13 +9,14 @@ Created on Wed Mar 21 15:57:52 2018
 # Code to iterate through a given line list to identify pairs given
 # various constraints.
 
-import numpy as np
 from math import trunc
+import numpy as np
 from scipy.constants import lambda2nu, h, e
-import varconlib as vcl
+import matplotlib.pyplot as plt
 from pathlib import Path
 from tqdm import tqdm
-import matplotlib.pyplot as plt
+import varconlib as vcl
+import unyt
 
 elements = {"Na": 11,
             "Mg": 12,
@@ -31,17 +32,34 @@ elements = {"Na": 11,
 
 
 def wn2eV(percm):
-    """Return the energy given in cm^-1 in eV
+    """Return the energy given in cm^-1 in eV.
 
-    Invert cm^-1, divide by 100, divide into c, multiply by h, divide by e
+    Invert cm^-1, divide by 100, divide into c, multiply by h, divide by e.
 
     """
     if percm == 0.:
         result = 0.
     else:
-        wl = (1 / percm) / 100
-        vu = lambda2nu(wl)
-        result = (vu * h) / e
+#        wl = (1 / percm) / 100
+#        vu = lambda2nu(wl)
+#        result = (vu * h) / e
+        percm = percm * unyt.cm**-1
+        E = percm.to(unyt.m**-1) * unyt.hmks * unyt.c
+        result = E.to(unyt.eV)
+    return result
+
+
+def eV2wn(eV):
+    """Return energy given in eV in cm^-1.
+
+    """
+
+    if eV == 0.:
+        result = 0.
+    else:
+        eV = eV * unyt.eV
+        nu = eV.to(unyt.J) / (unyt.hmks * unyt.c)
+        result = nu.to(unyt.cm**-1)
     return result
 
 
@@ -156,23 +174,26 @@ def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True):
             elem_ion = int((line['elem'] - elem_num) * 100 + 1)
 #            print(elem_num, elem_ion)
             if elements[elem] == elem_num and ion == elem_ion:
-                energy1 = round(wn2eV(line['energy1']), 3)
-                energy2 = round(wn2eV(line['energy2']), 3)
+                energy1 = line['energy1']
+                energy2 = line['energy2']
+                e_lower = eV2wn(eLow)
                 if energy1 < energy2:
-                    lowE = line['energy1']
+                    lowE = line['energy1'] * unyt.cm**-1
                     lowOrb = line['label1']
                     lowJ = line['J1']
-                    highE = line['energy2']
+                    highE = line['energy2'] * unyt.cm**-1
                     highOrb = line['label2']
                     highJ = line['J2']
                 else:
-                    lowE = line['energy2']
+                    lowE = line['energy2'] * unyt.cm**-1
                     lowOrb = line['label2']
                     lowJ = line['J2']
-                    highE = line['energy1']
+                    highE = line['energy1'] * unyt.cm**-1
                     highOrb = line['label1']
                     highJ = line['J1']
-                if abs(eLow - energy1) < 0.03 or abs(eLow - energy2) < 0.003:
+                energy_diff = abs(e_lower - lowE)
+                print(energy_diff)
+                if energy_diff < 1:
                     wavenumber = round((1e8 / (line['wavelength'] * 10)), 3)
                     if not vacuum_wl:
                         PeckReederWL = vac2airPeckReeder(line['wavelength'])
