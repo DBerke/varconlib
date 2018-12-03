@@ -9,9 +9,10 @@ This library contains functions to deal with opening files from HARPS (both
 1D ADP files and 2D extracted e2ds files) and ESPRESSO.
 """
 
-import numpy as np
 import datetime as dt
+import numpy as np
 import unyt
+import matplotlib.pyplot as plt
 from tqdm import tqdm, trange
 from astropy.io import fits
 from pathlib import Path
@@ -23,63 +24,63 @@ class HARPSFile2D(object):
     """
     def __init__(self, FITSfile):
         if type(FITSfile) is str:
-            self.filename = Path(FITSfile)
+            self._filename = Path(FITSfile)
         else:
-            self.filename = FITSfile
-        with fits.open(self.filename) as hdulist:
-            self.header = hdulist[0].header
-            self.data = hdulist[0].data
-        self.header_cards = {}
+            self._filename = FITSfile
+        with fits.open(self._filename) as hdulist:
+            self._header = hdulist[0].header
+            self._rawData = hdulist[0].data
 
     def __repr__(self):
-        return "{}('{}')".format(self.__class__.__name__, self.filename)
+        return "{}('{}')".format(self.__class__.__name__, self._filename)
 
     def __str__(self):
-        return '{}, {}'.format(self.header['OBJECT'], self.filename.stem)
+        return '{}, {}'.format(self._header['OBJECT'], self._filename.stem)
 
-    def get_header_card(self, flag):
+    def getHeaderCard(self, flag):
         """
         Return the value of the header card with the given flag.
+
         """
-        try:
-            value = self.header_cards[flag]
-        except KeyError:
-            value = self.header[flag]
-            self.header_cards[flag] = value
-        return value
+
+        return self._header[flag]
+
+    def plotSelf(self):
+        """
+        Return a plot of the data.
+        """
+        pass
 
 
 class HARPSFile2DScience(HARPSFile2D):
     """
     Subclass of HARPSFile2D to handle observations specifically.
     """
-    def __init__(self, blazefile=None):
-        super().__init__()
-        self._raw_flux_array = self.data
-        self._wavelength_array = None
-        self._photon_flux_array = None
-        self._error_array = None
-#        if blazefile:
-#            self.blaze_correct(self, blazefile)
+    def __init__(self, FITSfile):
+        super().__init__(FITSfile)
+        self._rawFluxArray = self._rawData
+        self._wavelengthArray = None
+        self._photonFluxArray = None
+        self._errorArray = None
+        self._blazeFile = self.getHeaderCard('HIERARCH ESO DRS BLAZE FILE')
 
-    def calibrate_self(self, verbose=False):
+    def makeArrays(self, verbose=False):
         """
-        Calibrate the data and create error and wavelength arrays for it.
+        Create error and wavelength arrays for the observation.
 
         """
 
         # Calibrate ADUs to photoelectrons using the gain
-        self._photon_flux_array = self.get_photon_flux_array(self.
-                                                             _raw_flux_array)
+        self._photonFluxArray = self.getPhotonFluxArray(self._rawFluxArray)
 
         # Construct an error array using the photon flux in each pixel
-        self._error_arr = self.get_error_array(self._photon_flux_array,
-                                               verbose=verbose)
+        self._errorArray = self.getErrorArray(self._photonFluxArray,
+                                              verbose=verbose)
 
-        # Create a wavelengtha array using the headers in the file
-        self._wavelength_arr = self.get_wavelength_array(self._raw_flux_array)
+        # Create a wavelength array using the headers in the file
+        self._wavelengthArray = self.getWavelengthArray(self._rawFluxArray)
 
-    def blaze_correct(self, blazefile):
+    def blazeCorrectSelf(self, blaze_file):
         """
         Blaze-correct an observation using a separate blaze file.
 
@@ -90,10 +91,14 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        self._photon_flux_arr / blazefile.data
-        self._error_arr / blazefile.data
+        assert 'blaze' in str(blaze_file), "'blaze' not found in file name!"
 
-    def make_wavelength_array(self, source_array):
+        print(self._photonFluxArray.shape, blaze_file._rawData.shape)
+
+        self._photonFluxArray /= blaze_file._rawData
+        self._errorArray /= blaze_file._rawData
+
+    def getWavelengthArray(self, array=None):
         """
         Construct a wavelength array (in Angstroms) for the observation.
 
@@ -103,7 +108,7 @@ class HARPSFile2DScience(HARPSFile2D):
             The array to be used to construct the wavelength array. Only the
             shape of the array is actually used so it just needs to be an array
             of the proper shape (72, 4096). The default value uses the
-            `_raw_flux_array` array which should always be available.
+            instance's `_rawFluxArray` array which should always be available.
 
         Returns
         -------
@@ -123,19 +128,23 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
+        if array is None:
+            source_array = self._rawFluxArray
+        else:
+            source_array = array
         wavelength_array = np.zeros(source_array.shape) * unyt.angstrom
         for order in trange(0, 72, total=72, unit='orders'):
             for i in range(0, 4, 1):
                 coeff = 'ESO DRS CAL TH COEFF LL{0}'.format((4 * order) + i)
-                coeff_val = self.header[coeff]
+                coeff_val = self._header[coeff]
                 for pixel in range(0, 4096):
                     wavelength_array[order, pixel] += coeff_val *\
                                                       (pixel ** i) *\
                                                       unyt.angstrom
         return wavelength_array
 
-    def get_photon_flux_array(self, source_array=None,
-                              card_title='HIERARCH ESO DRS CCD CONAD'):
+    def getPhotonFluxArray(self, source_array=None,
+                           card_title='HIERARCH ESO DRS CCD CONAD'):
         """
         Calibrate the raw flux array using the gain to recover the
         photoelectron flux.
@@ -161,12 +170,12 @@ class HARPSFile2DScience(HARPSFile2D):
         if source_array is None:
             source_array = self._raw_flux_array
         # Get the gain from the file header:
-        gain = self.header[card_title]
+        gain = self._header[card_title]
         assert type(gain) == float, f"Gain value is a {type(gain)}!"
         photon_flux_array = source_array * gain
         return photon_flux_array
 
-    def get_error_array(self, source_array=None, verbose=False):
+    def getErrorArray(self, array=None, verbose=False):
         """
         Construct an error array based on the reported flux values for the
         observation.
@@ -191,11 +200,12 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        if source_array is None:
-            if self.photon_flux_array is None:
-                source_array = self.get_photon_flux_array()
-            else:
-                source_array = self._photon_flux_array
+        if array is None:
+            if self._photonFluxArray is None:
+                self._photonFluxArray = self.getPhotonFluxArray()
+            source_array = self._photonFluxArray
+        else:
+            source_array = array
         bad_pixels = 0
         error_array = np.ones(source_array.shape)
         for m in range(source_array.shape[0]):
@@ -211,6 +221,98 @@ class HARPSFile2DScience(HARPSFile2D):
             tqdm.write('{} pixels with negative flux found.'.
                        format(bad_pixels))
         return error_array
+
+    def findWavelength(self, wavelength=None, unit=None):
+        """
+        Find which orders contain a given wavelength.
+
+        This function will return the indices of the wavelength orders that
+        contain the given wavelength. The result will be a length-1 or -2 tuple
+        containing integers in the range [0, 71].
+
+        Parameters
+        ----------
+        wavelength : unyt.array.unyt_quantity
+            The wavelength to find in the wavelength array. This should be a
+            unyt.array.unyt_quantity object of length 1.
+
+        Returns
+        -------
+        tuple
+            A tuple of ints of length 1 or 2, representing the indices of the
+            orders in which the input wavelength is found. The integers will
+            be in the range [0, 7].
+
+        """
+
+        wavelength_to_find = wavelength.to(unyt.angstrom)
+
+        # Create the wavelength array if it doesn't exist yet for some reason.
+        if self._wavelengthArray is None:
+            self._wavelengthArray = self.getWavelengthArray()
+
+        # Make sure the wavelength to find is in the array in the first place.
+        array_min = self._wavelengthArray[0, 0]
+        array_max = self._wavelengthArray[71, -1]
+        assert array_min <= wavelength_to_find <= array_max,\
+            "Given wavelength not found within array limits! {}, {}".format(
+                    array_min, array_max)
+
+        # Set up a list to hold the indices of the orders where the wavelength
+        # is found.
+        orders_wavelength_found_in = []
+        for order in range(0, 72):
+            order_min = self._wavelengthArray[order, 0]
+            order_max = self._wavelengthArray[order, -1]
+            if order_min <= wavelength_to_find <= order_max:
+                orders_wavelength_found_in.append(order)
+        assert len(orders_wavelength_found_in) < 3,\
+            "Wavelength found in more than two orders!"
+        return tuple(orders_wavelength_found_in)
+
+    def plotOrder(self, index=None, passed_axis=None, **kwargs):
+        """
+        Plot a single order of the data, given its index.
+
+        Parameters
+        ----------
+        index : int
+            An integer in the range [0, 71] representing the index of the
+            order to plot.
+        passed_axis : a matplotlib axes instance
+            If an axes instance is passed, plot the order onto it. Else,
+            create a new figure and display it.
+        **kwargs
+            Any additional keyword arguments are passed on to matplotlib's
+            plot function.
+
+        Returns
+        -------
+        matplotlib axes instance, optional
+            If an instance of `matplotlib.axes` was passed, return it with the
+            designated order plotted on it. If no axes was passed, show the
+            plot instead.
+        """
+
+        # Check that the index is correct.
+        assert 0 <= index <= 71, "Index is not in [0, 71]!"
+
+        if (self._wavelengthArray is None) or (self._errorArray is None):
+            self.calibrateSelf()
+        if passed_axis:
+            ax = passed_axis
+        else:
+            fig = plt.figure(figsize=(8, 8))
+            ax = fig.add_subplot(1, 1, 1)
+
+        # Plot the requested axis.
+        ax.plot(self._wavelengthArray[index], self._photonFluxArray[index],
+                **kwargs)
+
+        if passed_axis:
+            return ax
+        else:
+            fig.show()
 
 
 def readHARPSfile1d(FITSfile, obj=False, wavelenmin=False, date_obs=False,
