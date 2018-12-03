@@ -64,21 +64,28 @@ class HARPSFile2DScience(HARPSFile2D):
         self._errorArray = None
         self._blazeFile = self.getHeaderCard('HIERARCH ESO DRS BLAZE FILE')
 
-    def makeArrays(self, verbose=False):
+    def calibrateSelf(self, verbose=False):
         """
-        Create error and wavelength arrays for the observation.
+        Create error and wavelength arrays for the observation and convert from
+        ADUs to photons.
+
+        Will only create the arrays and do the calibration if they haven't
+        already been done, so calling it multiple times should't cause any
+        additional slowdown.
 
         """
 
-        # Calibrate ADUs to photoelectrons using the gain
-        self._photonFluxArray = self.getPhotonFluxArray(self._rawFluxArray)
+        if self.photonFluxArray is None:
+            # Calibrate ADUs to photoelectrons using the gain
+            self._photonFluxArray = self.getPhotonFluxArray(self._rawFluxArray)
 
-        # Construct an error array using the photon flux in each pixel
-        self._errorArray = self.getErrorArray(self._photonFluxArray,
-                                              verbose=verbose)
-
-        # Create a wavelength array using the headers in the file
-        self._wavelengthArray = self.getWavelengthArray(self._rawFluxArray)
+        if self._errorArray is None:
+            # Construct an error array using the photon flux in each pixel
+            self._errorArray = self.getErrorArray(self._photonFluxArray,
+                                                  verbose=verbose)
+        if self._wavelengthArray is None:
+            # Create a wavelength array using the headers in the file
+            self._wavelengthArray = self.getWavelengthArray(self._rawFluxArray)
 
     def blazeCorrectSelf(self, blaze_file):
         """
@@ -93,7 +100,8 @@ class HARPSFile2DScience(HARPSFile2D):
 
         assert 'blaze' in str(blaze_file), "'blaze' not found in file name!"
 
-        print(self._photonFluxArray.shape, blaze_file._rawData.shape)
+        if (self._photonFluxArray is None) or (self._errorArray is None):
+            self.calibrateSelf()
 
         self._photonFluxArray /= blaze_file._rawData
         self._errorArray /= blaze_file._rawData
@@ -168,7 +176,7 @@ class HARPSFile2DScience(HARPSFile2D):
         """
 
         if source_array is None:
-            source_array = self._raw_flux_array
+            source_array = self._rawFluxArray
         # Get the gain from the file header:
         gain = self._header[card_title]
         assert type(gain) == float, f"Gain value is a {type(gain)}!"
