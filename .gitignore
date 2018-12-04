@@ -107,3 +107,6 @@ data/
 
 # FITS files definitely shouldn't be added by default
 .fits
+
+# Ignore .DS_store files
+.DS_Store
