@@ -144,13 +144,14 @@ def line_is_masked(line, mask):
     return False
 
 
-def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True):
+def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True,
+                     tolerance=2000*unyt.m/unyt.s):
     """Return the line from Kurucz list matching given parameters.
 
     Parameters
     ----------
     wavelength : float
-        The wavelength of the line to be matched, in vacuum, in Angstroms.
+        The wavelength of the line to be matched, in vacuum, in nm.
     elem : str
         A string representing the standard two-letter chemical abbreviation
         for the chemical element responsible for the transition being matched.
@@ -163,12 +164,16 @@ def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True):
         If *True*, return the wavelengths in vacuum.
 
     """
+    wavelength = wavelength * unyt.nm
+    wl_tolerance = vcl.getwlseparation(tolerance.value, wavelength)
+    print(f'wl_tolerance of {tolerance} at {wavelength} is {wl_tolerance:.4f}')
     for line in KuruczData:
         # For working with the purple list with its wavelengths in vac, nm.
-        wl = line['wavelength']
+        wl = line['wavelength'] * unyt.nm
 #        wl = round(10 * vac2air(line['wavelength']), 3)
         # This distance is VERY important: 0.003 for nm, 0.03 for Angstroms
-        if abs(wl - wavelength) < 0.003:
+        if abs(wl - wavelength) < wl_tolerance:
+            print(f'Found line with wavelength diff = {wl - wavelength:.4f}')
             line_offsets.append(abs(wl - wavelength))
             elem_num = trunc(line['elem'])
             elem_ion = int((line['elem'] - elem_num) * 100 + 1)
@@ -192,8 +197,18 @@ def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True):
                     highOrb = line['label1']
                     highJ = line['J1']
                 energy_diff = abs(e_lower - lowE)
-                print(energy_diff)
-                if energy_diff < 1:
+                print(f'energy_diff is {energy_diff}')
+                delta_wl = (wavelength + wl_tolerance)
+                delta_wl.convert_to_units(unyt.m)
+                wavelength.convert_to_units(unyt.m)
+                en_tolerance = abs(unyt.hmks * unyt.c *
+                                   ((delta_wl - wavelength) /
+                                    (delta_wl * wavelength)))
+                en_tolerance.convert_to_units(unyt.eV)
+                print(f'en_tolerance is {en_tolerance}')
+                print(f'or {eV2wn(en_tolerance.value)}')
+                en_tolerance = eV2wn(en_tolerance.value)
+                if energy_diff < en_tolerance:
                     wavenumber = round((1e8 / (line['wavelength'] * 10)), 3)
                     if not vacuum_wl:
                         PeckReederWL = vac2airPeckReeder(line['wavelength'])
@@ -369,9 +384,9 @@ no_CCD_bounds_file = Path('data/unusable_spectrum_noCCDbounds.txt')
 mask_CCD_bounds = vcl.parse_spectral_mask_file(CCD_bounds_file)
 mask_no_CCD_bounds = vcl.parse_spectral_mask_file(no_CCD_bounds_file)
 
-redData = np.genfromtxt(redFile, delimiter=",", skip_header=1,
-                        dtype=(float, "U2", int, float, float, float))
-print("Read red line list.")
+#redData = np.genfromtxt(redFile, delimiter=",", skip_header=1,
+#                        dtype=(float, "U2", int, float, float, float))
+#print("Read red line list.")
 #blueData = np.genfromtxt(blueFile, delimiter=",", skip_header=1,
 #                     dtype=(float, "U2", int, float, float))
 #print("Read blue line list.")
