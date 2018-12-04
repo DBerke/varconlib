@@ -350,7 +350,7 @@ class HARPSFile2DScience(HARPSFile2D):
             "Wavelength found in more than two orders!"
         return tuple(orders_wavelength_found_in)
 
-    def plotOrder(self, index=None, passed_axis=None, **kwargs):
+    def plotOrder(self, index=None, passed_axis, **kwargs):
         """
         Plot a single order of the data, given its index.
 
@@ -364,14 +364,8 @@ class HARPSFile2DScience(HARPSFile2D):
             create a new figure and display it.
         **kwargs
             Any additional keyword arguments are passed on to matplotlib's
-            plot function.
+            `plot` function.
 
-        Returns
-        -------
-        matplotlib axes instance, optional
-            If an instance of `matplotlib.axes` was passed, return it with the
-            designated order plotted on it. If no axes was passed, show the
-            plot instead.
         """
 
         # Check that the index is correct.
@@ -379,20 +373,11 @@ class HARPSFile2DScience(HARPSFile2D):
 
         if (self._wavelengthArray is None) or (self._errorArray is None):
             self.calibrateSelf()
-        if passed_axis:
-            ax = passed_axis
-        else:
-            fig = plt.figure(figsize=(8, 8))
-            ax = fig.add_subplot(1, 1, 1)
+        ax = passed_axis
 
-        # Plot the requested axis.
+        # Plot onto the given axis.
         ax.plot(self._wavelengthArray[index], self._photonFluxArray[index],
                 **kwargs)
-
-        if passed_axis:
-            return ax
-        else:
-            fig.show()
 
 
 def readHARPSfile1d(FITSfile, obj=False, wavelenmin=False, date_obs=False,
