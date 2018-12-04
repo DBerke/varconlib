@@ -56,29 +56,59 @@ class HARPSFile2DScience(HARPSFile2D):
     """
     Subclass of HARPSFile2D to handle observations specifically.
     """
-    def __init__(self, FITSfile):
-        super().__init__(FITSfile)
-        self._rawFluxArray = self._rawData
-        self._wavelengthArray = None
-        self._photonFluxArray = None
-        self._errorArray = None
-        self._blazeFile = self.getHeaderCard('HIERARCH ESO DRS BLAZE FILE')
+    # TODO: Integrate update keyword
+    def __init__(self, FITSfile, update=False):
+        if type(FITSfile) is str:
+            self._filename = Path(FITSfile)
+        else:
+            self._filename = FITSfile
+        with fits.open(self._filename, mode='append') as hdulist:
+            self._header = hdulist[0].header
+            self._rawData = hdulist[0].data
+            self._rawFluxArray = self._rawData
+            self._wavelengthArray = None
+            self._photonFluxArray = None
+            self._errorArray = None
+            try:
+                self._wavelengthArray = hdulist['WAVE'].data * unyt.angstrom
+            except KeyError:
+                tqdm.write('Writing new wavelength HDU.')
+                self.writeWavelengthHDU(hdulist)
+            try:
+                self._photonFluxArray = hdulist['FLUX'].data
+            except KeyError:
+                self.writePhotonFluxHDU(hdulist)
+                tqdm.write('Writing new photon flux HDU.')
+            try:
+                self._errorArray = hdulist['ERR'].data
+            except KeyError:
+                self.writeErrorHDU(hdulist)
+                tqdm.write('Writing new error HDU.')
 
-    def makeArrays(self, verbose=False):
+        # self._blazeFile = self.getHeaderCard('HIERARCH ESO DRS BLAZE FILE')
+
+    def calibrateSelf(self, verbose=False):
         """
-        Create error and wavelength arrays for the observation.
+        Create error and wavelength arrays for the observation and convert from
+        ADUs to photons.
+
+        Will only create the arrays and do the calibration if they haven't
+        already been done, so calling it multiple times should't cause any
+        additional slowdown.
 
         """
 
-        # Calibrate ADUs to photoelectrons using the gain
-        self._photonFluxArray = self.getPhotonFluxArray(self._rawFluxArray)
+        if self._photonFluxArray is None:
+            # Calibrate ADUs to photoelectrons using the gain
+            self._photonFluxArray = self.getPhotonFluxArray(self._rawFluxArray)
 
-        # Construct an error array using the photon flux in each pixel
-        self._errorArray = self.getErrorArray(self._photonFluxArray,
-                                              verbose=verbose)
-
-        # Create a wavelength array using the headers in the file
-        self._wavelengthArray = self.getWavelengthArray(self._rawFluxArray)
+        if self._errorArray is None:
+            # Construct an error array using the photon flux in each pixel
+            self._errorArray = self.getErrorArray(self._photonFluxArray,
+                                                  verbose=verbose)
+        if self._wavelengthArray is None:
+            # Create a wavelength array using the headers in the file
+            self._wavelengthArray = self.getWavelengthArray(self._rawFluxArray)
 
     def blazeCorrectSelf(self, blaze_file):
         """
@@ -93,22 +123,15 @@ class HARPSFile2DScience(HARPSFile2D):
 
         assert 'blaze' in str(blaze_file), "'blaze' not found in file name!"
 
-        print(self._photonFluxArray.shape, blaze_file._rawData.shape)
+        if (self._photonFluxArray is None) or (self._errorArray is None):
+            self.calibrateSelf()
 
         self._photonFluxArray /= blaze_file._rawData
         self._errorArray /= blaze_file._rawData
 
-    def getWavelengthArray(self, array=None):
+    def getWavelengthArray(self):
         """
         Construct a wavelength array (in Angstroms) for the observation.
-
-        Parameters
-        ----------
-        source_array : array_like
-            The array to be used to construct the wavelength array. Only the
-            shape of the array is actually used so it just needs to be an array
-            of the proper shape (72, 4096). The default value uses the
-            instance's `_rawFluxArray` array which should always be available.
 
         Returns
         -------
@@ -128,10 +151,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        if array is None:
-            source_array = self._rawFluxArray
-        else:
-            source_array = array
+        source_array = self._rawFluxArray
         wavelength_array = np.zeros(source_array.shape) * unyt.angstrom
         for order in trange(0, 72, total=72, unit='orders'):
             for i in range(0, 4, 1):
@@ -143,17 +163,13 @@ class HARPSFile2DScience(HARPSFile2D):
                                                       unyt.angstrom
         return wavelength_array
 
-    def getPhotonFluxArray(self, source_array=None,
-                           card_title='HIERARCH ESO DRS CCD CONAD'):
+    def getPhotonFluxArray(self, card_title='HIERARCH ESO DRS CCD CONAD'):
         """
         Calibrate the raw flux array using the gain to recover the
         photoelectron flux.
 
         Parameters
         ----------
-        source_array : array_like
-            The array containing the raw flux to calibrate. If none is given
-            will default to `self._raw_flux_array`.
         card_title : str
             A string representing the value of the header card to read to find
             the gain. By default set to the value found in HARPS e2ds files,
@@ -167,24 +183,20 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        if source_array is None:
-            source_array = self._raw_flux_array
+        source_array = self._rawFluxArray
         # Get the gain from the file header:
         gain = self._header[card_title]
         assert type(gain) == float, f"Gain value is a {type(gain)}!"
         photon_flux_array = source_array * gain
         return photon_flux_array
 
-    def getErrorArray(self, array=None, verbose=False):
+    def getErrorArray(self, verbose=False):
         """
         Construct an error array based on the reported flux values for the
         observation.
 
         Parameters
         ----------
-        source_array : array_like
-            The array to be used as the base to construct the error array from.
-            Will default to the instances' `_photon_flux_array`.
         verbose : bool, Default: False
             If *True*, the method will print out how many pixels with negative
             flux were found during the process of constructing the error array
@@ -200,12 +212,10 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        if array is None:
-            if self._photonFluxArray is None:
-                self._photonFluxArray = self.getPhotonFluxArray()
-            source_array = self._photonFluxArray
-        else:
-            source_array = array
+        # If the photon flux array doesn't exist yet, create it.
+        if self._photonFluxArray is None:
+            self._photonFluxArray = self.getPhotonFluxArray()
+        source_array = self._photonFluxArray
         bad_pixels = 0
         error_array = np.ones(source_array.shape)
         for m in range(source_array.shape[0]):
@@ -221,6 +231,76 @@ class HARPSFile2DScience(HARPSFile2D):
             tqdm.write('{} pixels with negative flux found.'.
                        format(bad_pixels))
         return error_array
+
+    def writeWavelengthHDU(self, hdulist):
+        """
+        Write out a wavelength array HDU to a given file.
+
+        Parameters
+        ----------
+        hdulist : an astropy HDUList object
+            The HDU list of the file to modify.
+
+        """
+
+        self._wavelengthArray = self.getWavelengthArray()
+
+        # Create an HDU for the wavelength array.
+        wavelength_HDU = fits.ImageHDU(data=self._wavelengthArray,
+                                       name='WAVE')
+
+        # Add some cards to its header containing the minimum and maximum
+        # wavelengths in each order.
+        wavelength_cards = []
+        for i in range(0, 72):
+            for kind, pos in zip(('min', 'max'), (0, -1)):
+                keyword = f'ORD{i}{kind.upper()}'
+                value = '{:.3f}'.format(self._wavelengthArray[i, pos])
+                comment = '{} wavelength of order {}'.format(kind.capitalize(),
+                                                             i)
+                wavelength_cards.append((keyword, value, comment))
+        wavelength_HDU.header.extend(wavelength_cards)
+        hdulist.append(wavelength_HDU)
+        hdulist.flush(output_verify="exception", verbose=True)
+
+    def writePhotonFluxHDU(self, hdulist):
+        """
+        Write out a photon flux array HDU to a given file.
+
+        Parameters
+        ----------
+        hdulist : an astropy HDUList object
+            The HDU list of the file to modify.
+
+        """
+
+        self._photonFluxArray = self.getPhotonFluxArray()
+
+        # Create an HDU for the photon flux array.
+        photon_flux_HDU = fits.ImageHDU(data=self._photonFluxArray,
+                                        name='FLUX')
+        hdulist.append(photon_flux_HDU)
+        hdulist.flush(output_verify="exception", verbose=True)
+
+    def writeErrorHDU(self, hdulist):
+        """
+        Write out an error array HDU to a given file.
+
+        Parameters
+        ----------
+        hdulist : an astropy HDUList object
+            The HDU list of the file to modify.
+
+        """
+
+        self._errorArray = self.getErrorArray()
+
+        # Create an HDU for the error array.
+        error_HDU = fits.ImageHDU(data=self._errorArray,
+                                  name='ERR')
+
+        hdulist.append(error_HDU)
+        hdulist.flush(output_verify="exception", verbose=True)
 
     def findWavelength(self, wavelength=None, unit=None):
         """
