@@ -104,3 +104,6 @@ ENV/
 # that might change or at least don't need to be version controlled.
 spectra/
 data/
+
+# FITS files definitely shouldn't be added by default
+.fits
