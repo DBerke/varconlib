@@ -9,12 +9,14 @@ Created on Wed Mar 21 15:57:52 2018
 # Code to iterate through a given line list to identify pairs given
 # various constraints.
 
-import numpy as np
 from math import trunc
+import numpy as np
 from scipy.constants import lambda2nu, h, e
-import varconlib as vcl
+import matplotlib.pyplot as plt
 from pathlib import Path
 from tqdm import tqdm
+import varconlib as vcl
+import unyt
 
 elements = {"Na": 11,
             "Mg": 12,
@@ -30,17 +32,34 @@ elements = {"Na": 11,
 
 
 def wn2eV(percm):
-    """Return the energy given in cm^-1 in eV
+    """Return the energy given in cm^-1 in eV.
 
-    Invert cm^-1, divide by 100, divide into c, multiply by h, divide by e
+    Invert cm^-1, divide by 100, divide into c, multiply by h, divide by e.
 
     """
     if percm == 0.:
         result = 0.
     else:
-        wl = (1 / percm) / 100
-        vu = lambda2nu(wl)
-        result = (vu * h) / e
+#        wl = (1 / percm) / 100
+#        vu = lambda2nu(wl)
+#        result = (vu * h) / e
+        percm = percm * unyt.cm**-1
+        E = percm.to(unyt.m**-1) * unyt.hmks * unyt.c
+        result = E.to(unyt.eV)
+    return result
+
+
+def eV2wn(eV):
+    """Return energy given in eV in cm^-1.
+
+    """
+
+    if eV == 0.:
+        result = 0.
+    else:
+        eV = eV * unyt.eV
+        nu = eV.to(unyt.J) / (unyt.hmks * unyt.c)
+        result = nu.to(unyt.cm**-1)
     return result
 
 
@@ -125,13 +144,14 @@ def line_is_masked(line, mask):
     return False
 
 
-def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True):
+def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True,
+                     tolerance=2000*unyt.m/unyt.s):
     """Return the line from Kurucz list matching given parameters.
 
     Parameters
     ----------
     wavelength : float
-        The wavelength of the line to be matched, in vacuum, in Angstroms.
+        The wavelength of the line to be matched, in vacuum, in nm.
     elem : str
         A string representing the standard two-letter chemical abbreviation
         for the chemical element responsible for the transition being matched.
@@ -144,33 +164,51 @@ def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True):
         If *True*, return the wavelengths in vacuum.
 
     """
+    wavelength = wavelength * unyt.nm
+    wl_tolerance = vcl.getwlseparation(tolerance.value, wavelength)
+    print(f'wl_tolerance of {tolerance} at {wavelength} is {wl_tolerance:.4f}')
     for line in KuruczData:
         # For working with the purple list with its wavelengths in vac, nm.
-        wl = line['wavelength']
+        wl = line['wavelength'] * unyt.nm
 #        wl = round(10 * vac2air(line['wavelength']), 3)
         # This distance is VERY important: 0.003 for nm, 0.03 for Angstroms
-        if abs(wl - wavelength) < 0.003:
+        if abs(wl - wavelength) < wl_tolerance:
+            print(f'Found line with wavelength diff = {wl - wavelength:.4f}')
+            line_offsets.append(abs(wl - wavelength))
             elem_num = trunc(line['elem'])
             elem_ion = int((line['elem'] - elem_num) * 100 + 1)
 #            print(elem_num, elem_ion)
             if elements[elem] == elem_num and ion == elem_ion:
-                energy1 = round(wn2eV(line['energy1']), 3)
-                energy2 = round(wn2eV(line['energy2']), 3)
+                energy1 = line['energy1']
+                energy2 = line['energy2']
+                e_lower = eV2wn(eLow)
                 if energy1 < energy2:
-                    lowE = line['energy1']
+                    lowE = line['energy1'] * unyt.cm**-1
                     lowOrb = line['label1']
                     lowJ = line['J1']
-                    highE = line['energy2']
+                    highE = line['energy2'] * unyt.cm**-1
                     highOrb = line['label2']
                     highJ = line['J2']
                 else:
-                    lowE = line['energy2']
+                    lowE = line['energy2'] * unyt.cm**-1
                     lowOrb = line['label2']
                     lowJ = line['J2']
-                    highE = line['energy1']
+                    highE = line['energy1'] * unyt.cm**-1
                     highOrb = line['label1']
                     highJ = line['J1']
-                if abs(eLow - energy1) < 0.03 or abs(eLow - energy2) < 0.03:
+                energy_diff = abs(e_lower - lowE)
+                print(f'energy_diff is {energy_diff}')
+                delta_wl = (wavelength + wl_tolerance)
+                delta_wl.convert_to_units(unyt.m)
+                wavelength.convert_to_units(unyt.m)
+                en_tolerance = abs(unyt.hmks * unyt.c *
+                                   ((delta_wl - wavelength) /
+                                    (delta_wl * wavelength)))
+                en_tolerance.convert_to_units(unyt.eV)
+                print(f'en_tolerance is {en_tolerance}')
+                print(f'or {eV2wn(en_tolerance.value)}')
+                en_tolerance = eV2wn(en_tolerance.value)
+                if energy_diff < en_tolerance:
                     wavenumber = round((1e8 / (line['wavelength'] * 10)), 3)
                     if not vacuum_wl:
                         PeckReederWL = vac2airPeckReeder(line['wavelength'])
@@ -326,7 +364,8 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
 
 
 # Main body of code
-
+global line_offsets
+line_offsets = []
 
 # These two files produces wavelengths in air, in Angstroms.
 redFile = "data/BRASS2018_Sun_PrelimGraded_Lobel.csv"
@@ -345,9 +384,9 @@ no_CCD_bounds_file = Path('data/unusable_spectrum_noCCDbounds.txt')
 mask_CCD_bounds = vcl.parse_spectral_mask_file(CCD_bounds_file)
 mask_no_CCD_bounds = vcl.parse_spectral_mask_file(no_CCD_bounds_file)
 
-redData = np.genfromtxt(redFile, delimiter=",", skip_header=1,
-                        dtype=(float, "U2", int, float, float, float))
-print("Read red line list.")
+#redData = np.genfromtxt(redFile, delimiter=",", skip_header=1,
+#                        dtype=(float, "U2", int, float, float, float))
+#print("Read red line list.")
 #blueData = np.genfromtxt(blueFile, delimiter=",", skip_header=1,
 #                     dtype=(float, "U2", int, float, float))
 #print("Read blue line list.")
@@ -419,7 +458,7 @@ outDir = Path('data/linelists')
 #                           minDepth=depth[0], maxDepth=depth[1],
 #                           velSeparation=sep, lineDepthDiff=diff,
 #                           spectralMask=bound, CCD_bounds=value)
-filename = outDir / 'Lines_purple_0.15-0.9_800kms_0.2_CCD.txt'
+filename = outDir / 'Lines_purple_0.15-0.9_800kms_0.2_test.txt'
 matchLines(purpleData, filename, minDepth=0.15, maxDepth=0.9,
             velSeparation=800000, lineDepthDiff=0.2, vacuum_wl=True,
             spectralMask=mask_no_CCD_bounds, CCD_bounds=False)
@@ -428,3 +467,8 @@ matchLines(purpleData, filename, minDepth=0.15, maxDepth=0.9,
 #           velSeparation=800000, lineDepthDiff=0.1)
 #matchLines(blueData, minDepth=0.3, maxDepth=0.7, velSeparation=400000,
 #               lineDepthDiff=0.05)
+fig = plt.figure(figsize=(8, 8))
+ax = fig.add_subplot(1, 1, 1)
+ax.set_xlabel('$\Delta (\lambda - \lambda_0)$ nm')
+ax.hist(line_offsets, bins=20, linewidth=1, edgecolor='black')
+plt.show()

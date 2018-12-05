@@ -16,8 +16,8 @@ from math import sqrt, log
 from pathlib import Path
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from file_io import *
-from air_vac_conversions import *
+import file_io
+import air_vac_conversions
 
 # Some generic information useful in different scripts
 
