@@ -12,14 +12,20 @@ import numpy as np
 
 
 def air_indexEdlen53(l, t=15., p=760.):
-    """Return the index of refraction of air at given temp, pressures, and wl (A)
+    """Return the index of refraction of air at given temperature, pressure,
+    and wavelength in Angstroms.
 
-    l: vacuum wavelength in Angstroms
-    t: temperature (don't use)
-    p: pressure (don't use)
+    l : float
+        Vacuum wavelength in Angstroms
+    t : float
+        Temperature in °C. (Don't actually change this from the default.)
+    p : float
+        Pressure in mmHg. (Don't actually change this from the default.)
 
-    Formula is Edlen 1953, provided directly by ESO
+    The formula is from Edlen 1953, provided directly by ESO.
+
     """
+
     n = 1e-6 * p * (1 + (1.049-0.0157*t)*1e-6*p) / 720.883 / (1 + 0.003661*t)\
         * (64.328 + 29498.1/(146-(1e4/l)**2) + 255.4/(41-(1e4/l)**2))
     n = n + 1
@@ -27,17 +33,21 @@ def air_indexEdlen53(l, t=15., p=760.):
 
 
 def vac2airESO(ll):
-    """Return a vacuum wavlength from an air wavelength (A) using Edlen 1953
+    """Return a vacuum wavlength from an air wavelength (A) using Edlen 1953.
 
-    ll: air wavlength in Angstroms
+    This is the function used in the ESO archive, according to them.
+
+    ll : float
+        Air wavelength in Angstroms
 
     """
+
     llair = ll/air_indexEdlen53(ll)
     return llair
 
 
 def air2vacESO(air_arr):
-    """Take an array of air wls (A) and return an array of vacum wls
+    """Take an array of air wls (A) and return an array of vacuum wls
 
     Parameters
     ----------
