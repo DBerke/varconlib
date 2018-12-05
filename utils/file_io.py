@@ -350,7 +350,7 @@ class HARPSFile2DScience(HARPSFile2D):
             "Wavelength found in more than two orders!"
         return tuple(orders_wavelength_found_in)
 
-    def plotOrder(self, index=None, passed_axis, **kwargs):
+    def plotOrder(self, index, passed_axis, **kwargs):
         """
         Plot a single order of the data, given its index.
 
@@ -359,9 +359,8 @@ class HARPSFile2DScience(HARPSFile2D):
         index : int
             An integer in the range [0, 71] representing the index of the
             order to plot.
-        passed_axis : a matplotlib axes instance
-            If an axes instance is passed, plot the order onto it. Else,
-            create a new figure and display it.
+        passed_axis : a matplotlib Axes instance
+            The order specified will be plotted onto this Axes object.
         **kwargs
             Any additional keyword arguments are passed on to matplotlib's
             `plot` function.
