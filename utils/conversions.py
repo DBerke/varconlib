@@ -9,6 +9,7 @@ This library contains functions used for converting wavelengths between vacuum
 and air.
 """
 import numpy as np
+import unyt as u
 
 
 def air_indexEdlen53(l, t=15., p=760.):
@@ -58,7 +59,9 @@ def air2vacESO(air_arr):
     -------
     array
         An array of wavelengths in vacuum, in Angstroms.
+
     """
+
     if not type(air_arr) == np.ndarray:
         air_arr = np.array(air_arr)
 
@@ -103,3 +106,26 @@ def air2vacMortonIAU(wl_air):
     n = 1 + 0.00008336624212083 + (0.02408926869968 / (130.1065924522 - s**2))\
         + (0.0001599740894897 / (38.92568793293 - s**2))
     return wl_air * n
+
+
+def vac2airPeckReeder(wl_vac):
+    """
+    Return the air wavelength of a vacuum wavelength using the formula from
+    Peck & Reeder 1972.
+
+    Parameters
+    ----------
+    wl_vac : unyt quantity with dimensions length
+        The wavelength to convert from vacuum to air. The Peck & Reeder formula
+        itself uses values in reciprocal micrometers.
+
+    Formula taken from Peck & Reeder, J. Opt. Soc. Am. 62, 958 (1972).
+    https://www.osapublishing.org/josa/fulltext.cfm?uri=josa-62-8-958&id=54743
+
+    """
+    # TODO: Figure out how this ever worked, when it needs reciprocal
+    # micrometers. Why did I add it in the first place?
+    s = wl_vac.to(u.um).value
+    n = 1 + ((8060.51 + (2480990 / (132.274 - s**2)) + (17455.7 / (39.32457 -
+             s**s))) / 1e8)
+    return wl_vac / n

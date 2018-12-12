@@ -17,7 +17,7 @@ from pathlib import Path
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import file_io
-import air_vac_conversions
+import conversions
 
 # Some generic information useful in different scripts
 
