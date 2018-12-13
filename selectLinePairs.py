@@ -145,7 +145,8 @@ def line_is_masked(line, mask):
 
 
 def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True,
-                     tolerance=2000*unyt.m/unyt.s):
+                     wl_tolerance=1000*unyt.meter/unyt.second,
+                     energy_tolerance=10000*unyt.meter/unyt.second):
     """Return the line from Kurucz list matching given parameters.
 
     Parameters
@@ -165,14 +166,15 @@ def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True,
 
     """
     wavelength = wavelength * unyt.nm
-    wl_tolerance = vcl.getwlseparation(tolerance.value, wavelength)
-    print(f'wl_tolerance of {tolerance} at {wavelength} is {wl_tolerance:.4f}')
+    wl_vel_tolerance = vcl.getwlseparation(wl_tolerance.value, wavelength)
+    print('wl_tolerance of {} at {} is {:.4f}'.format(wl_tolerance,
+          wavelength, wl_vel_tolerance))
     for line in KuruczData:
         # For working with the purple list with its wavelengths in vac, nm.
         wl = line['wavelength'] * unyt.nm
 #        wl = round(10 * vac2air(line['wavelength']), 3)
         # This distance is VERY important: 0.003 for nm, 0.03 for Angstroms
-        if abs(wl - wavelength) < wl_tolerance:
+        if (abs(wl - wavelength) < wl_vel_tolerance):
             print(f'Found line with wavelength diff = {wl - wavelength:.4f}')
             line_offsets.append(abs(wl - wavelength))
             elem_num = trunc(line['elem'])
@@ -182,6 +184,7 @@ def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True,
                 energy1 = line['energy1']
                 energy2 = line['energy2']
                 e_lower = eV2wn(eLow)
+                print(f'e_lower is {e_lower}')
                 if energy1 < energy2:
                     lowE = line['energy1'] * unyt.cm**-1
                     lowOrb = line['label1']
@@ -198,15 +201,15 @@ def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True,
                     highJ = line['J1']
                 energy_diff = abs(e_lower - lowE)
                 print(f'energy_diff is {energy_diff}')
-                delta_wl = (wavelength + wl_tolerance)
-                delta_wl.convert_to_units(unyt.m)
-                wavelength.convert_to_units(unyt.m)
-                en_tolerance = abs(unyt.hmks * unyt.c *
-                                   ((delta_wl - wavelength) /
-                                    (delta_wl * wavelength)))
-                en_tolerance.convert_to_units(unyt.eV)
+                delta_wl = vcl.getwlseparation(energy_tolerance.value,
+                                               (1 / e_lower).to(unyt.m).value)
+                delta_wl = delta_wl * unyt.m
+                print(f'delta_wl is {delta_wl}')
+                energy1 = (1 / wavelength).to(unyt.cm ** -1)
+                energy2 = (1 / (wavelength + delta_wl)).to(unyt.cm ** -1)
+
+                en_tolerance = abs(energy2 - energy1)
                 print(f'en_tolerance is {en_tolerance}')
-                print(f'or {eV2wn(en_tolerance.value)}')
                 en_tolerance = eV2wn(en_tolerance.value)
                 if energy_diff < en_tolerance:
                     wavenumber = round((1e8 / (line['wavelength'] * 10)), 3)
@@ -300,8 +303,10 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
                     vac_wl, lineInfo = matchKuruczLines(wl, elem, ion, eLow,
                                                         vacuum_wl=vacuum_wl)
 #                    print('vac_wl = {}'.format(vac_wl))
-                    lineStr = "\n{:0<8} {:0<9} {}{} {:0<9} {} {:10} {:0<9} {} {:10}".\
-                              format(*vac_wl, elem, ion, *lineInfo)
+                    lineStr = "\n{:0<8} {:0<9} {}{} ".format(
+                                      *vac_wl, elem, ion) +\
+                              "{:0<9} {} {:10} {:0<9} {} {:10}".format(
+                                      *lineInfo)
                     output_lines.append(lineStr)
                     output_lines.append("\n")
 #                    print(lineStr)
@@ -319,8 +324,10 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
                                                     line[3],
                                                     vacuum_wl=vacuum_wl)
 #                print('vac_wl = {}'.format(vac_wl))
-                matchStr = "{:0<8} {:0<9} {}{} {:0<9} {} {:10} {:0<9} {} {:10}".\
-                           format(*vac_wl, line[1], line[2], *lineInfo)
+                matchStr = "{:0<8} {:0<9} {}{} ".\
+                           format(*vac_wl, line[1], line[2]) +\
+                           "{:0<9} {} {:10} {:0<9} {} {:10}".\
+                           format(*lineInfo)
                 output_lines.append(matchStr)
                 output_lines.append("\n")
 #                print(line)
