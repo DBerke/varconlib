@@ -87,7 +87,8 @@ def vac2airMorton00(wl_vac):
     """Take an input vacuum wavelength in Angstroms and return the air
     wavelength.
 
-    Formula taken from 'www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion'
+    Formula taken from
+    https://www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion
     from Morton (2000, ApJ. Suppl., 130, 403) (IAU standard)
     """
     s = 1e4 / wl_vac
@@ -100,7 +101,8 @@ def air2vacMortonIAU(wl_air):
     """Take an input air wavelength in Angstroms and return the vacuum
     wavelength.
 
-    Formula taken from 'www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion'
+    Formula taken from
+    https://www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion
     """
     s = 1e4 / wl_air
     n = 1 + 0.00008336624212083 + (0.02408926869968 / (130.1065924522 - s**2))\
