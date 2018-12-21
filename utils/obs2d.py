@@ -5,23 +5,26 @@ Created on Tue Nov 13 11:54:34 2018
 
 @author: dberke
 
-This library contains functions to deal with opening files from HARPS (both
-1D ADP files and 2D extracted e2ds files) and ESPRESSO.
+This library contains functions to deal with opening 2D HARPS extracted e2ds
+files.
 """
 
-import datetime as dt
+import configparser
 import numpy as np
 import unyt
-import matplotlib.pyplot as plt
 from tqdm import tqdm, trange
 from astropy.io import fits
 from pathlib import Path
+
+config_file = Path('config/variables.cfg')
 
 
 class HARPSFile2D(object):
     """
     Class to contain data from a HARPS 2D extracted spectrum file.
+
     """
+
     def __init__(self, FITSfile):
         if type(FITSfile) is str:
             self._filename = Path(FITSfile)
@@ -62,30 +65,60 @@ class HARPSFile2DScience(HARPSFile2D):
             self._filename = Path(FITSfile)
         else:
             self._filename = FITSfile
-        with fits.open(self._filename, mode='append') as hdulist:
+        if update:
+            mode = 'update'
+        else:
+            mode = 'append'
+        with fits.open(self._filename, mode=mode) as hdulist:
             self._header = hdulist[0].header
             self._rawData = hdulist[0].data
             self._rawFluxArray = self._rawData
             self._wavelengthArray = None
             self._photonFluxArray = None
             self._errorArray = None
+
+            # Try to read the wavelength array, or create it if it doesn't
+            # exist.
             try:
                 self._wavelengthArray = hdulist['WAVE'].data * unyt.angstrom
             except KeyError:
+                if update:
+                    print("File opened in 'update' mode but no arrays exist!")
+                    raise RuntimeError
                 tqdm.write('Writing new wavelength HDU.')
                 self.writeWavelengthHDU(hdulist)
+            # If we're updating the file, overwrite what exists.
+            if update:
+                print('Overwriting wavelength HDU.')
+                self.writeWavelengthHDU(hdulist)
+
+            # Try to read the flux array, or create it if it doesn't exist.
             try:
                 self._photonFluxArray = hdulist['FLUX'].data
             except KeyError:
+                if update:
+                    print("File opened in 'update' mode but no arrays exist!")
+                    raise RuntimeError
                 self.writePhotonFluxHDU(hdulist)
                 tqdm.write('Writing new photon flux HDU.')
+            # If we're updating the file, overwrite what exists.
+            if update:
+                print('Overwriting photon flux HDU.')
+                self.writePhotonFluxHDU(hdulist)
+
+            # Try to read the error array, or create it if it doesn't exist.
             try:
                 self._errorArray = hdulist['ERR'].data
             except KeyError:
+                if update:
+                    print("File opened in 'update' mode but no arrays exist!")
+                    raise RuntimeError
                 self.writeErrorHDU(hdulist)
                 tqdm.write('Writing new error HDU.')
-
-        # self._blazeFile = self.getHeaderCard('HIERARCH ESO DRS BLAZE FILE')
+            # If we're updating the file, overwrite what exists.
+            if update:
+                print('Overwriting error array HDU.')
+                self.writeErrorHDU(hdulist)
 
     def calibrateSelf(self, verbose=False):
         """
@@ -109,6 +142,24 @@ class HARPSFile2DScience(HARPSFile2D):
         if self._wavelengthArray is None:
             # Create a wavelength array using the headers in the file
             self._wavelengthArray = self.getWavelengthArray(self._rawFluxArray)
+
+    def getBlazeFile(self):
+        """Find and return the blaze file associated with this observation.
+
+        Returns
+        -------
+
+        """
+
+        blaze_file = self.getHeaderCard('HIERARCH ESO DRS BLAZE FILE')
+
+        config = configparser.ConfigParser(interpolation=configparser.
+                                           ExtendedInterpolation())
+        config.read(config_file)
+
+        blaze_file_dir = Path(config['PATHS']['blaze_file_dir'])
+        blaze_file_path = blaze_file_dir / blaze_file
+        print(blaze_file_path)
 
     def blazeCorrectSelf(self, blaze_file):
         """
@@ -234,7 +285,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
     def writeWavelengthHDU(self, hdulist):
         """
-        Write out a wavelength array HDU to a given file.
+        Write out a wavelength array HDU to the currently opened file.
 
         Parameters
         ----------
@@ -260,12 +311,15 @@ class HARPSFile2DScience(HARPSFile2D):
                                                              i)
                 wavelength_cards.append((keyword, value, comment))
         wavelength_HDU.header.extend(wavelength_cards)
-        hdulist.append(wavelength_HDU)
+        try:
+            hdulist['WAVE'] = wavelength_HDU
+        except KeyError:
+            hdulist.append(wavelength_HDU)
         hdulist.flush(output_verify="exception", verbose=True)
 
     def writePhotonFluxHDU(self, hdulist):
         """
-        Write out a photon flux array HDU to a given file.
+        Write out a photon flux array HDU to the currently opened file.
 
         Parameters
         ----------
@@ -279,12 +333,15 @@ class HARPSFile2DScience(HARPSFile2D):
         # Create an HDU for the photon flux array.
         photon_flux_HDU = fits.ImageHDU(data=self._photonFluxArray,
                                         name='FLUX')
-        hdulist.append(photon_flux_HDU)
+        try:
+            hdulist['FLUX'] = photon_flux_HDU
+        except KeyError:
+            hdulist.append(photon_flux_HDU)
         hdulist.flush(output_verify="exception", verbose=True)
 
     def writeErrorHDU(self, hdulist):
         """
-        Write out an error array HDU to a given file.
+        Write out an error array HDU to the currently opened file.
 
         Parameters
         ----------
@@ -298,8 +355,10 @@ class HARPSFile2DScience(HARPSFile2D):
         # Create an HDU for the error array.
         error_HDU = fits.ImageHDU(data=self._errorArray,
                                   name='ERR')
-
-        hdulist.append(error_HDU)
+        try:
+            hdulist['ERR'] = error_HDU
+        except KeyError:
+            hdulist.append(error_HDU)
         hdulist.flush(output_verify="exception", verbose=True)
 
     def findWavelength(self, wavelength=None, unit=None):
@@ -377,150 +436,3 @@ class HARPSFile2DScience(HARPSFile2D):
         # Plot onto the given axis.
         ax.plot(self._wavelengthArray[index], self._photonFluxArray[index],
                 **kwargs)
-
-
-def readHARPSfile1d(FITSfile, obj=False, wavelenmin=False, date_obs=False,
-                    spec_bin=False, med_snr=False, hdnum=False, radvel=False,
-                    coeffs=False):
-    """Read a HARPS ADP FITS file and return a dictionary of information.
-
-    Parameters
-    ----------
-    FITSfile : str or Path object
-        A path to a HARPS FITS file to be read.
-    obj : bool, Default: False
-        If *True*, the output will contain the contents of the OBJECT FITS
-        header card.
-    wavelenmin : bool, Default: False
-        If *True*, the output will contain the contents of the WAVELMIN FITS
-        header card.
-    date_obs : bool, Default: False
-        If *True*, the output will contain the contents of the DATE-OBS FITS
-        header card.
-    spec_bin : bool, Default: False
-        If *True*, the output will contain the contents of the SPEC_BIN FITS
-        header card.
-    med_snr : bool, Default: False
-        If *True*, the output will contain the contents of the SNR FITS header
-        card.
-    hdnum : bool, Default: False
-        If *True*, the output will contain the contents of the custom-added
-        HDNUM FITS header card. (Added to unify object identifiers across all
-        stars, some of which were occasionally identified by things other than
-        HD number.)
-    radvel : bool, Default: False
-        If *True*, the output will contain the contents of the custom-added
-        RADVEL FITS header card. (Added to unify the radial velocity for each
-        star, as a small minority of stars had different radial velocity
-        information in their HIERARCH ESO TEL TAFG RADVEL header cards.)
-    coeffs : bool, Default: False
-        If *True*, the output will contain the contents of the various
-        *ESO DRS CAL TH COEFF LLX* header cards, where *X* ranges from 0 to
-        287.
-
-    Returns
-    -------
-    dict
-        A dictionary containing the following key-value pairs:
-
-        w : Numpy array
-            The wavelength array.
-        f : Numpy array
-            The flux array.
-        e : Numpy array
-            The estimated error array (HARPS returns no error array by
-            default).
-
-        Optionally
-        ==========
-        obj : str
-            The object name from the 'OBJECT' flag.
-        wlmin : float
-            The minimum wavelength.
-        date_obs : datetime object
-            The date the file was observed.
-        spec_bin : float
-            The wavelength bin size.
-        med_snr : float
-            The median SNR of the flux array.
-        hd_num : str
-            The HD identifier of the star in the format "HDxxxxxx".
-        radvel : float
-            The radial velocity of the star in km/s.
-        If the `coeffs` keyword argument is *True*, there will be 288 entries
-        of the form "ESO DRS CAL TH COEFF LLX": *value*, where X will range
-        from 0 to 287.
-    """
-
-    result = {}
-    with fits.open(FITSfile) as hdulist:
-        header0 = hdulist[0].header
-        header1 = hdulist[1].header
-        data = hdulist[1].data
-        w = data.WAVE[0]
-        gain = header0['GAIN']
-        # Multiply by the gain to convert from ADUs to photoelectrons
-        f = data.FLUX[0] * gain
-        e = 1.e6 * np.absolute(f)
-        # Construct an error array by taking the square root of each flux value
-        try:
-            # First assume no negative flux values and use Numpy array
-            # magic to speed up the process.
-
-            # According to Dumusque 2018 HARPS has a dark-current and read-out
-            # noise of 12 photo-electrons, so first add the square of that to
-            # the flux, then take the square root to add them in quadrature:
-            f_plus_err = f + 144
-            e = np.sqrt(f_plus_err)
-        except ValueError:
-            # If that raises an error, do it element-by-element.
-            for i in np.arange(0, len(f), 1):
-                if (f[i] > 0.0):
-                    e[i] = np.sqrt(f[i] + 144)
-        result['w'] = w
-        result['f'] = f
-        result['e'] = e
-        if obj:
-            result['obj'] = header1['OBJECT']
-        if wavelenmin:
-            result['wavelmin'] = header0['WAVELMIN']
-        if date_obs:
-            result['date_obs'] = dt.datetime.strptime(header0['DATE-OBS'],
-                                                      '%Y-%m-%dT%H:%M:%S.%f')
-        if spec_bin:
-            result['spec_bin'] = header0['SPEC_BIN']
-        if med_snr:
-            result['med_snr'] = header0['SNR']
-        if hdnum:
-            result['hdnum'] = header0['HDNUM']
-        if radvel:
-            result['radvel'] = header0['RADVEL']
-
-        # If the coeffs keyword is given, returna all 288 wavelength solution
-        # coefficients.
-        if coeffs:
-            for i in range(0, 288, 1):
-                key_string = 'ESO DRS CAL TH COEFF LL{0}'.format(str(i))
-                result[key_string] = header0[key_string]
-
-    return result
-
-
-def readESPRESSOfile(ESPfile):
-    """Read an ESPRESSO file and return a dictionary of information
-
-    ESPfile: a path to the ESPRESSO file to be read
-
-    output: a dictionary containing the following information:
-        obj: the name from the OBJECT card
-        w: the wavelength array
-        f: the flux array
-        e: the error array
-    """
-    with fits.open(ESPfile) as hdulist:
-        data = hdulist[1].data
-        obj = hdulist[0].header['OBJECT']
-        w = data['wavelength']
-        f = data['flux']
-        e = data['error']
-    return {'obj': obj, 'w': w, 'f': f, 'e': e}

@@ -10,25 +10,30 @@ Created on Wed Mar 21 15:57:52 2018
 # various constraints.
 
 from math import trunc
-import numpy as np
-from scipy.constants import lambda2nu, h, e
-import matplotlib.pyplot as plt
 from pathlib import Path
+import numpy as np
+import matplotlib.pyplot as plt
 from tqdm import tqdm
 import varconlib as vcl
-import unyt
+import unyt as u
+from transition_line import Transition
 
-elements = {"Na": 11,
-            "Mg": 12,
-            "Si": 14,
-            "Ca": 20,
-            "Sc": 21,
-            "Ti": 22,
-            "V": 23,
-            "Cr": 24,
-            "Mn": 25,
-            "Fe": 26,
-            "Ni": 28}
+elements = {"H": 1, "He": 2, "Li": 3, "Be": 4, "B": 5, "C": 6, "N": 7,
+            "O": 8, "F": 9, "Ne": 10, "Na": 11, "Mg": 12, "Al": 13,
+            "Si": 14, "P": 15, "S": 16, "Cl": 17, "Ar": 18, "K": 19,
+            "Ca": 20, "Sc": 21, "Ti": 22, "V": 23, "Cr": 24, "Mn": 25,
+            "Fe": 26, "Co": 27, "Ni": 28, "Cu": 29, "Zn": 30, "Ga": 31,
+            "Ge": 32, "As": 33, "Se": 34, "Br": 35, "Kr": 36, "Rb": 37,
+            "Sr": 38, "Y": 39, "Zr": 40, "Nb": 41, "Mo": 42, "Tc": 43,
+            "Ru": 44, "Rh": 45, "Pd": 46, "Ag": 47, "Cd": 48, "In": 49,
+            "Sn": 50, "Sb": 51, "Te": 52, "I": 53, "Xe": 54, "Cs": 55,
+            "Ba": 56, "La": 57, "Ce": 58, "Pr": 59, "Nd": 60, "Pm": 61,
+            "Sm": 62, "Eu": 63, "Gd": 64, "Tb": 65, "Dy": 66, "Ho": 67,
+            "Er": 68, "Tm": 69, "Yb": 70, "Lu": 71, "Hf": 72, "Ta": 73,
+            "W": 74, "Re": 75, "Os": 76, "Ir": 77, "Pt": 78, "Au": 70,
+            "Hg": 80, "Tl": 81, "Pb": 82, "Bi": 83, "Po": 84, "At": 85,
+            "Rn": 86, "Fr": 87, "Ra": 88, "Ac": 89, "Th": 90, "Pa": 91,
+            "U": 92}
 
 
 def wn2eV(percm):
@@ -43,9 +48,9 @@ def wn2eV(percm):
 #        wl = (1 / percm) / 100
 #        vu = lambda2nu(wl)
 #        result = (vu * h) / e
-        percm = percm * unyt.cm**-1
-        E = percm.to(unyt.m**-1) * unyt.hmks * unyt.c
-        result = E.to(unyt.eV)
+        percm = percm * u.cm**-1
+        E = percm.to(u.m**-1) * u.hmks * u.c
+        result = E.to(u.eV)
     return result
 
 
@@ -57,9 +62,9 @@ def eV2wn(eV):
     if eV == 0.:
         result = 0.
     else:
-        eV = eV * unyt.eV
-        nu = eV.to(unyt.J) / (unyt.hmks * unyt.c)
-        result = nu.to(unyt.cm**-1)
+        eV = eV * u.eV
+        nu = eV.to(u.J) / (u.hmks * u.c)
+        result = nu.to(u.cm**-1)
     return result
 
 
@@ -144,9 +149,169 @@ def line_is_masked(line, mask):
     return False
 
 
+def format_line_dict(line_dict):
+    """Return a formatted text string of a dictionary representing a line.
+
+    Parameters
+    ----------
+    line_dict : dict
+        A dictionary containing information about a line from the the Kurucz
+        line list. Should contain the keys 'wavelength', 'wavenumber',
+        'lowE', 'lowJ', 'lowOrb', 'highE', 'highJ', 'highOrb'.
+
+    """
+
+    string1 = '{wavelength} {wavenumber}'.format(**line_dict)
+    string2 = ' {lowE} {lowJ} {lowOrb}'.format(**line_dict)
+    string3 = ' {highE} {highJ} {highOrb}'.format(**line_dict)
+
+    return string1 + string2 + string3
+
+
+def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
+                    wl_tolerance=1000, energy_tolerance=10000):
+    """Iterate over the BRASS list of transtitions and harmonize it with the
+    Kurucz list.
+
+    Parameters
+    ----------
+    BRASS_transitions : list of Transitions
+        A list of Transition objects representing transitions from the BRASS
+        list. These will contain the vacuum wavelength of the transition, the
+        element and ionization state it came from, the lower energy of the
+        orbital, and the normalized depth of the absorption line it produces.
+
+    Kurucz_transitions : list of Transitions
+        A list of Transition objects representing transitions from the Kurucz
+        list. These will contain the vacuum wavelength of the transition, the
+        element and ionization state it came from, the lower and higher
+        energies, momentums (J), and orbital configurations of the transition,
+        and the log of the isotope abundance.
+
+    spectral_mask : list of tuples
+        A list of tuples delimiting 'bad' regions of the spectrum that should
+        be avoided.
+
+    wl_tolerance : int
+        The tolerance in m/s (though the units are added internally) to search
+        within around the BRASS list's given wavelength.
+
+    energy_tolerance : int
+        The tolerance in m/s (though the units are added internally) to search
+        withing around the BRASS list's lower energy value.
+
+    """
+
+    # Variables to keep track of how many lines fall into various categories.
+    n_masked_lines = 0
+    n_multi_isotopes = 0
+
+    wl_tolerance = wl_tolerance * u.m / u.s
+    energy_tolerance = energy_tolerance * u.m / u.s
+
+    matched_zero = []
+    matched_one = []
+    matched_mult = []
+
+    for b_line in tqdm(BRASS_transitions, unit='transitions'):
+        # If the line is in a masked region of the spectrum, don't bother with
+        # it, just pass.
+        if line_is_masked(float(b_line.wavelength.to(u.nm).value),
+                          spectral_mask):
+            tqdm.write('{} is in a masked region.'.format(str(b_line)))
+            n_masked_lines += 1
+            continue
+
+        delta_wavelength = vcl.getwlseparation(wl_tolerance.value,
+                                               b_line.wavelength.to(u.m).value)
+        delta_wavelength = (delta_wavelength * u.m).to(u.nm)
+        delta_wl_energy = vcl.getwlseparation(energy_tolerance.value,
+                                              b_line.wavelength.to(u.m).value)
+#                                              (1/b_line.lowerEnergy)
+#                                              .to(u.m).value)
+        delta_wl_energy = delta_wl_energy * u.m
+
+        energy1 = (1 / b_line.wavelength).to(u.cm ** -1)
+        energy2 = (1 / (b_line.wavelength + delta_wl_energy)).to(u.cm ** -1)
+
+        delta_en = abs(energy2 - energy1)
+
+        tqdm.write('For {}, wavelength tolerance is {:.4f}.'.format(
+                   str(b_line), delta_wavelength))
+
+        tqdm.write('And the lower energy tolerance is {:.4f}.'.format(
+                   delta_en))
+
+        # Set up a list to contain potential matched lines.
+        matched_lines = []
+
+        # Go through Kurucz lines and store any that match.
+        for k_line in Kurucz_transitions:
+            if (k_line.atomicNumber == b_line.atomicNumber)\
+              and (k_line.ionizationState == b_line.ionizationState)\
+              and (abs(k_line.lowerEnergy - b_line.lowerEnergy) < delta_en)\
+              and (abs(k_line.wavelength - b_line.wavelength)
+                   < delta_wavelength):
+                matched_lines.append(k_line)
+
+        if len(matched_lines) == 1:
+            matched_lines[0].normalizedDepth = b_line.normalizedDepth
+            matched_one.append(matched_lines[0])
+            tqdm.write('{} matched with one line.'.format(str(b_line)))
+
+        elif len(matched_lines) == 0:
+            matched_zero.append((b_line, delta_wavelength, delta_en))
+            tqdm.write('{} unmatched.'.format(str(b_line)))
+
+        elif len(matched_lines) > 1:
+            atomic_numbers = set()
+            ion_states = set()
+            lower_energies = set()
+            for transition in matched_lines:
+                atomic_numbers.add(transition.atomicNumber)
+                ion_states.add(transition.ionizationState)
+                lower_energies.add(float(transition.lowerEnergy.value))
+            if (len(atomic_numbers) == 1)\
+                    and (len(ion_states) == 1)\
+                    and (len(lower_energies) == 1):
+                isotope_dict = {t.isotopeFraction: t for t in matched_lines}
+                # Sort the dictionary keys to find the transition with the
+                # highest isotope fraction, and use that one.
+                line_to_use = isotope_dict[sorted(isotope_dict.keys())[-1]]
+                line_to_use.normalizedDepth = b_line.normalizedDepth
+                matched_one.append(line_to_use)
+                n_multi_isotopes += 1
+                tqdm.write('{} matched out of multiple isotope lines.'.format(
+                        str(b_line)))
+            else:
+                matched_lines.insert(0, b_line)
+                matched_mult.append(matched_lines)
+                tqdm.write('{} matched to multiple lines.'.format(str(b_line)))
+        tqdm.write('\n')
+
+    for item in matched_zero:
+        print('{} {:.4f} {:.4f}'.format(*item))
+    print('wavelength tolerance: {}, energy tolerance: {}'.format(wl_tolerance,
+          energy_tolerance))
+    tqdm.write('Out of {} lines in the BRASS list:'.format(len(
+            BRASS_transitions)))
+#    tqdm.write('{} were in masked regions.'.format(n_masked_lines))
+    tqdm.write('{} were unable to be matched at all.'.format(
+            len(matched_zero)))
+    tqdm.write('{} were successfully matched with one line.'.format(
+            len(matched_one)))
+    tqdm.write('(Of those, {} were picked out of multiple isotopes.)'.format(
+            n_multi_isotopes))
+    tqdm.write('{} were matched with multiple (non-isotope) lines.'.format(
+            len(matched_mult)))
+    for item in matched_mult:
+        for transition in item:
+            print(str(transition))
+
+
 def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True,
-                     wl_tolerance=1000*unyt.meter/unyt.second,
-                     energy_tolerance=10000*unyt.meter/unyt.second):
+                     wl_tolerance=1000*u.meter/u.second,
+                     energy_tolerance=10000*u.meter/u.second):
     """Return the line from Kurucz list matching given parameters.
 
     Parameters
@@ -165,13 +330,15 @@ def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True,
         If *True*, return the wavelengths in vacuum.
 
     """
-    wavelength = wavelength * unyt.nm
+
+    found_lines = []
+    wavelength = wavelength * u.nm
     wl_vel_tolerance = vcl.getwlseparation(wl_tolerance.value, wavelength)
-    print('wl_tolerance of {} at {} is {:.4f}'.format(wl_tolerance,
-          wavelength, wl_vel_tolerance))
+    print('The wavelength tolerance of {} at {} is {:.4f}'.format(
+            wl_tolerance, wavelength, wl_vel_tolerance))
     for line in KuruczData:
         # For working with the purple list with its wavelengths in vac, nm.
-        wl = line['wavelength'] * unyt.nm
+        wl = line['wavelength'] * u.nm
 #        wl = round(10 * vac2air(line['wavelength']), 3)
         # This distance is VERY important: 0.003 for nm, 0.03 for Angstroms
         if (abs(wl - wavelength) < wl_vel_tolerance):
@@ -184,42 +351,55 @@ def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True,
                 energy1 = line['energy1']
                 energy2 = line['energy2']
                 e_lower = eV2wn(eLow)
-                print(f'e_lower is {e_lower}')
+                print(f'Lower energy of Kurucz line {wl} is {e_lower}')
                 if energy1 < energy2:
-                    lowE = line['energy1'] * unyt.cm**-1
+                    lowE = line['energy1'] * u.cm**-1
                     lowOrb = line['label1']
                     lowJ = line['J1']
-                    highE = line['energy2'] * unyt.cm**-1
+                    highE = line['energy2'] * u.cm**-1
                     highOrb = line['label2']
                     highJ = line['J2']
                 else:
-                    lowE = line['energy2'] * unyt.cm**-1
+                    lowE = line['energy2'] * u.cm**-1
                     lowOrb = line['label2']
                     lowJ = line['J2']
-                    highE = line['energy1'] * unyt.cm**-1
+                    highE = line['energy1'] * u.cm**-1
                     highOrb = line['label1']
                     highJ = line['J1']
                 energy_diff = abs(e_lower - lowE)
-                print(f'energy_diff is {energy_diff}')
+                print(f'The energy difference is {energy_diff}')
                 delta_wl = vcl.getwlseparation(energy_tolerance.value,
-                                               (1 / e_lower).to(unyt.m).value)
-                delta_wl = delta_wl * unyt.m
+                                               (1 / e_lower).to(u.m).value)
+                delta_wl = delta_wl * u.m
                 print(f'delta_wl is {delta_wl}')
-                energy1 = (1 / wavelength).to(unyt.cm ** -1)
-                energy2 = (1 / (wavelength + delta_wl)).to(unyt.cm ** -1)
+                energy1 = (1 / wavelength).to(u.cm ** -1)
+                energy2 = (1 / (wavelength + delta_wl)).to(u.cm ** -1)
 
                 en_tolerance = abs(energy2 - energy1)
-                print(f'en_tolerance is {en_tolerance}')
-                en_tolerance = eV2wn(en_tolerance.value)
+                print(f'The energy tolerance is {en_tolerance}')
                 if energy_diff < en_tolerance:
                     wavenumber = round((1e8 / (line['wavelength'] * 10)), 3)
-                    if not vacuum_wl:
-                        PeckReederWL = vac2airPeckReeder(line['wavelength'])
-                        return (round(PeckReederWL, 4), wavenumber),\
-                               (lowE, lowJ, lowOrb, highE, highJ, highOrb)
-                    else:
-                        return (line['wavelength'], wavenumber),\
-                               (lowE, lowJ, lowOrb, highE, highJ, highOrb)
+                    found_lines.append({'wavelength': line['wavelength'],
+                                        'wavenumber': wavenumber,
+                                        'lowE': lowE,
+                                        'lowJ': lowJ,
+                                        'lowOrb': lowOrb,
+                                        'highE': highE,
+                                        'highJ': highJ,
+                                        'highOrb': highOrb})
+                    print('\nFound a match!')
+                    print('wavelength: {} lower energy {}'.format(
+                            line['wavelength'], lowE))
+                    print(energy_diff, en_tolerance, '\n')
+#                    if not vacuum_wl:
+#                        PeckReederWL = vac2airPeckReeder(line['wavelength'])
+#                        return (round(PeckReederWL, 4), wavenumber),\
+#                               (lowE, lowJ, lowOrb, highE, highJ, highOrb)
+#                    else:
+#                        return (line['wavelength'], wavenumber),\
+#                               (lowE, lowJ, lowOrb, highE, highJ, highOrb)
+
+    return found_lines
 
 
 def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
@@ -235,15 +415,28 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
     lineDepthDiff: max difference in line depths to consider
 
     """
+
     prematchedLines = set()
-    elements = set()
+    elements_found = set()
     n = 0
     n_iron = 0
-    n_unmatchable = 0
+    n_masked = 0
+    n_out_of_depth = 0
 
     output_lines = []
 
-    for item in tqdm(lines):
+    matches_0 = []
+    matches_1 = []
+    matches_mult = []
+
+    matches_0_file = Path('data/matches0.txt')
+    matches_1_file = Path('data/matches1.txt')
+    matches_mult_file = Path('data/matchesMult.txt')
+
+    logfiles = (matches_0_file, matches_1_file, matches_mult_file)
+    linelogs = (matches_0, matches_1, matches_mult)
+
+    for item in tqdm(lines[:5]):
         line_matched = False
         wl = item[0]
 #        tqdm.write('Searching for matches for line {}'.format(wl))
@@ -255,15 +448,22 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
         if spectralMask:
             # If the line falls in masked region, skip it.
             if line_is_masked(wl, spectralMask):
+                n_masked += 1
                 continue
 
         # Check line depth first
         if not (minDepth <= depth <= maxDepth):
+            n_out_of_depth += 1
             continue
 
         # Figure out the wavelength separation at this line's wavelength
         # for the given velocity separation. Ignore lines outside of this.
         delta_wl = vcl.getwlseparation(velSeparation, wl)
+
+        print('\nSearching line at {}nm with lower energy of {} eV '.format(
+                wl, eLow) +
+              'or {:.4f}'.format(1/((eLow * u.eV).to(u.cm,
+                                 equivalence='spectral'))))
 
         for line in lines:
 
@@ -298,64 +498,106 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
             # If it makes it through all the checks, get the lines' info.
             if not line_matched:
                 # If this is the first match for this line, get its info first.
-                try:
-#                    print('wl = {}'.format(wl))
-                    vac_wl, lineInfo = matchKuruczLines(wl, elem, ion, eLow,
-                                                        vacuum_wl=vacuum_wl)
-#                    print('vac_wl = {}'.format(vac_wl))
-                    lineStr = "\n{:0<8} {:0<9} {}{} ".format(
-                                      *vac_wl, elem, ion) +\
-                              "{:0<9} {} {:10} {:0<9} {} {:10}".format(
-                                      *lineInfo)
-                    output_lines.append(lineStr)
-                    output_lines.append("\n")
-#                    print(lineStr)
-                except TypeError:
-                    tqdm.write("\nCouldn't find orbital info for")
+
+                found_lines = matchKuruczLines(wl, elem, ion, eLow,
+                                               vacuum_wl=vacuum_wl)
+                if not found_lines:
+                    tqdm.write("\nCouldn't find a match for")
                     tqdm.write("\n{} {}{} {}eV".format(wl, elem, ion, eLow))
-                    n_unmatchable += 1
+                    matches_0.append(line)
                     continue
-                prematchedLines.add(int(wl * 10))
-                elements.add(elem)
-                line_matched = True
-            try:
-#                print('line[0] = {}'.format(line[0]))
-                vac_wl, lineInfo = matchKuruczLines(line[0], line[1], line[2],
-                                                    line[3],
-                                                    vacuum_wl=vacuum_wl)
-#                print('vac_wl = {}'.format(vac_wl))
-                matchStr = "{:0<8} {:0<9} {}{} ".\
-                           format(*vac_wl, line[1], line[2]) +\
-                           "{:0<9} {} {:10} {:0<9} {} {:10}".\
-                           format(*lineInfo)
-                output_lines.append(matchStr)
+
+                print('found_lines =')
+                print(found_lines)
+                if (len(found_lines) > 1):
+                    print('Multiple line matches found!')
+                    matches_mult.append(line)
+                    print(item)
+                    for found_line in found_lines:
+                        matches_mult.append(format_line_dict(found_line))
+                        print(found_line)
+#                    print('vac_wl = {}'.format(vac_wl))
+                matches_1.append(line)
+                matches_1.append(format_line_dict(found_lines[0]))
+                lineStr = "\n{:0<8} {:0<9} {}{} ".format(
+                                  found_lines[0]['wavelength'],
+                                  found_lines[0]['wavenumber'],
+                                  elem, ion) +\
+                          "{:0<9} {} {:10} {:0<9} {} {:10}".format(
+                                  found_lines[0]['lowE'],
+                                  found_lines[0]['lowJ'],
+                                  found_lines[0]['lowOrb'],
+                                  found_lines[0]['highE'],
+                                  found_lines[0]['highJ'],
+                                  found_lines[0]['highOrb'])
+                output_lines.append(lineStr)
                 output_lines.append("\n")
-#                print(line)
-#                print(matchStr)
-            except TypeError:
-                tqdm.write("\nCouldn't find orbital info for")
+#                    print(lineStr)
+
+                prematchedLines.add(int(wl * 10))
+                elements_found.add(elem)
+                line_matched = True
+
+            matched_lines = matchKuruczLines(line[0], line[1], line[2],
+                                             line[3], vacuum_wl=vacuum_wl)
+
+            if not matched_lines:
+                tqdm.write("\nCouldn't find a match for")
                 tqdm.write("  {} {}{} {}eV".format(
                   line[0], line[1], line[2], line[3]))
+                continue
+
+            if (len(matched_lines) > 1):
+                    print('Multiple line matches found!')
+                    print(item)
+                    for matched_line in matched_lines:
+                        print(matched_line)
+
+            matchStr = "{:0<8} {:0<9} {}{} ".\
+                       format(matched_lines[0]['wavelength'],
+                              matched_lines[0]['wavenumber'],
+                              line[1], line[2]) +\
+                       "{:0<9} {} {:10} {:0<9} {} {:10}".\
+                       format(matched_lines[0]['lowE'],
+                              matched_lines[0]['lowJ'],
+                              matched_lines[0]['lowOrb'],
+                              matched_lines[0]['highE'],
+                              matched_lines[0]['highJ'],
+                              matched_lines[0]['highOrb'])
+            output_lines.append(matchStr)
+            output_lines.append("\n")
+
             n += 1
             if elem == 'Fe' and ion == 1:
                 n_iron += 1
-
 
     with open(str(outFile), 'w') as f:
         print('Writing linefile {}'.format(outFile))
         f.write("#wl({})   wave#   ion    eL     JL"
                 "     orbL       eH     JH    orbH\n".format(
-                'vac' if vacuum_wl else 'air'))
+                    'vac' if vacuum_wl else 'air'))
         f.writelines(output_lines)
+
+    for logfile, linelog in zip(logfiles, linelogs):
+        with open(logfile, 'w') as g:
+            for entry in linelog:
+                templist = [str(x) for x in entry]
+                string = ' '.join(templist) + '\n'
+                g.write(string)
 
     print("\n{} matches found.".format(n))
     print("{}/{} were FeI".format(n_iron, n))
-    print('{} unmatchable lines'.format(n_unmatchable))
-    print(elements)
+    print(elements_found)
     print("Min depth = {}, max depth = {}".format(minDepth, maxDepth))
     print("Vel separation = {} [km/s], line depth diff = {}".format(
           velSeparation / 1000, lineDepthDiff))
     print('CCD bounds used: {}'.format('yes' if CCD_bounds else 'no'))
+
+    print('{} lines in masked regions.'.format(n_masked))
+    print('{} lines out of depth limits.'.format(n_out_of_depth))
+    print('{} lines unmatched.'.format(len(matches_0)))
+    print('{} lines matched once.'.format(len(matches_1)))
+    print('{} lines matched mutiple times.'.format(len(matches_mult)))
 
 #    logfile = 'data/linelists/line_selection_logfile.txt'
 #    with open(logfile, 'a') as g:
@@ -439,10 +681,62 @@ KuruczData = np.genfromtxt(KuruczFile, delimiter=colWidths, autostrip=True,
                                   float, float, "U4", int, int, int,
                                   float, int, float, int, int, "U3",
                                   "U3", "U4", int, int, float],
-                           usecols=(0, 2, 3, 4, 5, 6, 7, 8))
+                           usecols=(0, 2, 3, 4, 5, 6, 7, 8, 18))
 print("Read Kurucz line list.")
-#print(KuruczData[5:10])
 
+# Create lists of transitions from the BRASS and Kurucz line lists.
+b_transition_lines = []
+for b_transition in tqdm(purpleData, unit='transitions'):
+    wl = b_transition[0] * u.nm
+    elem = elements[b_transition[1]]
+    ion = b_transition[2]
+    eLow = b_transition[3] * u.eV
+    depth = b_transition[5]
+
+    transition = Transition(wl, elem, ion)
+    transition.lowerEnergy = 1/(eLow.to(u.cm, equivalence='spectral'))
+    transition.normalizedDepth = depth
+
+    b_transition_lines.append(transition)
+
+k_transition_lines = []
+for k_transition in tqdm(KuruczData, unit='transitions'):
+    wl = k_transition['wavelength'] * u.nm
+    elem_num = trunc(k_transition['elem'])
+    elem_ion = int((k_transition['elem'] - elem_num) * 100 + 1)
+    energy1 = k_transition['energy1']
+    energy2 = k_transition['energy2']
+    if energy1 < energy2:
+        lowE = k_transition['energy1'] * u.cm**-1
+        lowOrb = k_transition['label1']
+        lowJ = k_transition['J1']
+        highE = k_transition['energy2'] * u.cm**-1
+        highOrb = k_transition['label2']
+        highJ = k_transition['J2']
+    else:
+        lowE = k_transition['energy2'] * u.cm**-1
+        lowOrb = k_transition['label2']
+        lowJ = k_transition['J2']
+        highE = k_transition['energy1'] * u.cm**-1
+        highOrb = k_transition['label1']
+        highJ = k_transition['J1']
+    isotope_frac = k_transition['logIsotope']
+
+    transition = Transition(wl, elem_num, elem_ion)
+    transition.lowerEnergy = lowE
+    transition.lowerJ = lowJ
+    transition.lowerOrbital = lowOrb
+    transition.higherEnergy = highE
+    transition.higherJ = highJ
+    transition.higherOrbital = highOrb
+    transition.isotopeFraction = isotope_frac
+
+    k_transition_lines.append(transition)
+
+# Now, match between the BRASS list and Kurucz list as best we can.
+
+harmonize_lists(b_transition_lines, k_transition_lines, mask_no_CCD_bounds,
+                wl_tolerance=1000, energy_tolerance=110000)
 
 goldStandard = "data/GoldStandardLineList.txt"
 testStandard = "data/GoldStandardLineList_test.txt"
@@ -465,17 +759,20 @@ outDir = Path('data/linelists')
 #                           minDepth=depth[0], maxDepth=depth[1],
 #                           velSeparation=sep, lineDepthDiff=diff,
 #                           spectralMask=bound, CCD_bounds=value)
-filename = outDir / 'Lines_purple_0.15-0.9_800kms_0.2_test.txt'
-matchLines(purpleData, filename, minDepth=0.15, maxDepth=0.9,
-            velSeparation=800000, lineDepthDiff=0.2, vacuum_wl=True,
-            spectralMask=mask_no_CCD_bounds, CCD_bounds=False)
+
+
+#filename = outDir / 'Lines_purple_0.15-0.9_800kms_0.2_test.txt'
+#matchLines(purpleData, filename, minDepth=0.15, maxDepth=0.9,
+#            velSeparation=800000, lineDepthDiff=0.2, vacuum_wl=True,
+#            spectralMask=mask_no_CCD_bounds, CCD_bounds=False)
 #goldSystematic = "/Users/dberke/Documents/GoldSystematicLineList.txt"
 #matchLines(redData, goldSystematic, minDepth=0.2, maxDepth=0.8,
 #           velSeparation=800000, lineDepthDiff=0.1)
 #matchLines(blueData, minDepth=0.3, maxDepth=0.7, velSeparation=400000,
 #               lineDepthDiff=0.05)
-fig = plt.figure(figsize=(8, 8))
-ax = fig.add_subplot(1, 1, 1)
-ax.set_xlabel('$\Delta (\lambda - \lambda_0)$ nm')
-ax.hist(line_offsets, bins=20, linewidth=1, edgecolor='black')
-plt.show()
+
+#fig = plt.figure(figsize=(8, 8))
+#ax = fig.add_subplot(1, 1, 1)
+#ax.set_xlabel('$\Delta (\lambda - \lambda_0)$ nm')
+#ax.hist(line_offsets, bins=20, linewidth=1, edgecolor='black')
+#plt.show()
