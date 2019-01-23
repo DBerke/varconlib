@@ -11,7 +11,7 @@ files.
 
 import configparser
 import numpy as np
-import unyt
+import unyt as u
 from tqdm import tqdm, trange
 from astropy.io import fits
 from pathlib import Path
@@ -42,7 +42,17 @@ class HARPSFile2D(object):
 
     def getHeaderCard(self, flag):
         """
-        Return the value of the header card with the given flag.
+        Get the value of the header card with the given flag.
+
+        Parameters
+        ----------
+        flag : str
+            The key of of the FITS header to get the value of.
+
+        Returns
+        -------
+        str
+            The value of the FITS header associated with the given key.
 
         """
 
@@ -76,11 +86,15 @@ class HARPSFile2DScience(HARPSFile2D):
             self._wavelengthArray = None
             self._photonFluxArray = None
             self._errorArray = None
+            self._blazeFile = self.getBlazeFile()
+            # BERV = barycentric Earth radial velocity
+            self._BERV = float(self.getHeaderCard('HIERARCH ESO DRS BERV'))\
+                * u.km / u.s
 
             # Try to read the wavelength array, or create it if it doesn't
             # exist.
             try:
-                self._wavelengthArray = hdulist['WAVE'].data * unyt.angstrom
+                self._wavelengthArray = hdulist['WAVE'].data * u.angstrom
             except KeyError:
                 if update:
                     print("File opened in 'update' mode but no arrays exist!")
@@ -148,20 +162,32 @@ class HARPSFile2DScience(HARPSFile2D):
 
         Returns
         -------
+        Path object
+            A Path object representing the path to the blaze file used for this
+            observation.
 
         """
 
         blaze_file = self.getHeaderCard('HIERARCH ESO DRS BLAZE FILE')
+
+        file_date = blaze_file[6:16]
 
         config = configparser.ConfigParser(interpolation=configparser.
                                            ExtendedInterpolation())
         config.read(config_file)
 
         blaze_file_dir = Path(config['PATHS']['blaze_file_dir'])
-        blaze_file_path = blaze_file_dir / blaze_file
-        print(blaze_file_path)
+        blaze_file_path = blaze_file_dir / 'data/reduced/{}'.format(file_date)\
+            / blaze_file
 
-    def blazeCorrectSelf(self, blaze_file):
+        if not blaze_file_path.exists():
+            print("Blaze file path doesn't exist!")
+            print(blaze_file_path)
+            raise RuntimeError
+
+        return HARPSFile2D(blaze_file_path)
+
+    def blazeCorrectSelf(self):
         """
         Blaze-correct an observation using a separate blaze file.
 
@@ -172,13 +198,13 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        assert 'blaze' in str(blaze_file), "'blaze' not found in file name!"
+        self.blazeFile = self.getBlazeFile()
 
         if (self._photonFluxArray is None) or (self._errorArray is None):
             self.calibrateSelf()
 
-        self._photonFluxArray /= blaze_file._rawData
-        self._errorArray /= blaze_file._rawData
+        self._photonFluxArray /= self.blazeFile._rawData
+        self._errorArray /= self.blazeFile._rawData
 
     def getWavelengthArray(self):
         """
@@ -203,7 +229,7 @@ class HARPSFile2DScience(HARPSFile2D):
         """
 
         source_array = self._rawFluxArray
-        wavelength_array = np.zeros(source_array.shape) * unyt.angstrom
+        wavelength_array = np.zeros(source_array.shape) * u.angstrom
         for order in trange(0, 72, total=72, unit='orders'):
             for i in range(0, 4, 1):
                 coeff = 'ESO DRS CAL TH COEFF LL{0}'.format((4 * order) + i)
@@ -211,7 +237,7 @@ class HARPSFile2DScience(HARPSFile2D):
                 for pixel in range(0, 4096):
                     wavelength_array[order, pixel] += coeff_val *\
                                                       (pixel ** i) *\
-                                                      unyt.angstrom
+                                                      u.angstrom
         return wavelength_array
 
     def getPhotonFluxArray(self, card_title='HIERARCH ESO DRS CCD CONAD'):
@@ -238,7 +264,11 @@ class HARPSFile2DScience(HARPSFile2D):
         # Get the gain from the file header:
         gain = self._header[card_title]
         assert type(gain) == float, f"Gain value is a {type(gain)}!"
+
         photon_flux_array = source_array * gain
+
+        photon_flux_array /= self._blazeFile._rawData
+
         return photon_flux_array
 
     def getErrorArray(self, verbose=False):
@@ -281,6 +311,9 @@ class HARPSFile2DScience(HARPSFile2D):
         if verbose:
             tqdm.write('{} pixels with negative flux found.'.
                        format(bad_pixels))
+
+        error_array /= self._blazeFile._rawData
+
         return error_array
 
     def writeWavelengthHDU(self, hdulist):
@@ -371,9 +404,9 @@ class HARPSFile2DScience(HARPSFile2D):
 
         Parameters
         ----------
-        wavelength : unyt.array.unyt_quantity
+        wavelength : unyt_quantity
             The wavelength to find in the wavelength array. This should be a
-            unyt.array.unyt_quantity object of length 1.
+            unyt_quantity object of length 1.
 
         Returns
         -------
@@ -384,7 +417,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        wavelength_to_find = wavelength.to(unyt.angstrom)
+        wavelength_to_find = wavelength.to(u.angstrom)
 
         # Create the wavelength array if it doesn't exist yet for some reason.
         if self._wavelengthArray is None:
