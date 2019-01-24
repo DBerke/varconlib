@@ -9,6 +9,7 @@ Created on Wed Mar 21 15:57:52 2018
 # Code to iterate through a given line list to identify pairs given
 # various constraints.
 
+import argparse
 from math import trunc
 from pathlib import Path
 import numpy as np
@@ -198,7 +199,7 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
 
     energy_tolerance : int
         The tolerance in m/s (though the units are added internally) to search
-        withing around the BRASS list's lower energy value.
+        within around the BRASS list's lower energy value.
 
     """
 
@@ -612,7 +613,19 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
 #                else 'no'))
 
 
-# Main body of code
+##### Main routine of code #####
+
+desc = 'Select line pairs to analyze from the Kurucz and BRASS line lists.'
+parser = argparse.ArgumentParser(description=desc)
+parser.add_argument('-dw', '--delta_wavelength', action='store',
+                    default=1000, type=int,
+                    help='The wavelength tolerance in m/s.')
+parser.add_argument('-de', '--delta_energy', action='store',
+                    default=10000, type=int,
+                    help='The energy tolerance in m/s.')
+
+args = parser.parse_args()
+
 global line_offsets
 line_offsets = []
 
@@ -703,6 +716,9 @@ k_transition_lines = []
 for k_transition in tqdm(KuruczData, unit='transitions'):
     wl = k_transition['wavelength'] * u.nm
     elem_num = trunc(k_transition['elem'])
+    # Find the element ionization state from the Kurucz list—it's represented
+    # as hundredths after the decimal point in the floating point number (where
+    # 00 = unionized, so off by one from astronomical usage).
     elem_ion = int((k_transition['elem'] - elem_num) * 100 + 1)
     energy1 = k_transition['energy1']
     energy2 = k_transition['energy2']
@@ -736,7 +752,8 @@ for k_transition in tqdm(KuruczData, unit='transitions'):
 # Now, match between the BRASS list and Kurucz list as best we can.
 
 harmonize_lists(b_transition_lines, k_transition_lines, mask_no_CCD_bounds,
-                wl_tolerance=1000, energy_tolerance=110000)
+                wl_tolerance=args.delta_wavelength,
+                energy_tolerance=args.delta_energy)
 
 goldStandard = "data/GoldStandardLineList.txt"
 testStandard = "data/GoldStandardLineList_test.txt"
