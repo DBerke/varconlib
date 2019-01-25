@@ -10,7 +10,7 @@ Created on Wed Mar 21 15:57:52 2018
 # various constraints.
 
 import argparse
-from math import trunc
+from math import trunc, sqrt
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
@@ -235,25 +235,38 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
         energy1 = (1 / b_line.wavelength).to(u.cm ** -1)
         energy2 = (1 / (b_line.wavelength + delta_wl_energy)).to(u.cm ** -1)
 
-        delta_en = abs(energy2 - energy1)
+        delta_energy = abs(energy2 - energy1)
 
-        tqdm.write('For {}, wavelength tolerance is {:.4f}.'.format(
-                   str(b_line), delta_wavelength))
+        tqdm.write('For {} (Z = {}), the wavelength tolerance is {:.4f},'.
+                   format(str(b_line), b_line.atomicNumber, delta_wavelength))
 
-        tqdm.write('And the lower energy tolerance is {:.4f}.'.format(
-                   delta_en))
+        tqdm.write('and the lower energy tolerance is {:.4f}.'.format(
+                   delta_energy))
 
         # Set up a list to contain potential matched lines.
         matched_lines = []
+        # Set up a list to contain distance info for all lines of the same
+        # ionic species.
+        same_species_lines = []
 
         # Go through Kurucz lines and store any that match.
         for k_line in Kurucz_transitions:
             if (k_line.atomicNumber == b_line.atomicNumber)\
-              and (k_line.ionizationState == b_line.ionizationState)\
-              and (abs(k_line.lowerEnergy - b_line.lowerEnergy) < delta_en)\
-              and (abs(k_line.wavelength - b_line.wavelength)
-                   < delta_wavelength):
-                matched_lines.append(k_line)
+              and (k_line.ionizationState == b_line.ionizationState):
+
+                energy_diff = abs(k_line.lowerEnergy - b_line.lowerEnergy)
+                wavelength_diff = abs(k_line.wavelength - b_line.wavelength)
+
+                same_species_lines.append((k_line, wavelength_diff,
+                                           energy_diff))
+
+                if (energy_diff < delta_energy)\
+                  and (wavelength_diff < delta_wavelength):
+                    matched_lines.append(k_line)
+
+        tqdm.write('Total of {} lines of {}{} found.'.format(
+                len(same_species_lines),
+                b_line.atomicSymbol, b_line.ionizationState))
 
         if len(matched_lines) == 1:
             matched_lines[0].normalizedDepth = b_line.normalizedDepth
@@ -261,8 +274,24 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
             tqdm.write('{} matched with one line.'.format(str(b_line)))
 
         elif len(matched_lines) == 0:
-            matched_zero.append((b_line, delta_wavelength, delta_en))
+            matched_zero.append((b_line, delta_wavelength, delta_energy))
             tqdm.write('{} unmatched.'.format(str(b_line)))
+
+            closest_lines = {}
+            diff_scores = []
+            for item in same_species_lines:
+                diff_score = sqrt(item[1].value**2 + item[2].value**2)
+                closest_lines[diff_score] = item
+                diff_scores.append(diff_score)
+
+            tqdm.write('{}{}:'.format(b_line.atomicSymbol,
+                       b_line.ionizationState))
+            for score in sorted(diff_scores)[:5]:
+                item = closest_lines[score]
+                tqdm.write('{:.2f} | {:8.4f} ({:.4f}) | {:.4f} ({:.4f})'
+                           .format(score,
+                           item[0].wavelength, item[1],
+                           item[0].lowerEnergy, item[2]))
 
         elif len(matched_lines) > 1:
             atomic_numbers = set()
@@ -689,7 +718,7 @@ KuruczData = np.genfromtxt(KuruczFile, delimiter=colWidths, autostrip=True,
                                   "hyperfshift1", "hyperfshift2", "hyperF1",
                                   "hyperF2", "code", "landeGeven", "landeGodd"
                                   "isotopeShift"],
-                           dtype=[float, float, float, float, float,
+                           dtype=[float, float, "U6", float, float,
                                   "U11", float, float, "U11", float,
                                   float, float, "U4", int, int, int,
                                   float, int, float, int, int, "U3",
@@ -715,11 +744,13 @@ for b_transition in tqdm(purpleData, unit='transitions'):
 k_transition_lines = []
 for k_transition in tqdm(KuruczData, unit='transitions'):
     wl = k_transition['wavelength'] * u.nm
-    elem_num = trunc(k_transition['elem'])
-    # Find the element ionization state from the Kurucz list—it's represented
-    # as hundredths after the decimal point in the floating point number (where
-    # 00 = unionized, so off by one from astronomical usage).
-    elem_ion = int((k_transition['elem'] - elem_num) * 100 + 1)
+    # The element and ionionzation state from the Kurucz list is given as a
+    # floating point number, e.g., 58.01, where the integer part is the atomic
+    # number and the charge is the hundredths part (which is off by one from
+    # astronomical usage).
+    elem_str = k_transition['elem'].split('.')
+    elem_num = int(elem_str[0])
+    elem_ion = int(elem_str[1]) + 1
     energy1 = k_transition['energy1']
     energy2 = k_transition['energy2']
     if energy1 < energy2:
