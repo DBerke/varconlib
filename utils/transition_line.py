@@ -76,7 +76,7 @@ class Transition(object):
 
     def __repr__(self):
         return "{}({}, {}, {})".format(self.__class__.__name__,
-                self.wavelength.value, self.atomicNumber, self.ionzationState)
+                self.wavelength.value, self.atomicNumber, self.ionizationState)
 
     def __str__(self):
         return "{} {} {} {:.4f}".format(self.wavelength, self.atomicSymbol,
