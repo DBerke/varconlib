@@ -4,6 +4,8 @@
 Created on Tue Dec 18 11:15:44 2018
 
 @author: dberke
+
+The Transition class contains information about a single atomic transition.
 """
 
 import unyt as u
@@ -43,7 +45,9 @@ class Transition(object):
 
         element : int or str
             The atomic number of the element the transition arises from, or the
-            standard chemical symbol (e.g., 'He', or 'N').
+            standard chemical symbol (e.g., 'He', or 'N'). Either can be given;
+            on initialization it will use the given one to find the other from
+            a bijective dictionary and set both for the instance.
 
         ionizationState : int
             The ionization state of the atom the transition arises from, after
@@ -56,7 +60,7 @@ class Transition(object):
         if type(element) is int:
             self.atomicNumber = element
             self.atomicSymbol = elements[self.atomicNumber]
-        elif type(element) is str:
+        elif type(element) is str and len(element) in (1, 2):
             cap_string = element.capitalize()
             try:
                 self.atomicNumber = elements.inv[cap_string]
@@ -65,6 +69,9 @@ class Transition(object):
                 print('Atomic symbol given was "{}".'.format(element))
                 raise
             self.atomicSymbol = cap_string
+        else:
+            raise TypeError("'element' parameter must be an integer atomic " +
+                            "number or correct atomic symbol (e.g., 'Fe').")
 
         self.ionizationState = ionizationState
         self.lowerEnergy = None
@@ -76,8 +83,22 @@ class Transition(object):
 
     def __repr__(self):
         return "{}({}, {}, {})".format(self.__class__.__name__,
-                self.wavelength.value, self.atomicNumber, self.ionizationState)
+                                       self.wavelength.value,
+                                       self.atomicNumber,
+                                       self.ionizationState)
 
     def __str__(self):
         return "{} {} {} {:.4f}".format(self.wavelength, self.atomicSymbol,
                                         self.ionizationState, self.lowerEnergy)
+
+    def __lt__(self, other):
+        if self.wavelength.value < other.wavelength.value:
+            return True
+        else:
+            return False
+
+    def __gt__(self, other):
+        if self.wavelength.value > other.wavelength.value:
+            return True
+        else:
+            return False
