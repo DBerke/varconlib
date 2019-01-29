@@ -10,6 +10,9 @@ Created on Wed Mar 21 15:57:52 2018
 # various constraints.
 
 import argparse
+import configparser
+import pickle
+import datetime
 from math import trunc, sqrt
 from pathlib import Path
 import numpy as np
@@ -18,6 +21,7 @@ from tqdm import tqdm
 import varconlib as vcl
 import unyt as u
 from transition_line import Transition
+from transition_pair import TransitionPair
 
 elements = {"H": 1, "He": 2, "Li": 3, "Be": 4, "B": 5, "C": 6, "N": 7,
             "O": 8, "F": 9, "Ne": 10, "Na": 11, "Mg": 12, "Al": 13,
@@ -290,8 +294,8 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
                 item = closest_lines[score]
                 tqdm.write('{:.2f} | {:8.4f} ({:.4f}) | {:.4f} ({:.4f})'
                            .format(score,
-                           item[0].wavelength, item[1],
-                           item[0].lowerEnergy, item[2]))
+                                   item[0].wavelength, item[1],
+                                   item[0].lowerEnergy, item[2]))
 
         elif len(matched_lines) > 1:
             atomic_numbers = set()
@@ -337,6 +341,111 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
     for item in matched_mult:
         for transition in item:
             print(str(transition))
+
+    # Create a pickled file of the transitions that have been found.
+    config = configparser.ConfigParser(interpolation=configparser.
+                                       ExtendedInterpolation())
+    config.read('config/variables.cfg')
+    pickle_dir = Path(config['PATHS']['pickle_dir'])
+    pickle_file = pickle_dir / 'transitions.pickle'
+    pickle_file_backup = pickle_dir / 'transitions_{}.pickle'.format(
+            datetime.date.today().isoformat())
+    tqdm.write('Saving transitions to {}'.format(pickle_file))
+    with open(pickle_file, 'w+b') as f:
+        pickle.dump(matched_one, f)
+    with open(pickle_file_backup, 'w+b') as f:
+        pickle.dump(matched_one, f)
+
+
+def find_line_pairs(transition_list, minNormDepth=0.3, maxNormDepth=0.7,
+                    velSeparation=400000*u.m/u.s, lineDepthDiff=0.05):
+    """Find pairs of nearby transitions from a list, within constraints.
+
+    Parameters
+    ----------
+    transition_list : a list of transition_line.Transition objects.
+
+    minNormDepth : float
+    A float between 0 and 1 representing the minimum normalized depth of an
+    absorption line to consider (0 being continuum, 1 being saturated). Should
+    be less than maxNormDepth in absolute value.
+
+    maxNormDepth : float
+    A float between 0 and 1 representing the maximum normalized depth of an
+    absorption line to consider (0 being continuum, 1 being saturated). Should
+    be greater in absolute value than minNormDepth.
+
+    velSeparation : unyt_quantity, dimensions of velocity
+    A velocity representing how far around a transition to search for matching
+    transitions. Can use any units of velocity, will be converted to m/s
+    interally.
+
+    lineDepthDiff : float
+    A number representing how much two transitions can vary in normalized depth
+    before being considered unfit as a pair.
+
+    """
+
+    velSeparation.to(u.m/u.s)
+    transition_pair_list = []
+
+    for transition1 in tqdm(transition_list, unit='transition'):
+        # Check that the transition falls within normalized depth limits.
+        if not(minNormDepth <= transition1.normalizedDepth <= maxNormDepth):
+            continue
+
+        # If it's fine, figure out how much wavelength space to search around
+        # it based on the velocity separation.
+        delta_wl = vcl.getwlseparation(velSeparation.value,
+                                       transition1.wavelength.value)
+        lowerLim = transition1.wavelength - delta_wl * u.nm
+        upperLim = transition1.wavelength + delta_wl * u.nm
+
+
+        # Iterate over the entire list of transitions.
+        for transition2 in transition_list:
+
+            # Avoid matching a transition with itself.
+            if transition1 == transition2:
+                continue
+
+            # Check that the transition is within the velocity separation
+            # limits.
+            if not(lowerLim <= transition2.wavelength <= upperLim):
+                continue
+
+            # Check that the transition falls within normalized depth limits.
+            if not(minNormDepth <= transition2.normalizedDepth
+                   <= maxNormDepth):
+                continue
+
+            # Check that the two transitions' depths don't exceed the defined
+            # maximum depth difference.
+            if (abs(transition1.normalizedDepth -
+                    transition2.normalizedDepth) > lineDepthDiff):
+                continue
+
+            # Only bother with transitions from the same element and ionization
+            # state.
+            if (transition1.atomicNumber !=
+                transition2.atomicNumber) or (transition1.ionizationState !=
+                                              transition2.ionizationState):
+                continue
+
+            # If a line makes it through all the checks, it's considered a
+            # match for the initial line. Create a TransitionPair object
+            # containing both of them and continue checking.
+            pair = TransitionPair(transition1, transition2)
+            if pair in transition_pair_list:
+                pass
+            else:
+                transition_pair_list.append(pair)
+    for item in transition_pair_list:
+        print(item)
+    print(len(transition_pair_list))
+    if transition_pair_list[0] == transition_pair_list[1]:
+        print(True)
+    else: print(False)
 
 
 def matchKuruczLines(wavelength, elem, ion, eLow, vacuum_wl=True,
@@ -646,12 +755,19 @@ def matchLines(lines, outFile, minDepth=0.3, maxDepth=0.7,
 
 desc = 'Select line pairs to analyze from the Kurucz and BRASS line lists.'
 parser = argparse.ArgumentParser(description=desc)
+parser.add_argument('--match_lines', action='store_true',
+                    default=False,
+                    help='Flag to match transitions between lists.')
 parser.add_argument('-dw', '--delta_wavelength', action='store',
                     default=1000, type=int,
                     help='The wavelength tolerance in m/s.')
 parser.add_argument('-de', '--delta_energy', action='store',
                     default=10000, type=int,
                     help='The energy tolerance in m/s.')
+
+parser.add_argument('--pair_lines', action='store_true',
+                    default=False,
+                    help='Find pairs of transition lines from list.')
 
 args = parser.parse_args()
 
@@ -682,109 +798,100 @@ mask_no_CCD_bounds = vcl.parse_spectral_mask_file(no_CCD_bounds_file)
 #                     dtype=(float, "U2", int, float, float))
 #print("Read blue line list.")
 
-purpleData = np.genfromtxt(purpleFile, delimiter=",", skip_header=1,
-                     dtype=(float, "U2", int, float, float, float))
-print("Read purple line list.")
+if args.match_lines:
+    purpleData = np.genfromtxt(purpleFile, delimiter=",", skip_header=1,
+                         dtype=(float, "U2", int, float, float, float))
+    tqdm.write("Read purple line list.")
 
-# Code to match up the red and blue lists.
-#num_matched = 0
-#unmatched = 0
-#for line1 in redData:
-#    matched = False
-#    wl1 = line1[0]
-#    energy1 = line1[3]
-#    for line2 in blueData:
-#        wl2 = line2[0]
-#        energy2 = line2[3]
-#        if (abs(wl1 - wl2) <= 0.1) and (abs(energy1 - energy2) <= 0.0015):
-##            print('{} in red matches {} in blue'.format(wl1, wl2))
-#            num_matched += 1
-#            matched = True
-#            break
-#    if not matched:
-#        print('{} not matched'.format(wl1))
-#        unmatched += 1
-#print('{} total matched'.format(num_matched))
-#print('{} not matched'.format(unmatched))
+    KuruczData = np.genfromtxt(KuruczFile, delimiter=colWidths, autostrip=True,
+                               skip_header=842959, skip_footer=987892,
+                               names=["wavelength", "log gf", "elem", "energy1",
+                                      "J1", "label1", "energy2", "J2", "label2",
+                                      "gammaRad", "gammaStark", "vanderWaals",
+                                      "ref", "nlte1",  "nlte2", "isotope1",
+                                      "hyperf1", "isotope2", "logIsotope",
+                                      "hyperfshift1", "hyperfshift2", "hyperF1",
+                                      "hyperF2", "code", "landeGeven", "landeGodd"
+                                      "isotopeShift"],
+                               dtype=[float, float, "U6", float, float,
+                                      "U11", float, float, "U11", float,
+                                      float, float, "U4", int, int, int,
+                                      float, int, float, int, int, "U3",
+                                      "U3", "U4", int, int, float],
+                               usecols=(0, 2, 3, 4, 5, 6, 7, 8, 18))
+    tqdm.write("Read Kurucz line list.")
 
+    # Create lists of transitions from the BRASS and Kurucz line lists.
+    b_transition_lines = []
+    for b_transition in tqdm(purpleData, unit='transitions'):
+        wl = b_transition[0] * u.nm
+        elem = elements[b_transition[1]]
+        ion = b_transition[2]
+        eLow = b_transition[3] * u.eV
+        depth = b_transition[5]
 
-KuruczData = np.genfromtxt(KuruczFile, delimiter=colWidths, autostrip=True,
-                           skip_header=842959, skip_footer=987892,
-                           names=["wavelength", "log gf", "elem", "energy1",
-                                  "J1", "label1", "energy2", "J2", "label2",
-                                  "gammaRad", "gammaStark", "vanderWaals",
-                                  "ref", "nlte1",  "nlte2", "isotope1",
-                                  "hyperf1", "isotope2", "logIsotope",
-                                  "hyperfshift1", "hyperfshift2", "hyperF1",
-                                  "hyperF2", "code", "landeGeven", "landeGodd"
-                                  "isotopeShift"],
-                           dtype=[float, float, "U6", float, float,
-                                  "U11", float, float, "U11", float,
-                                  float, float, "U4", int, int, int,
-                                  float, int, float, int, int, "U3",
-                                  "U3", "U4", int, int, float],
-                           usecols=(0, 2, 3, 4, 5, 6, 7, 8, 18))
-print("Read Kurucz line list.")
+        transition = Transition(wl, elem, ion)
+        transition.lowerEnergy = 1/(eLow.to(u.cm, equivalence='spectral'))
+        transition.normalizedDepth = depth
 
-# Create lists of transitions from the BRASS and Kurucz line lists.
-b_transition_lines = []
-for b_transition in tqdm(purpleData, unit='transitions'):
-    wl = b_transition[0] * u.nm
-    elem = elements[b_transition[1]]
-    ion = b_transition[2]
-    eLow = b_transition[3] * u.eV
-    depth = b_transition[5]
+        b_transition_lines.append(transition)
 
-    transition = Transition(wl, elem, ion)
-    transition.lowerEnergy = 1/(eLow.to(u.cm, equivalence='spectral'))
-    transition.normalizedDepth = depth
+    k_transition_lines = []
+    for k_transition in tqdm(KuruczData, unit='transitions'):
+        wl = k_transition['wavelength'] * u.nm
+        # The element and ionionzation state from the Kurucz list is given as a
+        # floating point number, e.g., 58.01, where the integer part is the atomic
+        # number and the charge is the hundredths part (which is off by one from
+        # astronomical usage).
+        elem_str = k_transition['elem'].split('.')
+        elem_num = int(elem_str[0])
+        elem_ion = int(elem_str[1]) + 1
+        energy1 = k_transition['energy1']
+        energy2 = k_transition['energy2']
+        if energy1 < energy2:
+            lowE = k_transition['energy1'] * u.cm**-1
+            lowOrb = k_transition['label1']
+            lowJ = k_transition['J1']
+            highE = k_transition['energy2'] * u.cm**-1
+            highOrb = k_transition['label2']
+            highJ = k_transition['J2']
+        else:
+            lowE = k_transition['energy2'] * u.cm**-1
+            lowOrb = k_transition['label2']
+            lowJ = k_transition['J2']
+            highE = k_transition['energy1'] * u.cm**-1
+            highOrb = k_transition['label1']
+            highJ = k_transition['J1']
+        isotope_frac = k_transition['logIsotope']
 
-    b_transition_lines.append(transition)
+        transition = Transition(wl, elem_num, elem_ion)
+        transition.lowerEnergy = lowE
+        transition.lowerJ = lowJ
+        transition.lowerOrbital = lowOrb
+        transition.higherEnergy = highE
+        transition.higherJ = highJ
+        transition.higherOrbital = highOrb
+        transition.isotopeFraction = isotope_frac
 
-k_transition_lines = []
-for k_transition in tqdm(KuruczData, unit='transitions'):
-    wl = k_transition['wavelength'] * u.nm
-    # The element and ionionzation state from the Kurucz list is given as a
-    # floating point number, e.g., 58.01, where the integer part is the atomic
-    # number and the charge is the hundredths part (which is off by one from
-    # astronomical usage).
-    elem_str = k_transition['elem'].split('.')
-    elem_num = int(elem_str[0])
-    elem_ion = int(elem_str[1]) + 1
-    energy1 = k_transition['energy1']
-    energy2 = k_transition['energy2']
-    if energy1 < energy2:
-        lowE = k_transition['energy1'] * u.cm**-1
-        lowOrb = k_transition['label1']
-        lowJ = k_transition['J1']
-        highE = k_transition['energy2'] * u.cm**-1
-        highOrb = k_transition['label2']
-        highJ = k_transition['J2']
-    else:
-        lowE = k_transition['energy2'] * u.cm**-1
-        lowOrb = k_transition['label2']
-        lowJ = k_transition['J2']
-        highE = k_transition['energy1'] * u.cm**-1
-        highOrb = k_transition['label1']
-        highJ = k_transition['J1']
-    isotope_frac = k_transition['logIsotope']
+        k_transition_lines.append(transition)
 
-    transition = Transition(wl, elem_num, elem_ion)
-    transition.lowerEnergy = lowE
-    transition.lowerJ = lowJ
-    transition.lowerOrbital = lowOrb
-    transition.higherEnergy = highE
-    transition.higherJ = highJ
-    transition.higherOrbital = highOrb
-    transition.isotopeFraction = isotope_frac
+    # Now, match between the BRASS list and Kurucz list as best we can.
 
-    k_transition_lines.append(transition)
+    harmonize_lists(b_transition_lines, k_transition_lines, mask_no_CCD_bounds,
+                    wl_tolerance=args.delta_wavelength,
+                    energy_tolerance=args.delta_energy)
 
-# Now, match between the BRASS list and Kurucz list as best we can.
+if args.pair_lines:
+    config = configparser.ConfigParser(interpolation=configparser.
+                                       ExtendedInterpolation())
+    config.read('config/variables.cfg')
+    pickle_dir = Path(config['PATHS']['pickle_dir'])
+    pickle_file = pickle_dir / 'transitions.pickle'
+    print('Unpickling transition lines...')
+    with open(pickle_file, 'r+b') as f:
+        transition_list = pickle.load(f)
 
-harmonize_lists(b_transition_lines, k_transition_lines, mask_no_CCD_bounds,
-                wl_tolerance=args.delta_wavelength,
-                energy_tolerance=args.delta_energy)
+    find_line_pairs(transition_list)
 
 goldStandard = "data/GoldStandardLineList.txt"
 testStandard = "data/GoldStandardLineList_test.txt"
