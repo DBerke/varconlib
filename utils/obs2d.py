@@ -23,8 +23,7 @@ config.read(config_file)
 
 
 class HARPSFile2D(object):
-    """
-    Class to contain data from a HARPS 2D extracted spectrum file.
+    """Class to contain data from a HARPS 2D extracted spectrum file.
 
     """
 
@@ -70,20 +69,20 @@ class HARPSFile2D(object):
 
 
 class HARPSFile2DScience(HARPSFile2D):
+    """Subclass of HARPSFile2D to handle observations specifically.
+
     """
-    Subclass of HARPSFile2D to handle observations specifically.
-    """
-    # TODO: Integrate update keyword
+
     def __init__(self, FITSfile, update=False):
         if type(FITSfile) is str:
             self._filename = Path(FITSfile)
         else:
             self._filename = FITSfile
         if update:
-            mode = 'update'
+            file_open_mode = 'update'
         else:
-            mode = 'append'
-        with fits.open(self._filename, mode=mode) as hdulist:
+            file_open_mode = 'append'
+        with fits.open(self._filename, mode=file_open_mode) as hdulist:
             self._header = hdulist[0].header
             self._rawData = hdulist[0].data
             self._rawFluxArray = self._rawData
@@ -98,15 +97,15 @@ class HARPSFile2DScience(HARPSFile2D):
 
             # Try to read the wavelength array, or create it if it doesn't
             # exist.
+            err_str = "File opened in 'update' mode but no arrays exist!"
             try:
                 self._wavelengthArray = hdulist['WAVE'].data * u.angstrom
             except KeyError:
                 if update:
-                    print("File opened in 'update' mode but no arrays exist!")
-                    raise RuntimeError
+                    raise RuntimeError(err_str)
                 tqdm.write('Writing new wavelength HDU.')
                 self.writeWavelengthHDU(hdulist)
-            # If we're updating the file, overwrite what exists.
+            # If we're updating the file, overwrite the existing wavelengths.
             if update:
                 print('Overwriting wavelength HDU.')
                 self.writeWavelengthHDU(hdulist)
@@ -116,11 +115,10 @@ class HARPSFile2DScience(HARPSFile2D):
                 self._photonFluxArray = hdulist['FLUX'].data
             except KeyError:
                 if update:
-                    print("File opened in 'update' mode but no arrays exist!")
-                    raise RuntimeError
+                    raise RuntimeError(err_str)
                 self.writePhotonFluxHDU(hdulist)
                 tqdm.write('Writing new photon flux HDU.')
-            # If we're updating the file, overwrite what exists.
+            # If we're updating the file, overwrite the existing fluxes.
             if update:
                 print('Overwriting photon flux HDU.')
                 self.writePhotonFluxHDU(hdulist)
@@ -130,37 +128,13 @@ class HARPSFile2DScience(HARPSFile2D):
                 self._errorArray = hdulist['ERR'].data
             except KeyError:
                 if update:
-                    print("File opened in 'update' mode but no arrays exist!")
-                    raise RuntimeError
+                    raise RuntimeError(err_str)
                 self.writeErrorHDU(hdulist)
                 tqdm.write('Writing new error HDU.')
-            # If we're updating the file, overwrite what exists.
+            # If we're updating the file, overwrite the existing uncertainties.
             if update:
                 print('Overwriting error array HDU.')
                 self.writeErrorHDU(hdulist)
-
-    def calibrateSelf(self, verbose=False):
-        """
-        Create error and wavelength arrays for the observation and convert from
-        ADUs to photons.
-
-        Will only create the arrays and do the calibration if they haven't
-        already been done, so calling it multiple times should't cause any
-        additional slowdown.
-
-        """
-
-        if self._photonFluxArray is None:
-            # Calibrate ADUs to photoelectrons using the gain
-            self._photonFluxArray = self.getPhotonFluxArray(self._rawFluxArray)
-
-        if self._errorArray is None:
-            # Construct an error array using the photon flux in each pixel
-            self._errorArray = self.getErrorArray(self._photonFluxArray,
-                                                  verbose=verbose)
-        if self._wavelengthArray is None:
-            # Create a wavelength array using the headers in the file
-            self._wavelengthArray = self.getWavelengthArray(self._rawFluxArray)
 
     def getBlazeFile(self):
         """Find and return the blaze file associated with this observation.
@@ -191,6 +165,10 @@ class HARPSFile2DScience(HARPSFile2D):
     def getWavelengthArray(self):
         """
         Construct a wavelength array (in Angstroms) for the observation.
+
+        By default, the wavelength array returned using the coefficients in
+        the headers are in air wavelengths, and uncorrected for the Earth's
+        barycentric motion.
 
         Returns
         -------
@@ -267,6 +245,10 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
+        # According to Dumusque 2018 HARPS has a dark-current and read-out
+        # noise of 12 photo-electrons.
+        dark_noise = 12
+
         # If the gain-corrected photon flux array doesn't exist yet, create it.
         if self._gainCorrectedFluxArray is None:
             self._gainCorrectedFluxArray = self.getGainCorrectedFluxArray()
@@ -281,7 +263,10 @@ class HARPSFile2DScience(HARPSFile2D):
                     error_array[m, n] = 1e5
                     bad_pixels += 1
                 else:
-                    error_array[m, n] = np.sqrt(photon_flux_array[m, n])
+                    # Add the dark noise in quadrature with the photon noise.
+                    # Won't affect much unless at low SNR.
+                    error_array[m, n] = np.sqrt(photon_flux_array[m, n] +
+                                                dark_noise ** 2)
         if verbose:
             tqdm.write('{} pixels with negative flux found.'.
                        format(bad_pixels))
@@ -454,8 +439,6 @@ class HARPSFile2DScience(HARPSFile2D):
         # Check that the index is correct.
         assert 0 <= index <= 71, "Index is not in [0, 71]!"
 
-        if (self._wavelengthArray is None) or (self._errorArray is None):
-            self.calibrateSelf()
         ax = passed_axis
 
         # Plot onto the given axis.
