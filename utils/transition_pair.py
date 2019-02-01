@@ -59,14 +59,28 @@ class TransitionPair(object):
             return False
 
     def __gt__(self, other):
-        if self._transitionLowerEnergy > other._transitionLowerEnergy:
+        if self == other:
+            return False
+        elif self._transitionLowerEnergy > other._transitionLowerEnergy:
             return True
+        elif self._transitionLowerEnergy == other._transitionLowerEnergy:
+            if self._transitionHigherEnergy > other._transitionHigherEnergy:
+                return True
+            else:
+                return False
         else:
             return False
 
     def __lt__(self, other):
-        if self._transitionLowerEnergy < other._transitionLowerEnergy:
+        if self == other:
+            return False
+        elif self._transitionLowerEnergy < other._transitionLowerEnergy:
             return True
+        elif self._transitionLowerEnergy == other._transitionLowerEnergy:
+            if self._transitionHigherEnergy < other._transitionHigherEnergy:
+                return True
+            else:
+                return False
         else:
             return False
 

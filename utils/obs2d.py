@@ -17,11 +17,13 @@ from astropy.io import fits
 from pathlib import Path
 
 config_file = Path('config/variables.cfg')
+config = configparser.ConfigParser(interpolation=configparser.
+                                   ExtendedInterpolation())
+config.read(config_file)
 
 
 class HARPSFile2D(object):
-    """
-    Class to contain data from a HARPS 2D extracted spectrum file.
+    """Class to contain data from a HARPS 2D extracted spectrum file.
 
     """
 
@@ -62,46 +64,48 @@ class HARPSFile2D(object):
         """
         Return a plot of the data.
         """
+        # TODO: Implement a plot system.
         pass
 
 
 class HARPSFile2DScience(HARPSFile2D):
+    """Subclass of HARPSFile2D to handle observations specifically.
+
     """
-    Subclass of HARPSFile2D to handle observations specifically.
-    """
-    # TODO: Integrate update keyword
+
     def __init__(self, FITSfile, update=False):
         if type(FITSfile) is str:
             self._filename = Path(FITSfile)
         else:
             self._filename = FITSfile
         if update:
-            mode = 'update'
+            file_open_mode = 'update'
         else:
-            mode = 'append'
-        with fits.open(self._filename, mode=mode) as hdulist:
+            file_open_mode = 'append'
+        with fits.open(self._filename, mode=file_open_mode) as hdulist:
             self._header = hdulist[0].header
             self._rawData = hdulist[0].data
             self._rawFluxArray = self._rawData
+            self._gainCorrectedFluxArray = None
             self._wavelengthArray = None
             self._photonFluxArray = None
             self._errorArray = None
             self._blazeFile = self.getBlazeFile()
-            # BERV = barycentric Earth radial velocity
+            # BERV = Barycentric Earth Radial Velocity
             self._BERV = float(self.getHeaderCard('HIERARCH ESO DRS BERV'))\
                 * u.km / u.s
 
             # Try to read the wavelength array, or create it if it doesn't
             # exist.
+            err_str = "File opened in 'update' mode but no arrays exist!"
             try:
                 self._wavelengthArray = hdulist['WAVE'].data * u.angstrom
             except KeyError:
                 if update:
-                    print("File opened in 'update' mode but no arrays exist!")
-                    raise RuntimeError
+                    raise RuntimeError(err_str)
                 tqdm.write('Writing new wavelength HDU.')
                 self.writeWavelengthHDU(hdulist)
-            # If we're updating the file, overwrite what exists.
+            # If we're updating the file, overwrite the existing wavelengths.
             if update:
                 print('Overwriting wavelength HDU.')
                 self.writeWavelengthHDU(hdulist)
@@ -111,11 +115,10 @@ class HARPSFile2DScience(HARPSFile2D):
                 self._photonFluxArray = hdulist['FLUX'].data
             except KeyError:
                 if update:
-                    print("File opened in 'update' mode but no arrays exist!")
-                    raise RuntimeError
+                    raise RuntimeError(err_str)
                 self.writePhotonFluxHDU(hdulist)
                 tqdm.write('Writing new photon flux HDU.')
-            # If we're updating the file, overwrite what exists.
+            # If we're updating the file, overwrite the existing fluxes.
             if update:
                 print('Overwriting photon flux HDU.')
                 self.writePhotonFluxHDU(hdulist)
@@ -125,56 +128,28 @@ class HARPSFile2DScience(HARPSFile2D):
                 self._errorArray = hdulist['ERR'].data
             except KeyError:
                 if update:
-                    print("File opened in 'update' mode but no arrays exist!")
-                    raise RuntimeError
+                    raise RuntimeError(err_str)
                 self.writeErrorHDU(hdulist)
                 tqdm.write('Writing new error HDU.')
-            # If we're updating the file, overwrite what exists.
+            # If we're updating the file, overwrite the existing uncertainties.
             if update:
                 print('Overwriting error array HDU.')
                 self.writeErrorHDU(hdulist)
-
-    def calibrateSelf(self, verbose=False):
-        """
-        Create error and wavelength arrays for the observation and convert from
-        ADUs to photons.
-
-        Will only create the arrays and do the calibration if they haven't
-        already been done, so calling it multiple times should't cause any
-        additional slowdown.
-
-        """
-
-        if self._photonFluxArray is None:
-            # Calibrate ADUs to photoelectrons using the gain
-            self._photonFluxArray = self.getPhotonFluxArray(self._rawFluxArray)
-
-        if self._errorArray is None:
-            # Construct an error array using the photon flux in each pixel
-            self._errorArray = self.getErrorArray(self._photonFluxArray,
-                                                  verbose=verbose)
-        if self._wavelengthArray is None:
-            # Create a wavelength array using the headers in the file
-            self._wavelengthArray = self.getWavelengthArray(self._rawFluxArray)
 
     def getBlazeFile(self):
         """Find and return the blaze file associated with this observation.
 
         Returns
         -------
-        Path object
-            A Path object representing the path to the blaze file used for this
-            observation.
+        obs2d.HARPSFile2D object
+            A HARPSFile2D object created from the blaze file associated with
+            this observation via its header card.
 
         """
 
         blaze_file = self.getHeaderCard('HIERARCH ESO DRS BLAZE FILE')
 
         file_date = blaze_file[6:16]
-
-        config = configparser.ConfigParser(interpolation=configparser.
-                                           ExtendedInterpolation())
-        config.read(config_file)
 
         blaze_file_dir = Path(config['PATHS']['blaze_file_dir'])
         blaze_file_path = blaze_file_dir / 'data/reduced/{}'.format(file_date)\
@@ -187,28 +162,13 @@ class HARPSFile2DScience(HARPSFile2D):
 
         return HARPSFile2D(blaze_file_path)
 
-    def blazeCorrectSelf(self):
-        """
-        Blaze-correct an observation using a separate blaze file.
-
-        Parameters
-        ----------
-        blazefile : HARPSFile2D instance
-            A blaze file imported as a HARPSFile2D instance.
-
-        """
-
-        self.blazeFile = self.getBlazeFile()
-
-        if (self._photonFluxArray is None) or (self._errorArray is None):
-            self.calibrateSelf()
-
-        self._photonFluxArray /= self.blazeFile._rawData
-        self._errorArray /= self.blazeFile._rawData
-
     def getWavelengthArray(self):
         """
         Construct a wavelength array (in Angstroms) for the observation.
+
+        By default, the wavelength array returned using the coefficients in
+        the headers are in air wavelengths, and uncorrected for the Earth's
+        barycentric motion.
 
         Returns
         -------
@@ -240,17 +200,10 @@ class HARPSFile2DScience(HARPSFile2D):
                                                       u.angstrom
         return wavelength_array
 
-    def getPhotonFluxArray(self, card_title='HIERARCH ESO DRS CCD CONAD'):
+    def getPhotonFluxArray(self):
         """
         Calibrate the raw flux array using the gain to recover the
         photoelectron flux.
-
-        Parameters
-        ----------
-        card_title : str
-            A string representing the value of the header card to read to find
-            the gain. By default set to the value found in HARPS e2ds files,
-            'HIERARCH ESO DRS CCD CONAD'.
 
         Returns
         -------
@@ -260,13 +213,12 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        source_array = self._rawFluxArray
-        # Get the gain from the file header:
-        gain = self._header[card_title]
-        assert type(gain) == float, f"Gain value is a {type(gain)}!"
+        # If the gain-corrected photon flux array doesn't exist yet, create it.
+        if self._gainCorrectedFluxArray is None:
+            self._gainCorrectedFluxArray = self.getGainCorrectedFluxArray()
+        photon_flux_array = self._gainCorrectedFluxArray()
 
-        photon_flux_array = source_array * gain
-
+        # Blaze-correct the photon flux array:
         photon_flux_array /= self._blazeFile._rawData
 
         return photon_flux_array
@@ -293,21 +245,28 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        # If the photon flux array doesn't exist yet, create it.
-        if self._photonFluxArray is None:
-            self._photonFluxArray = self.getPhotonFluxArray()
-        source_array = self._photonFluxArray
+        # According to Dumusque 2018 HARPS has a dark-current and read-out
+        # noise of 12 photo-electrons.
+        dark_noise = 12
+
+        # If the gain-corrected photon flux array doesn't exist yet, create it.
+        if self._gainCorrectedFluxArray is None:
+            self._gainCorrectedFluxArray = self.getGainCorrectedFluxArray()
+        photon_flux_array = self._gainCorrectedFluxArray()
         bad_pixels = 0
-        error_array = np.ones(source_array.shape)
-        for m in range(source_array.shape[0]):
-            for n in range(source_array.shape[1]):
-                if source_array[m, n] < 0:
+        error_array = np.ones(photon_flux_array.shape)
+        for m in range(photon_flux_array.shape[0]):
+            for n in range(photon_flux_array.shape[1]):
+                if photon_flux_array[m, n] < 0:
                     if verbose:
-                        tqdm.write(source_array[m, n], m, n)
+                        tqdm.write(photon_flux_array[m, n], m, n)
                     error_array[m, n] = 1e5
                     bad_pixels += 1
                 else:
-                    error_array[m, n] = np.sqrt(source_array[m, n])
+                    # Add the dark noise in quadrature with the photon noise.
+                    # Won't affect much unless at low SNR.
+                    error_array[m, n] = np.sqrt(photon_flux_array[m, n] +
+                                                dark_noise ** 2)
         if verbose:
             tqdm.write('{} pixels with negative flux found.'.
                        format(bad_pixels))
@@ -315,6 +274,24 @@ class HARPSFile2DScience(HARPSFile2D):
         error_array /= self._blazeFile._rawData
 
         return error_array
+
+    def getGainCorrectedFluxArray(self,
+                                  gain_card='HIERARCH ESO DRS CCD CONAD'):
+        """Get the raw flux array gain-corrected from ADUs to photons.
+
+        Return
+        ------
+        NumPy array
+        An array with the same shape as self._rawFluxArray, representing the
+        number of photons in each pixel of the array.
+
+        """
+
+        # Get the gain from the file header:
+        gain = self._header[gain_card]
+        assert type(gain) == float, f"Gain value is a {type(gain)}!"
+
+        return self._rawFluxArray * gain
 
     def writeWavelengthHDU(self, hdulist):
         """
@@ -462,8 +439,6 @@ class HARPSFile2DScience(HARPSFile2D):
         # Check that the index is correct.
         assert 0 <= index <= 71, "Index is not in [0, 71]!"
 
-        if (self._wavelengthArray is None) or (self._errorArray is None):
-            self.calibrateSelf()
         ax = passed_axis
 
         # Plot onto the given axis.
