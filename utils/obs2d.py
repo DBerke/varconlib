@@ -12,6 +12,7 @@ files.
 import configparser
 import numpy as np
 import unyt as u
+import varconlib as vcl
 from tqdm import tqdm, trange
 from astropy.io import fits
 from pathlib import Path
@@ -90,10 +91,17 @@ class HARPSFile2DScience(HARPSFile2D):
             self._wavelengthArray = None
             self._photonFluxArray = None
             self._errorArray = None
-            self._blazeFile = self.getBlazeFile()
+
             # BERV = Barycentric Earth Radial Velocity
-            self._BERV = float(self.getHeaderCard('HIERARCH ESO DRS BERV'))\
-                * u.km / u.s
+            self._BERV = float(self.getHeaderCard(
+                    'HIERARCH ESO DRS BERV')) * u.km / u.s
+            self._radial_velocity = float(self.getHeaderCard(
+                    'HIERARCH ESO TEL TARG RADVEL')) * u.km / u.s
+
+            # Since we may not have the blaze files on hand, only try to find
+            # them if we really need them.
+            if (len(hdulist) == 1) or file_open_mode == 'update':
+                self._blazeFile = self.getBlazeFile()
 
             # Try to read the wavelength array, or create it if it doesn't
             # exist.
@@ -200,6 +208,24 @@ class HARPSFile2DScience(HARPSFile2D):
                                                       u.angstrom
         return wavelength_array
 
+    def getGainCorrectedFluxArray(self,
+                                  gain_card='HIERARCH ESO DRS CCD CONAD'):
+        """Get the raw flux array gain-corrected from ADUs to photons.
+
+        Return
+        ------
+        NumPy array
+        An array with the same shape as self._rawFluxArray, representing the
+        number of photons in each pixel of the array.
+
+        """
+
+        # Get the gain from the file header:
+        gain = self._header[gain_card]
+        assert type(gain) == float, f"Gain value is a {type(gain)}!"
+
+        return self._rawFluxArray * gain
+
     def getPhotonFluxArray(self):
         """
         Calibrate the raw flux array using the gain to recover the
@@ -274,24 +300,6 @@ class HARPSFile2DScience(HARPSFile2D):
         error_array /= self._blazeFile._rawData
 
         return error_array
-
-    def getGainCorrectedFluxArray(self,
-                                  gain_card='HIERARCH ESO DRS CCD CONAD'):
-        """Get the raw flux array gain-corrected from ADUs to photons.
-
-        Return
-        ------
-        NumPy array
-        An array with the same shape as self._rawFluxArray, representing the
-        number of photons in each pixel of the array.
-
-        """
-
-        # Get the gain from the file header:
-        gain = self._header[gain_card]
-        assert type(gain) == float, f"Gain value is a {type(gain)}!"
-
-        return self._rawFluxArray * gain
 
     def writeWavelengthHDU(self, hdulist):
         """
@@ -370,6 +378,31 @@ class HARPSFile2DScience(HARPSFile2D):
         except KeyError:
             hdulist.append(error_HDU)
         hdulist.flush(output_verify="exception", verbose=True)
+
+    def shiftWavelengthArray(self, wavelength_array, shift_velocity):
+        """Doppler shift a wavelength array by an amount equivalent to a given
+        velocity.
+
+        Parameters
+        ----------
+        wavelength_array : unyt_array
+            An array containing wavelengths to be Doppler shifted. Needs units
+            of dimension length.
+
+        velocity : unyt_quantity
+            A Unyt quantity with dimensions length/time to shift the wavelength
+            array by.
+
+        Returns
+        -------
+        Unyt unyt_array
+            An array of the same shape as the given array, Doppler shifted by
+            the given radial velocity.
+
+        """
+
+        return vcl.shift_wavelength(wavelength=wavelength_array,
+                                    shift_velocity=shift_velocity)
 
     def findWavelength(self, wavelength=None, unit=None):
         """
