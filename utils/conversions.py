@@ -8,8 +8,9 @@ Created on Tue Nov 13 12:00:40 2018
 This library contains functions used for converting wavelengths between vacuum
 and air.
 """
-import numpy as np
+
 import unyt as u
+from tqdm import tqdm, trange
 
 
 def air_indexEdlen53(l, t=15., p=760.):
@@ -19,9 +20,9 @@ def air_indexEdlen53(l, t=15., p=760.):
     l : float
         Vacuum wavelength in Angstroms
     t : float
-        Temperature in °C. (Don't actually change this from the default.)
+        Temperature in °C. (Don't actually change this from the default!)
     p : float
-        Pressure in mmHg. (Don't actually change this from the default.)
+        Pressure in mmHg. (Don't actually change this from the default!)
 
     The formula is from Edlen 1953, provided directly by ESO.
 
@@ -47,40 +48,61 @@ def vac2airESO(ll):
     return llair
 
 
-def air2vacESO(air_arr):
-    """Take an array of air wls (A) and return an array of vacuum wls
+def air2vacESO(air_wavelengths_array):
+    """Take an array of air wavelengths and return an array of vacuum
+    wavelengths in the same units.
 
     Parameters
     ----------
-    air_arr: array-like
-        A list of wavelengths in air, in Angstroms.
+    air_arr: unyt_array
+        A list of wavelengths in air, with dimensions length. Will be converted
+        to Angstroms internally.
 
     Returns
     -------
     array
-        An array of wavelengths in vacuum, in Angstroms.
+        An array of wavelengths in vacuum, in the original units.
 
     """
 
-    if not type(air_arr) == np.ndarray:
-        air_arr = np.array(air_arr)
+    reshape = False
+    original_units = air_wavelengths_array.units
+    print(air_wavelengths_array.shape)
+    print(air_wavelengths_array.ndim)
+    if air_wavelengths_array.ndim == 2:
+        # We need to flatten the array to 1-D, then reshape it afterwards.
+        reshape = True
+        original_shape = air_wavelengths_array.shape
+        air_wavelengths_array = air_wavelengths_array.flatten()
+        print(air_wavelengths_array.shape)
 
-    tolerance = 1e-12
+    air_wavelengths_array.convert_to_units(u.angstrom)
 
-    vac = []
+    tolerance = 2e-12
+    num_iter = 8
 
-    for i in range(0, len(air_arr)):
-        newwl = air_arr[i]
-        oldwl = 0.
-        while abs(oldwl - newwl) > tolerance:
-            oldwl = newwl
-            n = air_indexEdlen53(newwl)
-            newwl = air_arr[i] * n
+    vacuum_array = []
 
-        vac.append(round(newwl, 2))
-    vac_arr = np.array(vac)
+    tqdm.write('Converting air wavelengths to vacuum using Edlen `53 formula.')
+    for i in trange(0, len(air_wavelengths_array)):
+        new_wavelength = air_wavelengths_array[i].value
+        old_wavelength = 0.
+        iterations = 0
+        while abs(old_wavelength - new_wavelength) > tolerance:
+            old_wavelength = new_wavelength
+            n_refraction = air_indexEdlen53(new_wavelength)
+            new_wavelength = air_wavelengths_array[i].value * n_refraction
+            iterations += 1
+            if iterations > num_iter:
+                raise RuntimeError('Max number of iterations exceeded!')
 
-    return vac_arr
+        vacuum_array.append(new_wavelength * u.angstrom)
+    vacuum_wavelength_array = u.unyt_array(vacuum_array)
+
+    if reshape:
+        vacuum_wavelength_array.reshape(original_shape)
+
+    return vacuum_wavelength_array.to(original_units)
 
 
 def vac2airMorton00(wl_vac):

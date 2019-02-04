@@ -128,11 +128,16 @@ def wavelength2index(wavelength_array, wavelength, reverse=False):
 
     Parameters
     ----------
-    wavelength_array : iterable
+    wavelength_array : array-like, or unyt_array
         An iterable object containing a sequence wavelengths, by default *in
-        increasing order*.
-    wavelength : float
-        The wavelength to find the associated index for.
+        increasing order*. If a unyt_array is given, the wavelength should be
+        a unyt_quantity with the same dimensions of length.
+
+    wavelength : float or unyt_quantity
+        The wavelength to find the associated index for. If given as a
+        unyt_quantity, the wavelength_array given should be a unyt_array with
+        the same dimensions of length.
+
     reverse : bool, Default: False
         Reverses the given wavelength sequence before evaluating it, in case
         the sequence is given in longer to shorter order.
