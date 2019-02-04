@@ -14,8 +14,9 @@ from astropy.constants import c
 from scipy.optimize import curve_fit
 from math import sqrt, log
 from pathlib import Path
-from tqdm import tqdm
+from tqdm import tqdm, trange
 import matplotlib.pyplot as plt
+import unyt as u
 
 # Some generic information useful in different scripts
 
@@ -122,41 +123,85 @@ def index2wavelength(index, step, min_wl):
     return round((step * index + min_wl), 2)
 
 
-def wavelength2index(wl_arr, wl, reverse=False):
-    """Find the index in a list associated with a given wavelength
+def wavelength2index(wavelength_array, wavelength, reverse=False):
+    """Find the index in an iterable associated with a given wavelength.
 
-    wl_arr: an iterable object of wavelengths, *in increasing order*
-    wl: the wavelength to search for
-    reverse: a Boolean for if the wavelength array is listed from large to
-             small. Will first re
+    Parameters
+    ----------
+    wavelength_array : iterable
+        An iterable object containing a sequence wavelengths, by default *in
+        increasing order*.
+    wavelength : float
+        The wavelength to find the associated index for.
+    reverse : bool, Default: False
+        Reverses the given wavelength sequence before evaluating it, in case
+        the sequence is given in longer to shorter order.
 
-    returns: the index for which the wavelength is closest to the given
+    Returns
+    -------
+    int
+        The index for which the associated wavelength is closest to the given
+        wavelength.
+
     """
-    length = len(wl_arr)
-    for i in range(0, length, 1):
-        # First find the index for which the value is greater than the given wl
-        if wl_arr[i] >= wl:
-            # Then check if it's closest to this index or the previous one
-            # Note that the way it's set up it should always be
+
+    if reverse:
+        wavelength_array.reverse()
+    length = len(wavelength_array)
+
+    tqdm.write(f'Finding index for wavelength {wavelength:.4f}...')
+    for i in trange(0, length, 1):
+        # First find the index for which the value is greater than the given
+        # wavelength:
+        if wavelength_array[i] >= wavelength:
+            # Then check if it's closest to this index or the previous one.
+            # The way it's set up it should always be
             # wl_arr[i-1] <= wl <= wl_arr[i]
-            if wl_arr[i] - wl > wl - wl_arr[i-1]:
-                return i-1
+            if wavelength_array[i] - wavelength >\
+               wavelength - wavelength_array[i - 1]:
+                return i - 1
             else:
                 return i
 
-    print("Couldn't find the given wavelength: {}".format(wl))
-    raise ValueError
+    # If it reaches the end without finding a matching wavelength, raise an
+    # error.
+    raise RuntimeError("Couldn't find the given wavelength: {}".
+                       format(wavelength))
 
 
-def lineshift(line, radvel):
-    """Find the new position of a line given the radial velocity of a star
+def shift_wavelength(wavelength, shift_velocity):
+    """Find the new wavelength of a wavelength (single or an array) given a
+    velocity to shift it by. Returns in the units given.
 
-    line: line position. Can be nm or Angstroms, will return in same units
-    radvel: radial velocity in km/s
+    Parameters
+    ----------
+    wavelength : Unyt unyt_array or unyt_quantity
+        Wavelength(s) to be shifted. Will be converted to meters internally.
 
-    returns: the new line position
+    radial_velocity : float or int
+        Radial velocity to shift the wavelength(s) by. Will be converted to
+        meters/second internally.
+
+    Returns
+    -------
+        float
+        The new wavelength, in the original units, shifted according to the
+        given radial velocity.
+
     """
-    return ((radvel * 1000 / c.value) * line) + line
+
+    original_units = wavelength.units
+
+    # Convert the wavelength and radial velocity to base units.
+    wavelength.convert_to_units(u.m)
+    shift_velocity.convert_to_units(u.m/u.s)
+
+    # Make sure we're not using unphysical velocities!
+    assert abs(shift_velocity < u.c), 'Given velocity exceeds speed of light!'
+
+    result = ((shift_velocity / u.c) * wavelength) + wavelength
+
+    return result.to(original_units)
 
 
 def getwlseparation(v, wl):
