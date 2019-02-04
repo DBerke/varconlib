@@ -164,9 +164,8 @@ class HARPSFile2DScience(HARPSFile2D):
             / blaze_file
 
         if not blaze_file_path.exists():
-            print("Blaze file path doesn't exist!")
             print(blaze_file_path)
-            raise RuntimeError
+            raise RuntimeError("Blaze file path doesn't exist!")
 
         return HARPSFile2D(blaze_file_path)
 
@@ -197,16 +196,15 @@ class HARPSFile2DScience(HARPSFile2D):
         """
 
         source_array = self._rawFluxArray
-        wavelength_array = np.zeros(source_array.shape) * u.angstrom
+        wavelength_array = np.zeros(source_array.shape)
         for order in trange(0, 72, total=72, unit='orders'):
             for i in range(0, 4, 1):
                 coeff = 'ESO DRS CAL TH COEFF LL{0}'.format((4 * order) + i)
                 coeff_val = self._header[coeff]
                 for pixel in range(0, 4096):
-                    wavelength_array[order, pixel] += coeff_val *\
-                                                      (pixel ** i) *\
-                                                      u.angstrom
-        return wavelength_array
+                    wavelength_array[order, pixel] += coeff_val * (pixel ** i)
+
+        return wavelength_array * u.angstrom
 
     def getGainCorrectedFluxArray(self,
                                   gain_card='HIERARCH ESO DRS CCD CONAD'):
