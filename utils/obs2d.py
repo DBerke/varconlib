@@ -17,7 +17,7 @@ from tqdm import tqdm, trange
 from astropy.io import fits
 from pathlib import Path
 
-config_file = Path('config/variables.cfg')
+config_file = Path('/Users/dberke/code/config/variables.cfg')
 config = configparser.ConfigParser(interpolation=configparser.
                                    ExtendedInterpolation())
 config.read(config_file)
@@ -91,15 +91,19 @@ class HARPSFile2DScience(HARPSFile2D):
             self._wavelengthArray = None
             self._photonFluxArray = None
             self._errorArray = None
+            self._blazeFile = None
+            self._BERV = None
+            self._radialVelocity = None
 
             # BERV = Barycentric Earth Radial Velocity
             self._BERV = float(self.getHeaderCard(
                     'HIERARCH ESO DRS BERV')) * u.km / u.s
-            self._radial_velocity = float(self.getHeaderCard(
+            self._radialVelocity = float(self.getHeaderCard(
                     'HIERARCH ESO TEL TARG RADVEL')) * u.km / u.s
 
             # Since we may not have the blaze files on hand, only try to find
-            # them if we really need them.
+            # them if we really need them, i.e. when opening a file for the
+            # first time or when explicitly updating it.
             if (len(hdulist) == 1) or file_open_mode == 'update':
                 self._blazeFile = self.getBlazeFile()
 
@@ -226,8 +230,8 @@ class HARPSFile2DScience(HARPSFile2D):
 
     def getPhotonFluxArray(self):
         """
-        Calibrate the raw flux array using the gain to recover the
-        photoelectron flux.
+        Calibrate the raw flux array using the gain, then correct it using the
+        correct blaze file to recover the photoelectron flux.
 
         Returns
         -------
@@ -240,9 +244,11 @@ class HARPSFile2DScience(HARPSFile2D):
         # If the gain-corrected photon flux array doesn't exist yet, create it.
         if self._gainCorrectedFluxArray is None:
             self._gainCorrectedFluxArray = self.getGainCorrectedFluxArray()
-        photon_flux_array = self._gainCorrectedFluxArray()
+        photon_flux_array = self._gainCorrectedFluxArray
 
         # Blaze-correct the photon flux array:
+        if self._blazeFile is None:
+            self._blazeFile = self.getBlazeFile()
         photon_flux_array /= self._blazeFile._rawData
 
         return photon_flux_array
@@ -250,7 +256,7 @@ class HARPSFile2DScience(HARPSFile2D):
     def getErrorArray(self, verbose=False):
         """
         Construct an error array based on the reported flux values for the
-        observation.
+        observation, then blaze-correct it.
 
         Parameters
         ----------
@@ -276,7 +282,7 @@ class HARPSFile2DScience(HARPSFile2D):
         # If the gain-corrected photon flux array doesn't exist yet, create it.
         if self._gainCorrectedFluxArray is None:
             self._gainCorrectedFluxArray = self.getGainCorrectedFluxArray()
-        photon_flux_array = self._gainCorrectedFluxArray()
+        photon_flux_array = self._gainCorrectedFluxArray
         bad_pixels = 0
         error_array = np.ones(photon_flux_array.shape)
         for m in range(photon_flux_array.shape[0]):
@@ -295,6 +301,9 @@ class HARPSFile2DScience(HARPSFile2D):
             tqdm.write('{} pixels with negative flux found.'.
                        format(bad_pixels))
 
+        # Correct the error array by the blaze function:
+        if self._blazeFile is None:
+            self._blazeFile = self.getBlazeFile()
         error_array /= self._blazeFile._rawData
 
         return error_array
@@ -435,7 +444,7 @@ class HARPSFile2DScience(HARPSFile2D):
         array_min = self._wavelengthArray[0, 0]
         array_max = self._wavelengthArray[71, -1]
         assert array_min <= wavelength_to_find <= array_max,\
-            "Given wavelength not found within array limits! {}, {}".format(
+            "Given wavelength not found within array limits! ({}, {})".format(
                     array_min, array_max)
 
         # Set up a list to hold the indices of the orders where the wavelength
