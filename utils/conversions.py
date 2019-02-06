@@ -35,17 +35,33 @@ def air_indexEdlen53(l, t=15., p=760.):
 
 
 def vac2airESO(ll):
-    """Return a vacuum wavlength from an air wavelength (A) using Edlen 1953.
+    """Return an air wavelength from a vacuum wavelength (in Angstroms) using
+    the formula from Edlen 1953.
 
-    This is the function used in the ESO archive, according to them.
+    This is the function used in the ESO archive, according to the code
+    provided by the archival team.
 
-    ll : float
-        Air wavelength in Angstroms
+    Parameters
+    ----------
+    ll : float or unyt_quantity
+        Air wavelength. Needs to be in Angstroms if given as a float.
+
+    Returns
+    -------
+    float or unyt_quantity
+        The wavelength in air.
 
     """
 
+    if type(ll) == u.array.unyt_quantity:
+        original_units = ll.units
+        ll.convert_to_units(u.angstrom)
+        ll = ll.value
+    elif type(ll) == float:
+        original_units = 1
+
     llair = ll/air_indexEdlen53(ll)
-    return llair
+    return llair * original_units
 
 
 def air2vacESO(air_wavelengths_array):
