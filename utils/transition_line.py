@@ -88,8 +88,11 @@ class Transition(object):
                                        self.ionizationState)
 
     def __str__(self):
-        return "{} {} {} {:.4f}".format(self.wavelength, self.atomicSymbol,
-                                        self.ionizationState, self.lowerEnergy)
+        return "{} {}{} ({:.4f}, {:.4f})".format(self.wavelength,
+                                                 self.atomicSymbol,
+                                                 self.ionizationState,
+                                                 self.lowerEnergy,
+                                                 self.higherEnergy)
 
     def __lt__(self, other):
         if self.wavelength.value < other.wavelength.value:

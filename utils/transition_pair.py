@@ -28,32 +28,39 @@ class TransitionPair(object):
 
         """
 
+        # Note that comparison of transitions compares their wavelength, not
+        # their energy. So the "lower energy transition" is the one with the
+        # longer wavelength.
         if transition1 > transition2:
-            self._transitionLowerEnergy = transition1
-            self._transitionHigherEnergy = transition2
+            self._lowerEnergyTransition = transition1
+            self._higherEnergyTransition = transition2
         elif transition1 < transition2:
-            self._transitionLowerEnergy = transition2
-            self._transitionHigherEnergy = transition1
+            self._lowerEnergyTransition = transition2
+            self._higherEnergyTransition = transition1
         else:
             raise TransitionPairSameWavelengthError
 
         self._nominalSeparation = self.getNominalSeparation()
 
+    def __iter__(self):
+        return iter([self._lowerEnergyTransition,
+                     self._higherEnergyTransition])
+
     def __repr__(self):
         return '{}({}, {})'.format(self.__class__.__name__,
-                                   self._transitionHigherEnergy,
-                                   self._transitionLowerEnergy)
+                                   self._higherEnergyTransition,
+                                   self._lowerEnergyTransition)
 
     def __str__(self):
         return '{} ({} {}): {:.4f}, {:.4f}'.format(self.__class__.__name__,
-                self._transitionHigherEnergy.atomicSymbol,
-                self._transitionHigherEnergy.ionizationState,
-                self._transitionHigherEnergy.wavelength,
-                self._transitionLowerEnergy.wavelength)
+                self._higherEnergyTransition.atomicSymbol,
+                self._higherEnergyTransition.ionizationState,
+                self._higherEnergyTransition.wavelength,
+                self._lowerEnergyTransition.wavelength)
 
     def __eq__(self, other):
-        if (self._transitionLowerEnergy == other._transitionLowerEnergy)\
-          and (self._transitionHigherEnergy == other._transitionHigherEnergy):
+        if (self._lowerEnergyTransition == other._lowerEnergyTransition)\
+          and (self._higherEnergyTransition == other._higherEnergyTransition):
             return True
         else:
             return False
@@ -61,10 +68,10 @@ class TransitionPair(object):
     def __gt__(self, other):
         if self == other:
             return False
-        elif self._transitionLowerEnergy > other._transitionLowerEnergy:
+        elif self._lowerEnergyTransition > other._lowerEnergyTransition:
             return True
-        elif self._transitionLowerEnergy == other._transitionLowerEnergy:
-            if self._transitionHigherEnergy > other._transitionHigherEnergy:
+        elif self._lowerEnergyTransition == other._lowerEnergyTransition:
+            if self._higherEnergyTransition > other._higherEnergyTransition:
                 return True
             else:
                 return False
@@ -74,10 +81,10 @@ class TransitionPair(object):
     def __lt__(self, other):
         if self == other:
             return False
-        elif self._transitionLowerEnergy < other._transitionLowerEnergy:
+        elif self._lowerEnergyTransition < other._lowerEnergyTransition:
             return True
-        elif self._transitionLowerEnergy == other._transitionLowerEnergy:
-            if self._transitionHigherEnergy < other._transitionHigherEnergy:
+        elif self._lowerEnergyTransition == other._lowerEnergyTransition:
+            if self._higherEnergyTransition < other._higherEnergyTransition:
                 return True
             else:
                 return False
@@ -90,8 +97,8 @@ class TransitionPair(object):
 
         """
 
-        return self._transitionHigherEnergy.wavelength -\
-            self._transitionLowerEnergy.wavelength
+        return self._higherEnergyTransition.wavelength -\
+            self._lowerEnergyTransition.wavelength
 
 
 class TransitionPairError(Exception):
