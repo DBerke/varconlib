@@ -9,6 +9,7 @@ This library contains functions used for converting wavelengths between vacuum
 and air.
 """
 
+import numpy as np
 import unyt as u
 from tqdm import tqdm, trange
 
@@ -35,16 +36,17 @@ def air_indexEdlen53(l, t=15., p=760.):
 
 
 def vac2airESO(ll):
-    """Return an air wavelength from a vacuum wavelength (in Angstroms) using
-    the formula from Edlen 1953.
+    """Return an air wavelength from a vacuum wavelength using the formula from
+    Edlen 1953.
 
     This is the function used in the ESO archive, according to the code
-    provided by the archival team.
+    provided by the archival team. It only work with units in Angstroms.
 
     Parameters
     ----------
-    ll : float or unyt_quantity
-        Air wavelength. Needs to be in Angstroms if given as a float.
+    ll : float or unyt_quantity or ndarray or unyt_array
+        Air wavelength to convert. Needs to be in Angstroms if given as a float
+        or array.
 
     Returns
     -------
@@ -57,7 +59,7 @@ def vac2airESO(ll):
         original_units = ll.units
         ll.convert_to_units(u.angstrom)
         ll = ll.value
-    elif type(ll) == float:
+    elif type(ll) in (float, np.ndarray):
         original_units = 1
 
     llair = ll/air_indexEdlen53(ll)
