@@ -59,6 +59,11 @@ class TransitionPair(object):
                 self._lowerEnergyTransition.wavelength)
 
     def __eq__(self, other):
+        """Return equal if both higher and lower energy transitions are the
+        same.
+
+        """
+
         if (self._lowerEnergyTransition == other._lowerEnergyTransition)\
           and (self._higherEnergyTransition == other._higherEnergyTransition):
             return True
@@ -66,6 +71,10 @@ class TransitionPair(object):
             return False
 
     def __gt__(self, other):
+        """Sort first by lower energy, then by higher energy.
+
+        """
+
         if self == other:
             return False
         elif self._lowerEnergyTransition > other._lowerEnergyTransition:
@@ -79,6 +88,10 @@ class TransitionPair(object):
             return False
 
     def __lt__(self, other):
+        """Sort first by lower energy, then by higher energy.
+
+        """
+
         if self == other:
             return False
         elif self._lowerEnergyTransition < other._lowerEnergyTransition:
