@@ -55,7 +55,7 @@ def vac2airESO(ll):
 
     """
 
-    if type(ll) == u.array.unyt_quantity:
+    if type(ll) in (u.array.unyt_quantity, u.array.unyt_array):
         original_units = ll.units
         ll.convert_to_units(u.angstrom)
         ll = ll.value
