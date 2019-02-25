@@ -10,13 +10,14 @@ Created on Wed Apr 18 16:28:13 2018
 
 import numpy as np
 import pandas as pd
-from astropy.constants import c
 from scipy.optimize import curve_fit
 from math import sqrt, log
 from pathlib import Path
 from tqdm import tqdm, trange
 import matplotlib.pyplot as plt
 import unyt as u
+from conversions import air2vacESO
+from obs1d import readHARPSfile
 
 # Some generic information useful in different scripts
 
@@ -209,25 +210,52 @@ def shift_wavelength(wavelength, shift_velocity):
     return result.to(original_units)
 
 
-def getwlseparation(v, wl):
-    """Return wavelength separation for a given velocity separation at a point
+def get_wavelength_separation(velocity_offset, wavelength):
+    """Return the wavelength separation for a given velocity separation at the
+    given wavelength.
 
-    v: the velocity separation. Should be in m/s
-    wl: the wavelength at which the function should be evaluated, since
-        it's also a function of wavelength. Returned in whatever units it's
-        given in.
+    Parameters
+    ----------
+    velocity_offset : unyt_quantity
+        The velocity separation. Can be in any valid units with dimensions of
+        length / time.
+
+    wavelength : unyt_quantity
+        The wavelength at which the function should be evaluated, since
+        it's a function of wavelength. Returned in whatever units it's
+        given in (should have dimensions of length).
+
+    Returns
+    -------
+    unyt_quantity
+        The separation in wavelength space for the given velocity offset at
+        the given wavelength.
 
     """
-    return (v * wl) / c.value
+
+    original_units = wavelength.units
+    result = (velocity_offset * wavelength) / u.c
+    return result.to(original_units)
 
 
-def getvelseparation(wl1, wl2):
-    """Return velocity separation for a pair of points in wavelength space
+def get_velocity_separation(wavelength1, wavelength2):
+    """Return velocity separation of a pair of wavelengths.
 
-    wl1 & wl2: wavelengths to get the velocity separation between in m/s.
-               Should be in meters.
+    Parameters
+    ----------
+    wavelengthl1 & wavelength2 : unyt_quantity or unyt_array
+        The two wavelengths to get the velocity separation between.
+
+    Returns
+    -------
+    unyt_quantity
+        The velocity separation between the given wavelengths in m/s.
+
     """
-    return (wl2 - wl1) * c.value / ((wl1 + wl2) / 2)
+
+    result = (wavelength2 - wavelength1) * u.c /\
+             ((wavelength1 + wavelength2) / 2)
+    return result.to(u.m/u.s)
 
 
 def parse_spectral_mask_file(file):
@@ -370,11 +398,12 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
     if chisq_nu_gauss > 1:
         wl_err_gauss *= sqrt(chisq_nu_gauss)
 
-    # Multiply by 1e-9 to get nm to m for getvelseparation which requires m
-    vel_err_gauss = getvelseparation(gausscenterwl*1e-9,
-                                     (gausscenterwl+wl_err_gauss)*1e-9)
+    # Multiply by 1e-9 to get nm to m for get_velocity_separation which
+    # requires m
+    vel_err_gauss = get_velocity_separation(gausscenterwl*1e-9,
+                                            (gausscenterwl+wl_err_gauss)*1e-9)
     # Shift line to stellar rest frame
-    gaussrestframeline = lineshift(gausscenterwl, -1*radvel)
+    gaussrestframeline = shift_wavelength(gausscenterwl, -1*radvel)
 
     # Get the width (sigma) of the Gaussian
     gauss_sigma = abs(popt_gauss[2] / 1000)
@@ -385,15 +414,20 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
     gauss_fwhm_err = 2 * sqrt(2 * log(2)) * gauss_sigma_err
 
     # Convert sigma and FWHM to velocity space
-    sigma_vel = getvelseparation(gausscenterwl*1e-9,
-                                 (gausscenterwl+gauss_sigma)*1e-9)
-    sigma_vel_err = getvelseparation(gausscenterwl*1e-9,
-                                     (gausscenterwl+gauss_sigma_err)*1e-9)
+    sigma_vel = get_velocity_separation(gausscenterwl *
+                                        1e-9,
+                                        (gausscenterwl + gauss_sigma) *
+                                        1e-9)
+    sigma_vel_err = get_velocity_separation(gausscenterwl *
+                                            1e-9,
+                                            (gausscenterwl + gauss_sigma_err) *
+                                            1e-9)
 
-    fwhm_vel = getvelseparation(gausscenterwl*1e-9,
-                                (gausscenterwl+gauss_fwhm)*1e-9)
-    fwhm_vel_err = getvelseparation(gausscenterwl*1e-9,
-                                    (gausscenterwl+gauss_fwhm_err)*1e-9)
+    fwhm_vel = get_velocity_separation(gausscenterwl * 1e-9,
+                                       (gausscenterwl + gauss_fwhm) * 1e-9)
+    fwhm_vel_err = get_velocity_separation(gausscenterwl * 1e-9,
+                                           (gausscenterwl + gauss_fwhm_err) *
+                                           1e-9)
 
     # Get the amplitude of the Gaussian
     amp = popt_gauss[0]
@@ -461,11 +495,11 @@ def fitParabola(xnorm, ynorm, enorm, centralwl, radvel, verbose=False):
 
     if chisq_nu_par > 1:
         wl_err_par *= sqrt(chisq_nu_par)
-    vel_err_par = getvelseparation(parcenterwl*1e-9,
-                                   (parcenterwl+wl_err_par)*1e-9)
+    vel_err_par = get_velocity_separation(parcenterwl * 1e-9,
+                                          (parcenterwl + wl_err_par) * 1e-9)
 
     # Shift to stellar rest frame by correcting radial velocity.
-    parrestframeline = lineshift(parcenterwl, -1*radvel)
+    parrestframeline = shift_wavelength(parcenterwl, -1*radvel)
 
     if verbose:
             print('Covariance matrix for parabola:')
@@ -512,10 +546,10 @@ def fitSimpleParabola(xnorm, ynorm, enorm, centralwl, radvel, verbose=False):
     if chisq_nu_spar > 1:
         wl_err_spar *= sqrt(chisq_nu_spar)
 
-    vel_err_spar = getvelseparation(sparcenterwl*1e-9,
-                                    (sparcenterwl+wl_err_spar)*1e-9)
+    vel_err_spar = get_velocity_separation(sparcenterwl*1e-9,
+                                           (sparcenterwl+wl_err_spar)*1e-9)
     # Convert to restframe of star
-    sparrestframeline = lineshift(sparcenterwl, -1*radvel)
+    sparrestframeline = shift_wavelength(sparcenterwl, -1*radvel)
 
     if verbose:
         print("Covariance matrix for constrained parabola:")
@@ -612,11 +646,14 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
 
     radvel = float(radvel)
     # Figure out location of line given radial velocity of the star (in km/s)
-    shiftedlinewl = lineshift(float(line), radvel)  # In nm here.
+    shiftedlinewl = shift_wavelength(float(line), radvel)  # In nm here.
 #    print('Given radial velocity {} km/s, line {} should be at {:.4f}'.
 #          format(radvel, line, shiftedlinewl))
-    wlrange = getwlseparation(velsep, shiftedlinewl)  # 5 km/s by default
-    continuumrange = getwlseparation(velsep+2e4, shiftedlinewl)  # +25 km/s
+    # 5 km/s by default
+    wlrange = get_wavelength_separation(velsep, shiftedlinewl)
+    # +25 km/s
+    continuumrange = get_wavelength_separation(velsep+2e4, shiftedlinewl)
+
     upperwllim = shiftedlinewl + wlrange
     lowerwllim = shiftedlinewl - wlrange
     upperguess = wavelength2index(vac_wl, upperwllim)
@@ -705,7 +742,8 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
         results['fwhm_gauss'] = gaussData['fwhm_gauss']
         results['fwhm_gauss_err'] = gaussData['fwhm_gauss_err']
         results['chisq_nu_gauss'] = gaussData['chisq_nu_gauss']
-        results['gauss_vel_offset'] = getvelseparation(shiftedlinewl*1e-9,
+        results['gauss_vel_offset'] = get_velocity_separation(shiftedlinewl *
+                                                              1e-9,
                                            gaussData['gausscenterwl']*1e-9)
 
     # Fit a constrained parabola to the normalized data
@@ -891,16 +929,17 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, filename, starname,
     if (line1 and line2) is not None:
 
         if 'line_par' in (line1 and line2):
-            parveldiff = abs(getvelseparation(line1['line_par'],
-                                              line2['line_par']))
+            parveldiff = abs(get_velocity_separation(line1['line_par'],
+                                                     line2['line_par']))
             err_par = np.sqrt((line1['err_par'])**2 +
                               (line2['err_par'])**2)
             results['parveldiff'] = parveldiff
             results['pardifferr'] = err_par
 
         if 'restframe_line_gauss' in (line1 and line2):
-            gaussveldiff = abs(getvelseparation(line1['restframe_line_gauss'],
-                                                line2['restframe_line_gauss']))
+            gaussveldiff = abs(get_velocity_separation(
+                               line1['restframe_line_gauss'],
+                               line2['restframe_line_gauss']))
             err_gauss = np.sqrt((line1['vel_err_gauss'])**2 +
                                 (line2['vel_err_gauss'])**2)
 
@@ -937,8 +976,8 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, filename, starname,
             results['line2_gauss_vel_offset'] = line2['gauss_vel_offset']
 
         if 'line_spar' in (line1 and line2):
-            sparveldiff = abs(getvelseparation(line1['line_spar'],
-                                               line2['line_spar']))
+            sparveldiff = abs(get_velocity_separation(line1['line_spar'],
+                                                      line2['line_spar']))
             err_spar = np.sqrt((line1['err_spar'])**2 +
                                (line2['err_spar'])**2)
             results['sparveldiff'] = sparveldiff
@@ -1090,8 +1129,8 @@ def injectGaussianNoise(data, nom_wavelength, num_iter=1000, plot=False):
                                      verbose=False)
         measured_wl = gauss_sim_data['restframe_line_gauss']
         measured_wavelengths.append(measured_wl)
-        vel_sep = getvelseparation(fit_wavelength*1e-9,
-                                   measured_wl*1e-9)
+        vel_sep = get_velocity_separation(fit_wavelength * 1e-9,
+                                          measured_wl * 1e-9)
         vel_offsets.append(vel_sep)
 
     if plot:
