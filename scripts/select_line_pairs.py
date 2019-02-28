@@ -16,6 +16,7 @@ import datetime
 from math import sqrt
 from pathlib import Path
 import numpy as np
+from astroquery.nist import NistClass, Nist
 from tqdm import tqdm
 import varconlib as vcl
 import unyt as u
@@ -362,10 +363,10 @@ def find_line_pairs(transition_list, out_file=None,
 
         # If it's fine, figure out how much wavelength space to search around
         # it based on the velocity separation.
-        delta_wl = vcl.getwlseparation(velocity_separation.value,
-                                       transition1.wavelength.value)
-        lowerLim = transition1.wavelength - delta_wl * u.nm
-        upperLim = transition1.wavelength + delta_wl * u.nm
+        delta_wl = vcl.get_wavelength_separation(velocity_separation,
+                                                 transition1.wavelength)
+        lowerLim = transition1.wavelength - delta_wl
+        upperLim = transition1.wavelength + delta_wl
 
         # Iterate over the entire list of transitions.
         for transition2 in transition_list:
@@ -442,6 +443,10 @@ args = parser.parse_args()
 global line_offsets
 line_offsets = []
 
+config = configparser.ConfigParser(interpolation=configparser.
+                                   ExtendedInterpolation())
+config.read('/Users/dberke/code/config/variables.cfg')
+
 # These two files produces wavelengths in air, in Angstroms.
 redFile = "data/BRASS2018_Sun_PrelimGraded_Lobel.csv"
 blueFile = "data/BRASS2018_Sun_PrelimSpectroWeblines_Lobel.csv"
@@ -462,8 +467,11 @@ colDtypes = (float, float, "U6", float, float, "U11", float, float, "U11",
              float, float, float, "U4", int, int, int, float, int, float,
              int, int, "U3", "U3", "U4", int, int, float)
 
-CCD_bounds_file = Path('data/unusable_spectrum_CCDbounds.txt')
-no_CCD_bounds_file = Path('data/unusable_spectrum_noCCDbounds.txt')
+masks_dir = Path(config['PATHS']['masks_dir'])
+CCD_bounds_file = masks_dir / 'unusable_spectrum_CCDbounds.txt'
+# Path('/Users/dberke/code/data/unusable_spectrum_CCDbounds.txt')
+no_CCD_bounds_file = masks_dir / 'unusable_spectrum_CCDbounds.txt'
+# Path('data/unusable_spectrum_noCCDbounds.txt')
 
 mask_CCD_bounds = vcl.parse_spectral_mask_file(CCD_bounds_file)
 mask_no_CCD_bounds = vcl.parse_spectral_mask_file(no_CCD_bounds_file)
@@ -554,9 +562,6 @@ if args.pair_lines:
     # maximum depth difference: 0.2
     # maximum velocity separation: 800 km/s
 
-    config = configparser.ConfigParser(interpolation=configparser.
-                                       ExtendedInterpolation())
-    config.read('/Users/dberke/code/config/variables.cfg')
     pickle_dir = Path(config['PATHS']['pickle_dir'])
     pickle_file = pickle_dir / 'transitions.pickle'
     print('Unpickling transition lines...')
@@ -570,10 +575,13 @@ if args.pair_lines:
                             line_depth_difference=0.2)
 
     transition_set = set()
+    species_set = set()
     high_energy_pairs = []
     for pair in pairs:
         for transition in pair:
             transition_set.add(transition)
+            species_set.add('{} {}'.format(transition.atomicSymbol,
+                            transition.ionizationState))
             if (transition.higherEnergy > 50000 * u.cm ** -1) or\
                (transition.lowerEnergy > 50000 * u.cm ** -1):
                 if pair not in high_energy_pairs:
@@ -581,11 +589,12 @@ if args.pair_lines:
 
     transition_list = [x for x in transition_set]
 
+    transition_list.sort()
 #    high_energy_lines = set()
 #
 #    print(f'Total distinct transitions: {len(transition_list)}')
-    for item in sorted(transition_list)[:5]:
-        print(item)
+
+#    for transition in tqdm(transition_list):
 #        if (item.higherEnergy > 50000) or (item.lowerEnergy > 50000):
 #            high_energy_lines.add(item)
 #
@@ -593,4 +602,22 @@ if args.pair_lines:
 #
 #    print(f'Total affected pairs: {len(high_energy_pairs)}')
 
+    # Query NIST for information on each transition.
+    min_wavelength = transition_list[0].wavelength - 0.5 * u.angstrom
+    max_wavelength = transition_list[-1].wavelength + 0.5 * u.angstrom
 
+    print(min_wavelength, max_wavelength)
+
+    species_string = ';'.join(species_set)
+    # Change numbers to Roman numerals for NIST
+    species_string = species_string.replace('1', 'I')
+    species_string = species_string.replace('2', 'II')
+    print(species_string)
+
+    table = Nist.query(min_wavelength.to_astropy(),
+                       max_wavelength.to_astropy(),
+                       energy_level_unit='cm-1',
+                       output_order='wavelength',
+                       wavelength_type='vacuum',
+                       linename="Fe II")
+    print(table)
