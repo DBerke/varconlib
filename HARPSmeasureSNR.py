@@ -15,7 +15,7 @@ from astropy.io import fits
 
 def vac2air(wl_vac):
     """Take an input vacuum wavelength in nm and return the air wavelength.
-    
+
     Formula taken from 'www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion'
     from Morton (2000, ApJ. Suppl., 130, 403) (IAU standard)
     """
@@ -27,7 +27,7 @@ def vac2air(wl_vac):
 
 def air2vac(wl_air):
     """Take an input air wavelength in nm and return the vacuum wavelength.
-    
+
     Formula taken from 'www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion'
     """
     s = 1e3 / wl_air
@@ -38,7 +38,7 @@ def air2vac(wl_air):
 
 def index2wavelength(index, step, min_wl):
     """Return the wavelength associated with an index.
-    
+
     index -- index position of the spectrum list
     step -- the step in wavelength per index, in nm
     min_wl -- the minimum wavelength of the spectrum, in nm
@@ -48,13 +48,13 @@ def index2wavelength(index, step, min_wl):
 
 def wavelength2index(wl, step, min_wl):
     """Return the index of the given wavelength."""
-    
+
     return int((wl - min_wl) / step)
 
 
 def readHARPSfile(FITSfile):
     """Read a HARPS FITS file and return a dictionary of information."""
-    
+
     with fits.open(FITSfile) as hdulist:
         header = hdulist[1].header
         data = hdulist[1].data
@@ -78,13 +78,13 @@ def measureSNR(spectrum, start_wl, search_window=0.6, sub_window=0.05,
                step=0.01):
     """
     Measure the SNR in an area in increments of step and return the highest.
-    
+
     spectrum -- a spectrum object from readHARPSfile
     start_wl -- the wavelength to begin searching at, in nm
     search_window -- the width of the window to search over, in nm
     sub_window -- the width of the individual search sections, in nm
     step -- the step width to use between searchs, nm
-    
+
     Return the sub-window with the highest SNR, and the SNR itself.
     """
 
@@ -157,13 +157,13 @@ for obj in objects:
     for start_wl, window, pos in zip(start_wavelengths, windows, positions):
         print("Working on window starting at {}...".format(start_wl))
         med_SNRs = []
-        
+
         fig_window = plt.figure(figsize=(12, 10))
         fig_window.suptitle('Window: {:.2f} nm - {:.2f} nm'.format(start_wl,
                             start_wl+search_window))
         ax_window = fig_window.add_subplot(1, 1, 1)
         ax_window.set_xlabel('Wavelength (nm)')
-        
+
         ax_window.set_xlim(left=start_wl,
                            right=start_wl+search_window)
 
@@ -225,18 +225,18 @@ for obj in objects:
 
         # Calculate the least-squares-fit line with intercept = 0.
         popt, pcov = scipy.optimize.curve_fit(line_fixed, snr_arr, med_arr)
-        
+
         ax_SNR.plot(window, popt[0] * snr_arr,
                     color='blue', linestyle='solid',
                     label='${:.3f}\cdot x$'.format(popt[0]))
-        fig_SNR.legend(loc=4) 
+        fig_SNR.legend(loc=4)
 
         # Save the figure showing all the spectra plotted.
         out_window_file = '_'.join(('SNR', outFileBase))
         fig_window.savefig(os.path.join(outPicDir, out_window_file),
                            format='png')
         plt.close(fig_window)
-        
+
         # Save the figure showing all the SNRs vs. median SNRs.
         out_SNR_file = '_'.join(('Median_SNR', outFileBase))
         fig_SNR.savefig(os.path.join(outPicDir, out_SNR_file), format='png')
@@ -248,17 +248,15 @@ for obj in objects:
     ax.set_xlabel("SNR Window 1 (561.00 - 561.60 nm)")
     ax.set_ylabel("SNR (Windows 2 & 3)")
     fig.suptitle("{}, {} spectra".format(obj, len(files)))
-    
+
     ax.plot(window1, window2, marker='o', color='green',
             linestyle='None', label='Window 2 (620.24 - 620.84)')
     ax.plot(window1, window3, marker='o', color='blue',
             linestyle='None', label='Window 3 (623.20 - 623.80)')
-    
+
     fig.legend()
     ax.grid(which='major', axis='both')
     outfile = os.path.join(outPicDir, "SNR_{}.png".\
                 format(obj))
     fig.savefig(outfile, format='png')
     plt.close(fig)
-    
-    

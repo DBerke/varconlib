@@ -100,7 +100,16 @@ ENV/
 # mypy
 .mypy_cache/
 
+# .DS_Store (?)
+.DS_Store
+
 # Ignore the 'spectra' and 'data' folders, as they contain data files
 # that might change or at least don't need to be version controlled.
 spectra/
 data/
+
+# FITS files definitely shouldn't be added by default
+.fits
+
+# Ignore .DS_store files
+.DS_Store

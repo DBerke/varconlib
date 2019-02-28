@@ -9,15 +9,15 @@ Created on Wed Apr 18 16:28:13 2018
 # Module to contain functions potentially useful across multiple programs
 
 import numpy as np
-import datetime as dt
 import pandas as pd
-from astropy.io import fits
-from astropy.constants import c
 from scipy.optimize import curve_fit
 from math import sqrt, log
 from pathlib import Path
-from tqdm import tqdm
+from tqdm import tqdm, trange
 import matplotlib.pyplot as plt
+import unyt as u
+from conversions import air2vacESO
+from obs1d import readHARPSfile1D
 
 # Some generic information useful in different scripts
 
@@ -88,6 +88,7 @@ redCCDpath = Path('/Users/dberke/code/data/HARPS_CCD_red.csv')
 
 # Functions
 def map_spectral_order(order):
+    # TODO: Conver this to a bidict. Also found in maskSpectralRegions.py
     """
     Converts from HARPS' internal 0-71 order numbers to those in the HARPS
     spectral format (89-114, 116-161).
@@ -96,6 +97,11 @@ def map_spectral_order(order):
     ----------
     order : int
         An order number in the range [0, 71]
+
+    Returns
+    -------
+    int
+        The number of the dispersed order.
     """
     if not type(order) is int:
         raise ValueError("order parameter must be an integer in [0, 71]")
@@ -109,237 +115,6 @@ def map_spectral_order(order):
         raise ValueError("Given order not in range [0, 71].")
 
 
-def readHARPSfile(FITSfile, obj=False, wavelenmin=False, date_obs=False,
-                  spec_bin=False, med_snr=False, hdnum=False, radvel=False,
-                  coeffs=False):
-    """Read a HARPS FITS file and return a dictionary of information.
-
-    Parameters
-    ----------
-    FITSfile : str or Path object
-        A path to a HARPS FITS file to be read.
-    obj : bool, Default: False
-        If *True*, the output will contain the contents of the OBJECT FITS
-        header card.
-    wavelenmin : bool, Default: False
-        If *True*, the output will contain the contents of the WAVELMIN FITS
-        header card.
-    date_obs : bool, Default: False
-        If *True*, the output will contain the contents of the DATE-OBS FITS
-        header card.
-    spec_bin : bool, Default: False
-        If *True*, the output will contain the contents of the SPEC_BIN FITS
-        header card.
-    med_snr : bool, Default: False
-        If *True*, the output will contain the contents of the SNR FITS header
-        card.
-    hdnum : bool, Default: False
-        If *True*, the output will contain the contents of the custom-added
-        HDNUM FITS header card. (Added to unify object identifiers across all
-        stars, some of which were occasionally identified by things other than
-        HD number.)
-    radvel : bool, Default: False
-        If *True*, the output will contain the contents of the custom-added
-        RADVEL FITS header card. (Added to unify the radial velocity for each
-        star, as a small minority of stars had different radial velocity
-        information in their HIERARCH ESO TEL TAFG RADVEL header cards.)
-    coeffs : bool, Default: False
-        If *True*, the output will contain the contents of the various
-        *ESO DRS CAL TH COEFF LLX* header cards, where *X* ranges from 0 to
-        287.
-
-    Returns
-    -------
-    dict
-        A dictionary containing the following key-value pairs:
-
-        w : Numpy array
-            The wavelength array.
-        f : Numpy array
-            The flux array.
-        e : Numpy array
-            The estimated error array (HARPS returns no error array by
-            default).
-
-        Optionally
-        ==========
-        obj : str
-            The object name from the 'OBJECT' flag.
-        wlmin : float
-            The minimum wavelength.
-        date_obs : datetime object
-            The date the file was observed.
-        spec_bin : float
-            The wavelength bin size.
-        med_snr : float
-            The median SNR of the flux array.
-        hd_num : str
-            The HD identifier of the star in the format "HDxxxxxx".
-        radvel : float
-            The radial velocity of the star in km/s.
-        If the `coeffs` keyword argument is *True*, there will be 288 entries
-        of the form "ESO DRS CAL TH COEFF LLX": *value*, where X will range
-        from 0 to 287.
-    """
-
-    result = {}
-    with fits.open(FITSfile) as hdulist:
-        header0 = hdulist[0].header
-        header1 = hdulist[1].header
-        data = hdulist[1].data
-        w = data.WAVE[0]
-        gain = header0['GAIN']
-        # Multiply by the gain to convert from ADUs to photoelectrons
-        f = data.FLUX[0] * gain
-        e = 1.e6 * np.absolute(f)
-        # Construct an error array by taking the square root of each flux value
-        try:
-            # First assume no negative flux values and use Numpy array
-            # magic to speed up the process.
-
-            # According to Dumusque 2018 HARPS has a dark-current and read-out
-            # noise of 12 photo-electrons, so first add the square of that to
-            # the flux, then take the square root to add them in quadrature:
-            f_plus_err = f + 144
-            e = np.sqrt(f_plus_err)
-        except ValueError:
-            # If that raises an error, do it element-by-element.
-            for i in np.arange(0, len(f), 1):
-                if (f[i] > 0.0):
-                    e[i] = np.sqrt(f[i] + 144)
-        result['w'] = w
-        result['f'] = f
-        result['e'] = e
-        if obj:
-            result['obj'] = header1['OBJECT']
-        if wavelenmin:
-            result['wavelmin'] = header0['WAVELMIN']
-        if date_obs:
-            result['date_obs'] = dt.datetime.strptime(header0['DATE-OBS'],
-                                                      '%Y-%m-%dT%H:%M:%S.%f')
-        if spec_bin:
-            result['spec_bin'] = header0['SPEC_BIN']
-        if med_snr:
-            result['med_snr'] = header0['SNR']
-        if hdnum:
-            result['hdnum'] = header0['HDNUM']
-        if radvel:
-            result['radvel'] = header0['RADVEL']
-
-        # If the coeffs keyword is given, returna all 288 wavelength solution
-        # coefficients.
-        if coeffs:
-            for i in range(0, 288, 1):
-                key_string = 'ESO DRS CAL TH COEFF LL{0}'.format(str(i))
-                result[key_string] = header0[key_string]
-
-    return result
-
-
-def readESPRESSOfile(ESPfile):
-    """Read an ESPRESSO file and return a dictionary of information
-
-    ESPfile: a path to the ESPRESSO file to be read
-
-    output: a dictionary containing the following information:
-        obj: the name from the OBJECT card
-        w: the wavelength array
-        f: the flux array
-        e: the error array
-    """
-    with fits.open(ESPfile) as hdulist:
-        data = hdulist[1].data
-        obj = hdulist[0].header['OBJECT']
-        w = data['wavelength']
-        f = data['flux']
-        e = data['error']
-    return {'obj': obj, 'w': w, 'f': f, 'e': e}
-
-
-def air_indexEdlen53(l, t=15., p=760.):
-    """Return the index of refraction of air at given temp, pressures, and wl (A)
-
-    l: vacuum wavelength in Angstroms
-    t: temperature (don't use)
-    p: pressure (don't use)
-
-    Formula is Edlen 1953, provided directly by ESO
-    """
-    n = 1e-6 * p * (1 + (1.049-0.0157*t)*1e-6*p) / 720.883 / (1 + 0.003661*t)\
-        * (64.328 + 29498.1/(146-(1e4/l)**2) + 255.4/(41-(1e4/l)**2))
-    n = n + 1
-    return n
-
-
-def vac2airESO(ll):
-    """Return a vacuum wavlength from an air wavelength (A) using Edlen 1953
-
-    ll: air wavlength in Angstroms
-
-    """
-    llair = ll/air_indexEdlen53(ll)
-    return llair
-
-
-def air2vacESO(air_arr):
-    """Take an array of air wls (A) and return an array of vacum wls
-
-    Parameters
-    ----------
-    air_arr: array-like
-        A list of wavelengths in air, in Angstroms.
-
-    Returns
-    -------
-    array
-        An array of wavelengths in vacuum, in Angstroms.
-    """
-    if not type(air_arr) == np.ndarray:
-        air_arr = np.array(air_arr)
-
-    tolerance = 1e-12
-
-    vac = []
-
-    for i in range(0, len(air_arr)):
-        newwl = air_arr[i]
-        oldwl = 0.
-        while abs(oldwl - newwl) > tolerance:
-            oldwl = newwl
-            n = air_indexEdlen53(newwl)
-            newwl = air_arr[i] * n
-
-        vac.append(round(newwl, 2))
-    vac_arr = np.array(vac)
-
-    return vac_arr
-
-
-def vac2airMorton00(wl_vac):
-    """Take an input vacuum wavelength in Angstroms and return the air
-    wavelength.
-
-    Formula taken from 'www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion'
-    from Morton (2000, ApJ. Suppl., 130, 403) (IAU standard)
-    """
-    s = 1e4 / wl_vac
-    n = 1 + 0.0000834254 + (0.02406147 / (130 - s**2)) +\
-        (0.00015998 / (38.9 - s**2))
-    return wl_vac / n
-
-
-def air2vacMortonIAU(wl_air):
-    """Take an input air wavelength in Angstroms and return the vacuum
-    wavelength.
-
-    Formula taken from 'www.astro.uu.se/valdwiki/Air-to-vacuum%20conversion'
-    """
-    s = 1e4 / wl_air
-    n = 1 + 0.00008336624212083 + (0.02408926869968 / (130.1065924522 - s**2))\
-        + (0.0001599740894897 / (38.92568793293 - s**2))
-    return wl_air * n
-
-
 def index2wavelength(index, step, min_wl):
     """Return the wavelength associated with an index.
 
@@ -350,62 +125,139 @@ def index2wavelength(index, step, min_wl):
     return round((step * index + min_wl), 2)
 
 
-def wavelength2index(wl_arr, wl, reverse=False):
-    """Find the index in a list associated with a given wavelength
+def wavelength2index(wavelength, wavelength_array, reverse=False):
+    """Find the index in an iterable associated with a given wavelength.
 
-    wl_arr: an iterable object of wavelengths, *in increasing order*
-    wl: the wavelength to search for
-    reverse: a Boolean for if the wavelength array is listed from large to
-             small. Will first re
+    Parameters
+    ----------
+     wavelength : float or unyt_quantity
+        The wavelength to find the associated index for. If given as a
+        unyt_quantity, the wavelength_array given should be a unyt_array with
+        the same dimensions of length.
 
-    returns: the index for which the wavelength is closest to the given
+    wavelength_array : array-like, or unyt_array
+        An iterable object containing a sequence of wavelengths, by default *in
+        increasing order*. If a unyt_array is given, it should have dimensions
+        of length and be one-dimensional.
+
+    reverse : bool, Default: False
+        Reverses the given wavelength sequence before evaluating it, in case
+        the sequence is given in longer to shorter order.
+
+    Returns
+    -------
+    int
+        The index for which the associated wavelength is closest to the given
+        wavelength.
+
     """
-    length = len(wl_arr)
-    for i in range(0, length, 1):
-        # First find the index for which the value is greater than the given wl
-        if wl_arr[i] >= wl:
-            # Then check if it's closest to this index or the previous one
-            # Note that the way it's set up it should always be
-            # wl_arr[i-1] <= wl <= wl_arr[i]
-            if wl_arr[i] - wl > wl - wl_arr[i-1]:
-                return i-1
+
+    if reverse:
+        wavelength_array.reverse()
+    length = len(wavelength_array)
+
+    tqdm.write(f'Finding index for wavelength {wavelength.to(u.nm):.4f}...')
+    for i in trange(0, length, 1):
+        # First find the index for which the value is greater than the given
+        # wavelength:
+        if wavelength_array[i] >= wavelength:
+            # Then check if it's closest to this index or the previous one.
+            # The way it's set up it should always be
+            # wl_arr[i-1] <= wl <= wl_arr[i] assuming monotonic increase of
+            # wavelengths.
+            if (wavelength_array[i] - wavelength) >\
+               (wavelength - wavelength_array[i - 1]):
+                return i - 1
             else:
                 return i
 
-    print("Couldn't find the given wavelength: {}".format(wl))
-    raise ValueError
+    # If it reaches the end without finding a matching wavelength, raise an
+    # error.
+    raise RuntimeError("Couldn't find the given wavelength: {}".
+                       format(wavelength))
 
 
-def lineshift(line, radvel):
-    """Find the new position of a line given the radial velocity of a star
+def shift_wavelength(wavelength, shift_velocity):
+    """Find the new wavelength of a wavelength (single or an array) given a
+    velocity to shift it by. Returns in the units given.
 
-    line: line position. Can be nm or Angstroms, will return in same units
-    radvel: radial velocity in km/s
+    Parameters
+    ----------
+    wavelength : Unyt unyt_array or unyt_quantity
+        Wavelength(s) to be shifted. Will be converted to meters internally.
 
-    returns: the new line position
+    radial_velocity : float or int
+        Radial velocity to shift the wavelength(s) by. Will be converted to
+        meters/second internally.
+
+    Returns
+    -------
+        float
+        The new wavelength, in the original units, shifted according to the
+        given radial velocity.
+
     """
-    return ((radvel * 1000 / c.value) * line) + line
+
+    original_units = wavelength.units
+
+    # Convert the wavelength and radial velocity to base units.
+    wavelength.convert_to_units(u.m)
+    shift_velocity.convert_to_units(u.m/u.s)
+
+    # Make sure we're not using unphysical velocities!
+    assert abs(shift_velocity < u.c), 'Given velocity exceeds speed of light!'
+
+    result = ((shift_velocity / u.c) * wavelength) + wavelength
+
+    return result.to(original_units)
 
 
-def getwlseparation(v, wl):
-    """Return wavelength separation for a given velocity separation at a point
+def get_wavelength_separation(velocity_offset, wavelength):
+    """Return the wavelength separation for a given velocity separation at the
+    given wavelength.
 
-    v: the velocity separation. Should be in m/s
-    wl: the wavelength at which the function should be evaluated, since
-        it's also a function of wavelength. Returned in whatever units it's
-        given in.
+    Parameters
+    ----------
+    velocity_offset : unyt_quantity
+        The velocity separation. Can be in any valid units with dimensions of
+        length / time.
+
+    wavelength : unyt_quantity
+        The wavelength at which the function should be evaluated, since
+        it's a function of wavelength. Returned in whatever units it's
+        given in (should have dimensions of length).
+
+    Returns
+    -------
+    unyt_quantity
+        The separation in wavelength space for the given velocity offset at
+        the given wavelength.
 
     """
-    return (v * wl) / c.value
+
+    original_units = wavelength.units
+    result = (velocity_offset * wavelength) / u.c
+    return result.to(original_units)
 
 
-def getvelseparation(wl1, wl2):
-    """Return velocity separation for a pair of points in wavelength space
+def get_velocity_separation(wavelength1, wavelength2):
+    """Return velocity separation of a pair of wavelengths.
 
-    wl1 & wl2: wavelengths to get the velocity separation between in m/s.
-               Should be in meters.
+    Parameters
+    ----------
+    wavelengthl1 & wavelength2 : unyt_quantity or unyt_array
+        The two wavelengths to get the velocity separation between.
+
+    Returns
+    -------
+    unyt_quantity
+        The velocity separation between the given wavelengths in m/s.
+
     """
-    return (wl2 - wl1) * c.value / ((wl1 + wl2) / 2)
+
+    result = (wavelength2 - wavelength1) * u.c /\
+             ((wavelength1 + wavelength2) / 2)
+    return result.to(u.m/u.s)
 
 
 def parse_spectral_mask_file(file):
@@ -460,13 +312,27 @@ def simpleparabola(x, x0, a, c):
 
 
 def gaussian(x, a, b, c):
-    """Return the value of a Gaussian function with parameters a, b, and c
+    """Return the value of a Gaussian function with parameters a, b, and c.
 
-    x: independent variable
-    a: amplitude of Gaussian
-    b: center of Gaussian
-    c: standard deviation of Gaussian
+    Parameters
+    ----------
+    x : float
+        The independent variable.
+    a : float
+        The amplitude of the Gaussian.
+    b : float
+        The center of the Gaussian.
+    c : float
+        The standard deviation of the Gaussian.
+
+    Returns
+    -------
+    float
+        The value of a Gaussian with the given parameters at the given _x_
+        position.
+
     """
+
     return a * np.exp(-1 * ((x - b)**2 / (2 * c * c)))
 
 
@@ -548,11 +414,12 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
     if chisq_nu_gauss > 1:
         wl_err_gauss *= sqrt(chisq_nu_gauss)
 
-    # Multiply by 1e-9 to get nm to m for getvelseparation which requires m
-    vel_err_gauss = getvelseparation(gausscenterwl*1e-9,
-                                     (gausscenterwl+wl_err_gauss)*1e-9)
+    # Multiply by 1e-9 to get nm to m for get_velocity_separation which
+    # requires m
+    vel_err_gauss = get_velocity_separation(gausscenterwl*1e-9,
+                                            (gausscenterwl+wl_err_gauss)*1e-9)
     # Shift line to stellar rest frame
-    gaussrestframeline = lineshift(gausscenterwl, -1*radvel)
+    gaussrestframeline = shift_wavelength(gausscenterwl, -1*radvel)
 
     # Get the width (sigma) of the Gaussian
     gauss_sigma = abs(popt_gauss[2] / 1000)
@@ -563,15 +430,20 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
     gauss_fwhm_err = 2 * sqrt(2 * log(2)) * gauss_sigma_err
 
     # Convert sigma and FWHM to velocity space
-    sigma_vel = getvelseparation(gausscenterwl*1e-9,
-                                 (gausscenterwl+gauss_sigma)*1e-9)
-    sigma_vel_err = getvelseparation(gausscenterwl*1e-9,
-                                     (gausscenterwl+gauss_sigma_err)*1e-9)
+    sigma_vel = get_velocity_separation(gausscenterwl *
+                                        1e-9,
+                                        (gausscenterwl + gauss_sigma) *
+                                        1e-9)
+    sigma_vel_err = get_velocity_separation(gausscenterwl *
+                                            1e-9,
+                                            (gausscenterwl + gauss_sigma_err) *
+                                            1e-9)
 
-    fwhm_vel = getvelseparation(gausscenterwl*1e-9,
-                                (gausscenterwl+gauss_fwhm)*1e-9)
-    fwhm_vel_err = getvelseparation(gausscenterwl*1e-9,
-                                    (gausscenterwl+gauss_fwhm_err)*1e-9)
+    fwhm_vel = get_velocity_separation(gausscenterwl * 1e-9,
+                                       (gausscenterwl + gauss_fwhm) * 1e-9)
+    fwhm_vel_err = get_velocity_separation(gausscenterwl * 1e-9,
+                                           (gausscenterwl + gauss_fwhm_err) *
+                                           1e-9)
 
     # Get the amplitude of the Gaussian
     amp = popt_gauss[0]
@@ -639,11 +511,11 @@ def fitParabola(xnorm, ynorm, enorm, centralwl, radvel, verbose=False):
 
     if chisq_nu_par > 1:
         wl_err_par *= sqrt(chisq_nu_par)
-    vel_err_par = getvelseparation(parcenterwl*1e-9,
-                                   (parcenterwl+wl_err_par)*1e-9)
+    vel_err_par = get_velocity_separation(parcenterwl * 1e-9,
+                                          (parcenterwl + wl_err_par) * 1e-9)
 
     # Shift to stellar rest frame by correcting radial velocity.
-    parrestframeline = lineshift(parcenterwl, -1*radvel)
+    parrestframeline = shift_wavelength(parcenterwl, -1*radvel)
 
     if verbose:
             print('Covariance matrix for parabola:')
@@ -690,10 +562,10 @@ def fitSimpleParabola(xnorm, ynorm, enorm, centralwl, radvel, verbose=False):
     if chisq_nu_spar > 1:
         wl_err_spar *= sqrt(chisq_nu_spar)
 
-    vel_err_spar = getvelseparation(sparcenterwl*1e-9,
-                                    (sparcenterwl+wl_err_spar)*1e-9)
+    vel_err_spar = get_velocity_separation(sparcenterwl*1e-9,
+                                           (sparcenterwl+wl_err_spar)*1e-9)
     # Convert to restframe of star
-    sparrestframeline = lineshift(sparcenterwl, -1*radvel)
+    sparrestframeline = shift_wavelength(sparcenterwl, -1*radvel)
 
     if verbose:
         print("Covariance matrix for constrained parabola:")
@@ -790,15 +662,18 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
 
     radvel = float(radvel)
     # Figure out location of line given radial velocity of the star (in km/s)
-    shiftedlinewl = lineshift(float(line), radvel)  # In nm here.
+    shiftedlinewl = shift_wavelength(float(line), radvel)  # In nm here.
 #    print('Given radial velocity {} km/s, line {} should be at {:.4f}'.
 #          format(radvel, line, shiftedlinewl))
-    wlrange = getwlseparation(velsep, shiftedlinewl)  # 5 km/s by default
-    continuumrange = getwlseparation(velsep+2e4, shiftedlinewl)  # +25 km/s
+    # 5 km/s by default
+    wlrange = get_wavelength_separation(velsep, shiftedlinewl)
+    # +25 km/s
+    continuumrange = get_wavelength_separation(velsep+2e4, shiftedlinewl)
+
     upperwllim = shiftedlinewl + wlrange
     lowerwllim = shiftedlinewl - wlrange
-    upperguess = wavelength2index(vac_wl, upperwllim)
-    lowerguess = wavelength2index(vac_wl, lowerwllim)
+    upperguess = wavelength2index(upperwllim, vac_wl)
+    lowerguess = wavelength2index(lowerwllim, vac_wl)
     uppercont = wavelength2index(vac_wl, shiftedlinewl+continuumrange)
     lowercont = wavelength2index(vac_wl, shiftedlinewl-continuumrange)
     centralpos = flux[lowerguess:upperguess].argmin() + lowerguess
@@ -883,7 +758,8 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
         results['fwhm_gauss'] = gaussData['fwhm_gauss']
         results['fwhm_gauss_err'] = gaussData['fwhm_gauss_err']
         results['chisq_nu_gauss'] = gaussData['chisq_nu_gauss']
-        results['gauss_vel_offset'] = getvelseparation(shiftedlinewl*1e-9,
+        results['gauss_vel_offset'] = get_velocity_separation(shiftedlinewl *
+                                                              1e-9,
                                            gaussData['gausscenterwl']*1e-9)
 
     # Fit a constrained parabola to the normalized data
@@ -1069,16 +945,17 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, filename, starname,
     if (line1 and line2) is not None:
 
         if 'line_par' in (line1 and line2):
-            parveldiff = abs(getvelseparation(line1['line_par'],
-                                              line2['line_par']))
+            parveldiff = abs(get_velocity_separation(line1['line_par'],
+                                                     line2['line_par']))
             err_par = np.sqrt((line1['err_par'])**2 +
                               (line2['err_par'])**2)
             results['parveldiff'] = parveldiff
             results['pardifferr'] = err_par
 
         if 'restframe_line_gauss' in (line1 and line2):
-            gaussveldiff = abs(getvelseparation(line1['restframe_line_gauss'],
-                                                line2['restframe_line_gauss']))
+            gaussveldiff = abs(get_velocity_separation(
+                               line1['restframe_line_gauss'],
+                               line2['restframe_line_gauss']))
             err_gauss = np.sqrt((line1['vel_err_gauss'])**2 +
                                 (line2['vel_err_gauss'])**2)
 
@@ -1115,8 +992,8 @@ def measurepairsep(linepair, vac_wl, flux, err, radvel, filename, starname,
             results['line2_gauss_vel_offset'] = line2['gauss_vel_offset']
 
         if 'line_spar' in (line1 and line2):
-            sparveldiff = abs(getvelseparation(line1['line_spar'],
-                                               line2['line_spar']))
+            sparveldiff = abs(get_velocity_separation(line1['line_spar'],
+                                                      line2['line_spar']))
             err_spar = np.sqrt((line1['err_spar'])**2 +
                                (line2['err_spar'])**2)
             results['sparveldiff'] = sparveldiff
@@ -1152,8 +1029,8 @@ def searchFITSfile(FITSfile, pairlist, index, plot=False, save_arrays=False):
 
     filename = FITSfile.stem
 
-    data = readHARPSfile(str(FITSfile), radvel=True, date_obs=True,
-                         hdnum=True, med_snr=True)
+    data = readHARPSfile1D(str(FITSfile), radvel=True, date_obs=True,
+                           hdnum=True, med_snr=True)
     # Convert from Angstroms to nm AFTER converting to vacuum wavelengths
     vac_wl = air2vacESO(data['w']) / 10
 
@@ -1268,8 +1145,8 @@ def injectGaussianNoise(data, nom_wavelength, num_iter=1000, plot=False):
                                      verbose=False)
         measured_wl = gauss_sim_data['restframe_line_gauss']
         measured_wavelengths.append(measured_wl)
-        vel_sep = getvelseparation(fit_wavelength*1e-9,
-                                   measured_wl*1e-9)
+        vel_sep = get_velocity_separation(fit_wavelength * 1e-9,
+                                          measured_wl * 1e-9)
         vel_offsets.append(vel_sep)
 
     if plot:
