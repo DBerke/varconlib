@@ -41,13 +41,16 @@ class Transition(object):
         wavelength : unyt quantity with dimensions length
             The wavelength of the transition. Should be a unyt quantity, though
             it can be any unit of length and will be converted to nm
-            internally.
+            internally. Should be in a vacuum wavelength scale.
 
         element : int or str
             The atomic number of the element the transition arises from, or the
             standard chemical symbol (e.g., 'He', or 'N'). Either can be given;
             on initialization it will use the given one to find the other from
-            a bijective dictionary and set both for the instance.
+            a bijective dictionary and set both for the instance. The number
+            can also be given as a string; it will first check if the string
+            can be converted to an integer before parsing it as an atomic
+            symbol.
 
         ionizationState : int
             The ionization state of the atom the transition arises from, after
@@ -57,18 +60,24 @@ class Transition(object):
         """
 
         self.wavelength = wavelength.to(u.nm)
+        if type(element) is str and len(element) < 3:
+            try:
+                element = int(element)
+            except ValueError:
+                cap_string = element.capitalize()
+                try:
+                    self.atomicNumber = elements.inv[cap_string]
+                except KeyError:
+                    print('Given atomic symbol not in elements dictionary!')
+                    print('Atomic symbol given was "{}".'.format(element))
+                    raise
+                self.atomicSymbol = cap_string
+        else:
+            print('Given string for parameter "element" is too long!')
         if type(element) is int:
+            assert 0 < element < 119, 'Element number not in range [1, 118]!'
             self.atomicNumber = element
             self.atomicSymbol = elements[self.atomicNumber]
-        elif type(element) is str and len(element) in (1, 2):
-            cap_string = element.capitalize()
-            try:
-                self.atomicNumber = elements.inv[cap_string]
-            except KeyError:
-                print('Given atomic symbol not found in elements dictionary!')
-                print('Atomic symbol given was "{}".'.format(element))
-                raise
-            self.atomicSymbol = cap_string
         else:
             raise TypeError("'element' parameter must be an integer atomic " +
                             "number or correct atomic symbol (e.g., 'Fe').")
@@ -88,8 +97,11 @@ class Transition(object):
                                        self.ionizationState)
 
     def __str__(self):
-        return "{} {} {} {:.4f}".format(self.wavelength, self.atomicSymbol,
-                                        self.ionizationState, self.lowerEnergy)
+        return "{} {}{} ({:.4f}, {:.4f})".format(self.wavelength,
+                                                 self.atomicSymbol,
+                                                 self.ionizationState,
+                                                 self.lowerEnergy,
+                                                 self.higherEnergy)
 
     def __lt__(self, other):
         if self.wavelength.value < other.wavelength.value:

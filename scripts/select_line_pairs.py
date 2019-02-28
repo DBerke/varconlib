@@ -13,9 +13,10 @@ import argparse
 import configparser
 import pickle
 import datetime
-from math import trunc, sqrt
+from math import sqrt
 from pathlib import Path
 import numpy as np
+from astroquery.nist import NistClass, Nist
 from tqdm import tqdm
 import varconlib as vcl
 import unyt as u
@@ -220,11 +221,13 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
                    (wavelength_diff < delta_wavelength):
                     matched_lines.append(k_line)
 
+        # If there's only one match (yay!) just save it.
         if len(matched_lines) == 1:
             matched_lines[0].normalizedDepth = b_line.normalizedDepth
             matched_one.append(matched_lines[0])
             tqdm.write('{} matched with one line.'.format(str(b_line)))
 
+        # If there's no match, list nearest possible matches.
         elif len(matched_lines) == 0:
             matched_zero.append((b_line, delta_wavelength, delta_energy))
             tqdm.write('{} unmatched.'.format(str(b_line)))
@@ -245,6 +248,8 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
                                    item[0].wavelength, item[1],
                                    item[0].lowerEnergy, item[2]))
 
+        # If there's more than one match, it could be due to isotopes, so check
+        # that first:
         elif len(matched_lines) > 1:
             atomic_numbers = set()
             ion_states = set()
@@ -265,6 +270,8 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
                 n_multi_isotopes += 1
                 tqdm.write('{} matched out of multiple isotope lines.'.format(
                         str(b_line)))
+            # If it's not isotopes, then it truly is matched to multiple lines,
+            # so note that.
             else:
                 matched_lines.insert(0, b_line)
                 matched_mult.append(matched_lines)
@@ -306,7 +313,7 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
 
 def find_line_pairs(transition_list, out_file=None,
                     min_norm_depth=0.3, max_norm_depth=0.7,
-                    velocity_separation=400000*u.m/u.s,
+                    velocity_separation=400*u.km/u.s,
                     line_depth_difference=0.05):
     """Find pairs of nearby transitions from a list, within constraints.
 
@@ -356,10 +363,10 @@ def find_line_pairs(transition_list, out_file=None,
 
         # If it's fine, figure out how much wavelength space to search around
         # it based on the velocity separation.
-        delta_wl = vcl.getwlseparation(velocity_separation.value,
-                                       transition1.wavelength.value)
-        lowerLim = transition1.wavelength - delta_wl * u.nm
-        upperLim = transition1.wavelength + delta_wl * u.nm
+        delta_wl = vcl.get_wavelength_separation(velocity_separation,
+                                                 transition1.wavelength)
+        lowerLim = transition1.wavelength - delta_wl
+        upperLim = transition1.wavelength + delta_wl
 
         # Iterate over the entire list of transitions.
         for transition2 in transition_list:
@@ -436,6 +443,10 @@ args = parser.parse_args()
 global line_offsets
 line_offsets = []
 
+config = configparser.ConfigParser(interpolation=configparser.
+                                   ExtendedInterpolation())
+config.read('/Users/dberke/code/config/variables.cfg')
+
 # These two files produces wavelengths in air, in Angstroms.
 redFile = "data/BRASS2018_Sun_PrelimGraded_Lobel.csv"
 blueFile = "data/BRASS2018_Sun_PrelimSpectroWeblines_Lobel.csv"
@@ -456,8 +467,11 @@ colDtypes = (float, float, "U6", float, float, "U11", float, float, "U11",
              float, float, float, "U4", int, int, int, float, int, float,
              int, int, "U3", "U3", "U4", int, int, float)
 
-CCD_bounds_file = Path('data/unusable_spectrum_CCDbounds.txt')
-no_CCD_bounds_file = Path('data/unusable_spectrum_noCCDbounds.txt')
+masks_dir = Path(config['PATHS']['masks_dir'])
+CCD_bounds_file = masks_dir / 'unusable_spectrum_CCDbounds.txt'
+# Path('/Users/dberke/code/data/unusable_spectrum_CCDbounds.txt')
+no_CCD_bounds_file = masks_dir / 'unusable_spectrum_CCDbounds.txt'
+# Path('data/unusable_spectrum_noCCDbounds.txt')
 
 mask_CCD_bounds = vcl.parse_spectral_mask_file(CCD_bounds_file)
 mask_no_CCD_bounds = vcl.parse_spectral_mask_file(no_CCD_bounds_file)
@@ -542,9 +556,12 @@ if args.match_lines:
                     energy_tolerance=args.delta_energy)
 
 if args.pair_lines:
-    config = configparser.ConfigParser(interpolation=configparser.
-                                       ExtendedInterpolation())
-    config.read('config/variables.cfg')
+    # Parameters for widest selection of line pairs:
+    # minimum depth: 0.15
+    # maximum depth: 0.90
+    # maximum depth difference: 0.2
+    # maximum velocity separation: 800 km/s
+
     pickle_dir = Path(config['PATHS']['pickle_dir'])
     pickle_file = pickle_dir / 'transitions.pickle'
     print('Unpickling transition lines...')
@@ -556,35 +573,51 @@ if args.pair_lines:
                             max_norm_depth=0.9,
                             velocity_separation=800*u.km/u.s,
                             line_depth_difference=0.2)
-    for item in pairs:
-        print(item)
 
-#    depths = ((0.3, 0.7), (0.2, 0.7), (0.3, 0.8),
-#              (0.2, 0.8), (0.3, 0.9), (0.2, 0.9))
-#    seps = (400000, 500000, 600000) * u.m/u.s
-#    bounds = (mask_no_CCD_bounds, mask_CCD_bounds)
-#    diffs = (0.05, 0.06, 0.07, 0.08, 0.09, 0.1)
-#    for depth in depths:
-#        for sep in seps:
-#            for diff in diffs:
-#                fileName = 'Lines_{0}-{1}_{2}kms_{3}.pickle'.format(
-#                            depth[0], depth[1], int(sep.to(u.km/u.s)),
-#                            diff)
-#                outFile = pickle_dir / fileName
-#                find_line_pairs(transition_list, outFile,
-#                           minNormDepth=depth[0], maxNormDepth=depth[1],
-#                           velSeparation=sep, lineDepthDiff=diff)
+    transition_set = set()
+    species_set = set()
+    high_energy_pairs = []
+    for pair in pairs:
+        for transition in pair:
+            transition_set.add(transition)
+            species_set.add('{} {}'.format(transition.atomicSymbol,
+                            transition.ionizationState))
+            if (transition.higherEnergy > 50000 * u.cm ** -1) or\
+               (transition.lowerEnergy > 50000 * u.cm ** -1):
+                if pair not in high_energy_pairs:
+                    high_energy_pairs.append(pair)
 
-goldStandard = "data/GoldStandardLineList.txt"
-testStandard = "data/GoldStandardLineList_test.txt"
-outDir = Path('data/linelists')
+    transition_list = [x for x in transition_set]
 
-#filename = outDir / 'Lines_purple_0.15-0.9_800kms_0.2_test.txt'
-#matchLines(purpleData, filename, minDepth=0.15, maxDepth=0.9,
-#            velSeparation=800000, lineDepthDiff=0.2, vacuum_wl=True,
-#            spectralMask=mask_no_CCD_bounds, CCD_bounds=False)
-#goldSystematic = "/Users/dberke/Documents/GoldSystematicLineList.txt"
-#matchLines(redData, goldSystematic, minDepth=0.2, maxDepth=0.8,
-#           velSeparation=800000, lineDepthDiff=0.1)
-#matchLines(blueData, minDepth=0.3, maxDepth=0.7, velSeparation=400000,
-#               lineDepthDiff=0.05)
+    transition_list.sort()
+#    high_energy_lines = set()
+#
+#    print(f'Total distinct transitions: {len(transition_list)}')
+
+#    for transition in tqdm(transition_list):
+#        if (item.higherEnergy > 50000) or (item.lowerEnergy > 50000):
+#            high_energy_lines.add(item)
+#
+#    print(f'High energy lines (E > 50000 cm^-1): {len(high_energy_lines)}')
+#
+#    print(f'Total affected pairs: {len(high_energy_pairs)}')
+
+    # Query NIST for information on each transition.
+    min_wavelength = transition_list[0].wavelength - 0.5 * u.angstrom
+    max_wavelength = transition_list[-1].wavelength + 0.5 * u.angstrom
+
+    print(min_wavelength, max_wavelength)
+
+    species_string = ';'.join(species_set)
+    # Change numbers to Roman numerals for NIST
+    species_string = species_string.replace('1', 'I')
+    species_string = species_string.replace('2', 'II')
+    print(species_string)
+
+    table = Nist.query(min_wavelength.to_astropy(),
+                       max_wavelength.to_astropy(),
+                       energy_level_unit='cm-1',
+                       output_order='wavelength',
+                       wavelength_type='vacuum',
+                       linename="Fe II")
+    print(table)

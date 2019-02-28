@@ -395,10 +395,12 @@ def plot_as_function_of_depth(base_dir):
                                                 plot=False)
                 for wl1, wl2 in zip(sim_data1['measured_wavelengths'],
                                     sim_data2['measured_wavelengths']):
-                    pair_vel_seps.append(vcl.getvelseparation(wl1*1e-9,
-                                                              wl2*1e-9))
-                fitSep = vcl.getvelseparation(sim_data1['fit_wavelength']*1e-9,
-                                              sim_data2['fit_wavelength']*1e-9)
+                    pair_vel_seps.append(vcl.get_vel_separation(wl1 * 1e-9,
+                                                                wl2 * 1e-9))
+                fitSep = vcl.get_vel_separation(sim_data1['fit_wavelength'] *
+                                                1e-9,
+                                                sim_data2['fit_wavelength'] *
+                                                1e-9)
 
             pair_vel_seps -= fitSep
             sim_scatter = np.std(pair_vel_seps)

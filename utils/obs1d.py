@@ -13,7 +13,7 @@ import numpy as np
 from astropy.io import fits
 
 
-def readHARPSfile1d(FITSfile, obj=False, wavelenmin=False, date_obs=False,
+def readHARPSfile1D(FITSfile, obj=False, wavelenmin=False, date_obs=False,
                     spec_bin=False, med_snr=False, hdnum=False, radvel=False,
                     coeffs=False):
     """Read a HARPS ADP FITS file and return a dictionary of information.
