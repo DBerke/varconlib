@@ -29,6 +29,8 @@ def air_indexEdlen53(l, t=15., p=760.):
 
     """
 
+
+
     n = 1e-6 * p * (1 + (1.049-0.0157*t)*1e-6*p) / 720.883 / (1 + 0.003661*t)\
         * (64.328 + 29498.1/(146-(1e4/l)**2) + 255.4/(41-(1e4/l)**2))
     n = n + 1
@@ -40,7 +42,7 @@ def vac2airESO(ll):
     Edlen 1953.
 
     This is the function used in the ESO archive, according to the code
-    provided by the archival team. It only work with units in Angstroms.
+    provided by the archival team. It *only* work with units in *Angstroms*.
 
     Parameters
     ----------
@@ -85,42 +87,44 @@ def air2vacESO(air_wavelengths_array):
 
     reshape = False
     original_units = air_wavelengths_array.units
-    print(air_wavelengths_array.shape)
-    print(air_wavelengths_array.ndim)
     if air_wavelengths_array.ndim == 2:
         # We need to flatten the array to 1-D, then reshape it afterwards.
         reshape = True
         original_shape = air_wavelengths_array.shape
+        tqdm.write(str(original_shape))
         air_wavelengths_array = air_wavelengths_array.flatten()
-        print(air_wavelengths_array.shape)
 
     air_wavelengths_array.convert_to_units(u.angstrom)
 
     tolerance = 2e-12
-    num_iter = 8
+    num_iter = 100
 
-    vacuum_array = []
+    vacuum_wavelengths_list = []
 
     tqdm.write('Converting air wavelengths to vacuum using Edlen `53 formula.')
     for i in trange(0, len(air_wavelengths_array)):
         new_wavelength = air_wavelengths_array[i].value
         old_wavelength = 0.
         iterations = 0
+        past_iterations = [new_wavelength]
         while abs(old_wavelength - new_wavelength) > tolerance:
             old_wavelength = new_wavelength
             n_refraction = air_indexEdlen53(new_wavelength)
             new_wavelength = air_wavelengths_array[i].value * n_refraction
             iterations += 1
+            past_iterations.append(new_wavelength)
             if iterations > num_iter:
+                print(past_iterations)
                 raise RuntimeError('Max number of iterations exceeded!')
 
-        vacuum_array.append(new_wavelength * u.angstrom)
-    vacuum_wavelength_array = u.unyt_array(vacuum_array)
+        vacuum_wavelengths_list.append(new_wavelength)
+    vacuum_array = u.unyt_array(vacuum_wavelengths_list, u.angstrom)
 
     if reshape:
-        vacuum_wavelength_array.reshape(original_shape)
-
-    return vacuum_wavelength_array.to(original_units)
+        tqdm.write(f'Converting back to original shape: {vacuum_array.shape}.')
+        return vacuum_array.reshape(original_shape).to(original_units)
+    else:
+        return vacuum_array.to(original_units)
 
 
 def vac2airMorton00(wl_vac):
