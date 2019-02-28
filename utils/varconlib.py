@@ -17,7 +17,7 @@ from tqdm import tqdm, trange
 import matplotlib.pyplot as plt
 import unyt as u
 from conversions import air2vacESO
-from obs1d import readHARPSfile
+from obs1d import readHARPSfile1D
 
 # Some generic information useful in different scripts
 
@@ -88,6 +88,7 @@ redCCDpath = Path('/Users/dberke/code/data/HARPS_CCD_red.csv')
 
 # Functions
 def map_spectral_order(order):
+    # TODO: Conver this to a bidict. Also found in maskSpectralRegions.py
     """
     Converts from HARPS' internal 0-71 order numbers to those in the HARPS
     spectral format (89-114, 116-161).
@@ -124,20 +125,20 @@ def index2wavelength(index, step, min_wl):
     return round((step * index + min_wl), 2)
 
 
-def wavelength2index(wavelength_array, wavelength, reverse=False):
+def wavelength2index(wavelength, wavelength_array, reverse=False):
     """Find the index in an iterable associated with a given wavelength.
 
     Parameters
     ----------
-    wavelength_array : array-like, or unyt_array
-        An iterable object containing a sequence wavelengths, by default *in
-        increasing order*. If a unyt_array is given, the wavelength should be
-        a unyt_quantity with the same dimensions of length.
-
-    wavelength : float or unyt_quantity
+     wavelength : float or unyt_quantity
         The wavelength to find the associated index for. If given as a
         unyt_quantity, the wavelength_array given should be a unyt_array with
         the same dimensions of length.
+
+    wavelength_array : array-like, or unyt_array
+        An iterable object containing a sequence of wavelengths, by default *in
+        increasing order*. If a unyt_array is given, it should have dimensions
+        of length and be one-dimensional.
 
     reverse : bool, Default: False
         Reverses the given wavelength sequence before evaluating it, in case
@@ -155,16 +156,17 @@ def wavelength2index(wavelength_array, wavelength, reverse=False):
         wavelength_array.reverse()
     length = len(wavelength_array)
 
-    tqdm.write(f'Finding index for wavelength {wavelength:.4f}...')
+    tqdm.write(f'Finding index for wavelength {wavelength.to(u.nm):.4f}...')
     for i in trange(0, length, 1):
         # First find the index for which the value is greater than the given
         # wavelength:
         if wavelength_array[i] >= wavelength:
             # Then check if it's closest to this index or the previous one.
             # The way it's set up it should always be
-            # wl_arr[i-1] <= wl <= wl_arr[i]
-            if wavelength_array[i] - wavelength >\
-               wavelength - wavelength_array[i - 1]:
+            # wl_arr[i-1] <= wl <= wl_arr[i] assuming monotonic increase of
+            # wavelengths.
+            if (wavelength_array[i] - wavelength) >\
+               (wavelength - wavelength_array[i - 1]):
                 return i - 1
             else:
                 return i
@@ -310,13 +312,27 @@ def simpleparabola(x, x0, a, c):
 
 
 def gaussian(x, a, b, c):
-    """Return the value of a Gaussian function with parameters a, b, and c
+    """Return the value of a Gaussian function with parameters a, b, and c.
 
-    x: independent variable
-    a: amplitude of Gaussian
-    b: center of Gaussian
-    c: standard deviation of Gaussian
+    Parameters
+    ----------
+    x : float
+        The independent variable.
+    a : float
+        The amplitude of the Gaussian.
+    b : float
+        The center of the Gaussian.
+    c : float
+        The standard deviation of the Gaussian.
+
+    Returns
+    -------
+    float
+        The value of a Gaussian with the given parameters at the given _x_
+        position.
+
     """
+
     return a * np.exp(-1 * ((x - b)**2 / (2 * c * c)))
 
 
@@ -656,8 +672,8 @@ def linefind(line, vac_wl, flux, err, radvel, filename, starname,
 
     upperwllim = shiftedlinewl + wlrange
     lowerwllim = shiftedlinewl - wlrange
-    upperguess = wavelength2index(vac_wl, upperwllim)
-    lowerguess = wavelength2index(vac_wl, lowerwllim)
+    upperguess = wavelength2index(upperwllim, vac_wl)
+    lowerguess = wavelength2index(lowerwllim, vac_wl)
     uppercont = wavelength2index(vac_wl, shiftedlinewl+continuumrange)
     lowercont = wavelength2index(vac_wl, shiftedlinewl-continuumrange)
     centralpos = flux[lowerguess:upperguess].argmin() + lowerguess
@@ -1013,8 +1029,8 @@ def searchFITSfile(FITSfile, pairlist, index, plot=False, save_arrays=False):
 
     filename = FITSfile.stem
 
-    data = readHARPSfile(str(FITSfile), radvel=True, date_obs=True,
-                         hdnum=True, med_snr=True)
+    data = readHARPSfile1D(str(FITSfile), radvel=True, date_obs=True,
+                           hdnum=True, med_snr=True)
     # Convert from Angstroms to nm AFTER converting to vacuum wavelengths
     vac_wl = air2vacESO(data['w']) / 10
 
