@@ -17,7 +17,7 @@ from obs2d import HARPSFile2D, HARPSFile2DScience
 
 
 @pytest.fixture(scope='module')
-def test_file(tmpdir_factory):
+def generic_test_file(tmpdir_factory):
     config = configparser.ConfigParser(interpolation=configparser.
                                        ExtendedInterpolation())
     config.read('/Users/dberke/code/config/variables.cfg')
@@ -35,20 +35,20 @@ def test_file(tmpdir_factory):
 
 
 class TestGeneric2DFile(object):
-    def test_raw_file_read(self, test_file):
-        s = HARPSFile2D(test_file)
+    def testRawFileRead(self, generic_test_file):
+        s = HARPSFile2D(generic_test_file)
         assert s.getHeaderCard('INSTRUME') == 'HARPS',\
             "Couldn't read header card."
 
 
 class TestScience2DFile(object):
-    def test_obs_file_read(self, test_file):
-        s = HARPSFile2DScience(test_file)
+    def testObsFileRead(self, generic_test_file):
+        s = HARPSFile2DScience(generic_test_file)
         assert s.getHeaderCard('INSTRUME') == 'HARPS',\
             "Couldn't read header card."
 
-    def test_arrays_present(self, test_file):
-        s = HARPSFile2DScience(test_file)
+    def testArraysPresent(self, generic_test_file):
+        s = HARPSFile2DScience(generic_test_file)
         assert np.shape(s._wavelengthArray) == (72, 4096),\
             f'Wavelength array wrong shape! {np.shape(s._wavelengthArray)}'
         assert np.shape(s._photonFluxArray) == (72, 4096),\
