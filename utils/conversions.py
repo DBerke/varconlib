@@ -18,6 +18,11 @@ def air_indexEdlen53(l, t=15., p=760.):
     """Return the index of refraction of air at given temperature, pressure,
     and wavelength in Angstroms.
 
+
+    The formula is from Edlen 1953, provided directly by ESO.
+
+    Parameters
+    ----------
     l : float
         Vacuum wavelength in Angstroms
     t : float
@@ -25,11 +30,12 @@ def air_indexEdlen53(l, t=15., p=760.):
     p : float
         Pressure in mmHg. (Don't actually change this from the default!)
 
-    The formula is from Edlen 1953, provided directly by ESO.
+    Returns
+    -------
+    float
+        The index of refraction for air at the given parameters.
 
     """
-
-
 
     n = 1e-6 * p * (1 + (1.049-0.0157*t)*1e-6*p) / 720.883 / (1 + 0.003661*t)\
         * (64.328 + 29498.1/(146-(1e4/l)**2) + 255.4/(41-(1e4/l)**2))
@@ -46,13 +52,13 @@ def vac2airESO(ll):
 
     Parameters
     ----------
-    ll : float or unyt_quantity or ndarray or unyt_array
+    ll : float or `unyt.unyt_quantity` or `numpy.ndarray` or `unyt.unyt_array`
         Air wavelength to convert. Needs to be in Angstroms if given as a float
         or array.
 
     Returns
     -------
-    float or unyt_quantity
+    float or `unyt.unyt_quantity`
         The wavelength in air.
 
     """
@@ -74,14 +80,14 @@ def air2vacESO(air_wavelengths_array):
 
     Parameters
     ----------
-    air_arr: unyt_array
+    air_arr: `unyt.unyt_array`
         A list of wavelengths in air, with dimensions length. Will be converted
         to Angstroms internally.
 
     Returns
     -------
-    array
-        An array of wavelengths in vacuum, in the original units.
+    `unyt.unyt_array`
+        A unyt_array of wavelengths in vacuum, in the original units.
 
     """
 
@@ -122,6 +128,7 @@ def air2vacESO(air_wavelengths_array):
 
     if reshape:
         tqdm.write(f'Converting back to original shape: {vacuum_array.shape}.')
+        # Reshape the array back to its original shape.
         return vacuum_array.reshape(original_shape).to(original_units)
     else:
         return vacuum_array.to(original_units)
