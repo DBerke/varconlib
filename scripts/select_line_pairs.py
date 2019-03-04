@@ -14,9 +14,11 @@ import configparser
 import pickle
 import datetime
 from math import sqrt
+from time import sleep
 from pathlib import Path
 import numpy as np
-from astroquery.nist import NistClass, Nist
+import numpy.ma as ma
+from astroquery.nist import Nist
 from tqdm import tqdm
 import varconlib as vcl
 import unyt as u
@@ -137,22 +139,18 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
         list. These will contain the vacuum wavelength of the transition, the
         element and ionization state it came from, the lower energy of the
         orbital, and the normalized depth of the absorption line it produces.
-
     Kurucz_transitions : list of Transitions
         A list of Transition objects representing transitions from the Kurucz
         list. These will contain the vacuum wavelength of the transition, the
         element and ionization state it came from, the lower and higher
         energies, momentums (J), and orbital configurations of the transition,
         and the log of the isotope abundance.
-
     spectral_mask : list of tuples
         A list of tuples delimiting 'bad' regions of the spectrum that should
         be avoided.
-
     wl_tolerance : int
         The tolerance in m/s (though the units are added internally) to search
         within around the BRASS list's given wavelength.
-
     energy_tolerance : int
         The tolerance in m/s (though the units are added internally) to search
         within around the BRASS list's lower energy value.
@@ -406,14 +404,108 @@ def find_line_pairs(transition_list, out_file=None,
                 pass
             else:
                 transition_pair_list.append(pair)
-#    for item in transition_pair_list:
-#        print(item)
-    print(len(transition_pair_list))
+
     if out_file is not None:
         with open(out_file, 'w+b') as f:
             pickle.dump(transition_pair_list, f)
 
     return transition_pair_list
+
+
+def query_nist(transition_list, species_set):
+    """Query NIST for the given ionic species.
+
+    Since querying NIST for multiple species at once using astroquery doesn't
+    seem to work, this function queries on a per-species basis, using a
+    wavelength range encompassing all the transitions of the that species. A
+    list is created of Transition objects parsed from the returned results,
+    which is then stored in a dictionary under the species name (e.g., "Fe II")
+
+    Parameters
+    ----------
+    transition_list : list of transition_line.Transition objects
+        A list of Transition objects representing all the transitions to be
+        searched for in NIST.
+    species_set : set of strings
+        These should be of a form of a valid ionic species that NIST would
+        recognize, i.e., "Cr I", "Ti II", "Fe I", etc.
+
+    Returns
+    -------
+    dict
+        A dictionary with species a keys and lists of Transition objects of
+        that species as values.
+        Example: {"Fe I": [Transition(500 u.nm, 26, 1),...]}
+
+    """
+
+    # Query NIST for information on each transition.
+    tqdm.write('Querying NIST for transition information...')
+    master_transition_dict = {}
+    for species in tqdm(species_set):
+        tqdm.write('--------------')
+        tqdm.write(f'Querying {species}...')
+        species_list = []
+        for transition in transition_list:
+            if transition.atomicSpecies == species:
+                species_list.append(transition)
+
+        min_wavelength = species_list[0].wavelength - 0.5 * u.angstrom
+        max_wavelength = species_list[-1].wavelength + 0.5 * u.angstrom
+
+        tqdm.write(f'Min: {min_wavelength},  max: {max_wavelength}')
+
+        sleep(1)
+        table = Nist.query(min_wavelength.to_astropy(),
+                           max_wavelength.to_astropy(),
+                           energy_level_unit='cm-1',
+                           output_order='wavelength',
+                           wavelength_type='vacuum',
+                           linename=species)
+        tqdm.write(f'{len(table)} transitions found for {species}.')
+        if len(table) != 0:
+            table.remove_columns(['Ritz', 'Rel.', 'Aki', 'fik', 'Acc.', 'Type',
+                                  'TP', 'Line'])
+
+            nist_transitions = []
+            for row in tqdm(table):
+                if row[0] is ma.masked:
+                    nist_wavenumber = float(row[1]) * u.cm ** -1
+                    nist_wavelength = (1 / nist_wavenumber).to(u.nm)
+                    tqdm.write(f'{nist_wavenumber} --> {nist_wavelength}')
+                elif row[1] is ma.masked:
+                    nist_wavelength = float(row[0]) * u.nm
+                    nist_wavenumber = (1 / nist_wavelength).to(u.cm ** -1)
+                    tqdm.write(f'{nist_wavelength} --> {nist_wavenumber}')
+                elif row[2] is ma.masked:
+                    tqdm.write(f'No energy information for {row[0]}')
+                    continue
+                else:
+                    nist_wavelength = float(row[0]) * u.nm
+                    nist_wavenumber = float(row[1]) * u.cm ** -1
+                nist_energy_levels = row[2].split('-')
+                strip_chars = ' &d?'
+                nist_energy1 = float(nist_energy_levels[0].strip(strip_chars))
+                nist_energy2 = float(nist_energy_levels[1].strip(strip_chars))
+                nist_lower_orbital = row[3]
+                nist_upper_orbital = row[4]
+                try:
+                    nist_transition = Transition(nist_wavelength,
+                                                 *species.split())
+                except:
+                    print(row)
+                    raise
+                nist_transition.lowerEnergy = nist_energy1 * u.cm ** -1
+                nist_transition.higherEnergy = nist_energy2 * u.cm ** -1
+                nist_transition.lowerOrbital = nist_lower_orbital
+                nist_transition.higherOrbital = nist_upper_orbital
+                nist_transition.wavenumber = nist_wavenumber
+
+                nist_transitions.append(nist_transition)
+
+            master_transition_dict[species] = nist_transitions
+
+    return master_transition_dict
 
 
 # ----- Main routine of code -----
@@ -433,6 +525,10 @@ parser.add_argument('-de', '--delta_energy', action='store',
 parser.add_argument('--pair_lines', action='store_true',
                     default=False,
                     help='Find pairs of transition lines from list.')
+
+parser.add_argument('--query_lines', action='store_true',
+                    default=False,
+                    help='Query transitions from NIST.')
 
 parser.add_argument('--verbose', action='store_true',
                     default=False,
@@ -468,6 +564,10 @@ colDtypes = (float, float, "U6", float, float, "U11", float, float, "U11",
              int, int, "U3", "U3", "U4", int, int, float)
 
 masks_dir = Path(config['PATHS']['masks_dir'])
+pickle_dir = Path(config['PATHS']['pickle_dir'])
+pickle_file = pickle_dir / 'transitions.pickle'
+pickle_pairs_file = pickle_dir / 'transition_pairs.pickle'
+
 CCD_bounds_file = masks_dir / 'unusable_spectrum_CCDbounds.txt'
 # Path('/Users/dberke/code/data/unusable_spectrum_CCDbounds.txt')
 no_CCD_bounds_file = masks_dir / 'unusable_spectrum_CCDbounds.txt'
@@ -552,7 +652,7 @@ if args.match_lines:
     # Now, match between the BRASS list and Kurucz list as best we can.
 
     harmonize_lists(b_transition_lines, k_transition_lines, mask_no_CCD_bounds,
-                    wl_tolerance=args.delta_wavelength,
+                    wl_tolerance=args.delta_wavelength,  # TODO: add units here
                     energy_tolerance=args.delta_energy)
 
 if args.pair_lines:
@@ -562,8 +662,6 @@ if args.pair_lines:
     # maximum depth difference: 0.2
     # maximum velocity separation: 800 km/s
 
-    pickle_dir = Path(config['PATHS']['pickle_dir'])
-    pickle_file = pickle_dir / 'transitions.pickle'
     print('Unpickling transition lines...')
     with open(pickle_file, 'r+b') as f:
         transitions_list = pickle.load(f)
@@ -574,14 +672,21 @@ if args.pair_lines:
                             velocity_separation=800*u.km/u.s,
                             line_depth_difference=0.2)
 
+    with open(pickle_pairs_file, 'w+b') as f:
+        pickle.dump(pairs, f)
+
+
+if args.query_lines:
+
+    with open(pickle_pairs_file, 'r+b') as f:
+        pairs = pickle.load(f)
     transition_set = set()
     species_set = set()
     high_energy_pairs = []
     for pair in pairs:
         for transition in pair:
             transition_set.add(transition)
-            species_set.add('{} {}'.format(transition.atomicSymbol,
-                            transition.ionizationState))
+            species_set.add(transition.atomicSpecies)
             if (transition.higherEnergy > 50000 * u.cm ** -1) or\
                (transition.lowerEnergy > 50000 * u.cm ** -1):
                 if pair not in high_energy_pairs:
@@ -602,22 +707,14 @@ if args.pair_lines:
 #
 #    print(f'Total affected pairs: {len(high_energy_pairs)}')
 
-    # Query NIST for information on each transition.
-    min_wavelength = transition_list[0].wavelength - 0.5 * u.angstrom
-    max_wavelength = transition_list[-1].wavelength + 0.5 * u.angstrom
+    nist_pickle_file = pickle_dir / 'transitions_NIST_returned.pickle'
+    try:
+        with open(nist_pickle_file, 'r+b') as f:
+            transition_dict = pickle.load(f)
+    except FileNotFoundError:
+        transition_dict = query_nist(transition_list, species_set)
+        tqdm.write('Pickling NIST query...')
+        with open(nist_pickle_file, 'w+b') as f:
+            pickle.dump(transition_dict, f)
 
-    print(min_wavelength, max_wavelength)
-
-    species_string = ';'.join(species_set)
-    # Change numbers to Roman numerals for NIST
-    species_string = species_string.replace('1', 'I')
-    species_string = species_string.replace('2', 'II')
-    print(species_string)
-
-    table = Nist.query(min_wavelength.to_astropy(),
-                       max_wavelength.to_astropy(),
-                       energy_level_unit='cm-1',
-                       output_order='wavelength',
-                       wavelength_type='vacuum',
-                       linename="Fe II")
-    print(table)
+    print(transition_dict.keys())
