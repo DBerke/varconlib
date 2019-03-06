@@ -127,7 +127,7 @@ def air2vacESO(air_wavelengths_array):
     vacuum_array = u.unyt_array(vacuum_wavelengths_list, u.angstrom)
 
     if reshape:
-        tqdm.write(f'Converting back to original shape: {vacuum_array.shape}.')
+        tqdm.write(f'Converting back to original shape: {original_shape}.')
         # Reshape the array back to its original shape.
         return vacuum_array.reshape(original_shape).to(original_units)
     else:
