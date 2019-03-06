@@ -185,7 +185,6 @@ def shift_wavelength(wavelength, shift_velocity):
     ----------
     wavelength : Unyt unyt_array or unyt_quantity
         Wavelength(s) to be shifted. Will be converted to meters internally.
-
     radial_velocity : float or int
         Radial velocity to shift the wavelength(s) by. Will be converted to
         meters/second internally.
@@ -221,7 +220,6 @@ def get_wavelength_separation(velocity_offset, wavelength):
     velocity_offset : unyt_quantity
         The velocity separation. Can be in any valid units with dimensions of
         length / time.
-
     wavelength : unyt_quantity
         The wavelength at which the function should be evaluated, since
         it's a function of wavelength. Returned in whatever units it's
