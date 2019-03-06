@@ -95,15 +95,15 @@ class Transition(object):
                             "number or correct atomic symbol (e.g., 'Fe').")
 
         # Next check the given ionization state.
-        if type(ionizationState) is int:
+        try:
             self.ionizationState = int(ionizationState)
-        # If it's a string, see if it's a Roman numeral that needs converting.
-        elif type(ionizationState) is str:
+        except ValueError:
+            # If it's a string, see if it's a Roman numeral.
             try:
                 self.ionizationState = roman_numerals.inv[ionizationState]
             except KeyError:
-                raise ValueError('Ionization state {} invalid!'.format(
-                        ionizationState))
+                raise ValueError('Ionization state "{}" invalid!'.format(
+                                 ionizationState))
 
         self.lowerEnergy = None
         self.lowerJ = None
@@ -111,24 +111,28 @@ class Transition(object):
         self.higherEnergy = None
         self.higherJ = None
         self.higherOrbital = None
-        self.species = self.atomicSpecies
 
     @property
     def atomicSpecies(self):
         return(f'{self.atomicSymbol} {roman_numerals[self.ionizationState]}')
 
     def __repr__(self):
-        return "{}({}, {}, {})".format(self.__class__.__name__,
-                                       self.wavelength.value,
-                                       self.atomicNumber,
-                                       self.ionizationState)
+        return "{}({:.4f}, {}, {})".format(self.__class__.__name__,
+                                           self.wavelength.value,
+                                           self.atomicNumber,
+                                           self.ionizationState)
 
     def __str__(self):
-        return "{} {} {} ({:.4f}, {:.4f})".format(self.wavelength,
-                                                  self.atomicSymbol,
-                                                  self.ionizationState,
-                                                  self.lowerEnergy,
-                                                  self.higherEnergy)
+        if self.lowerEnergy and self.higherEnergy:
+            return "{} {} {} ({:.4f}, {:.4f})".format(self.wavelength,
+                                                      self.atomicSymbol,
+                                                      self.ionizationState,
+                                                      self.lowerEnergy,
+                                                      self.higherEnergy)
+        else:
+            return "{} {} {}".format(self.wavelength,
+                                     self.atomicSymbol,
+                                     self.ionizationState)
 
     def __lt__(self, other):
         if self.wavelength.value < other.wavelength.value:
