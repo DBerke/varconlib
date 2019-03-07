@@ -177,13 +177,11 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
             n_masked_lines += 1
             continue
 
-        delta_wavelength = vcl.getwlseparation(wl_tolerance.value,
-                                               b_line.wavelength.to(u.m).value)
-        delta_wavelength = (delta_wavelength * u.m).to(u.nm)
-        delta_wl_energy = vcl.getwlseparation(energy_tolerance.value,
-                                              b_line.wavelength.to(u.m).value)
-
-        delta_wl_energy = delta_wl_energy * u.m
+        delta_wavelength = vcl.get_wavelength_separation(wl_tolerance,
+                                                         b_line.wavelength)
+        delta_wavelength = delta_wavelength.to(u.nm)
+        delta_wl_energy = vcl.get_wavelength_separation(energy_tolerance,
+                                                        b_line.wavelength)
 
         energy1 = (1 / b_line.wavelength).to(u.cm ** -1)
         energy2 = (1 / (b_line.wavelength + delta_wl_energy)).to(u.cm ** -1)
@@ -281,7 +279,7 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
           energy_tolerance))
     tqdm.write('Out of {} lines in the BRASS list:'.format(len(
             BRASS_transitions)))
-#    tqdm.write('{} were in masked regions.'.format(n_masked_lines))
+    tqdm.write('{} were in masked regions.'.format(n_masked_lines))
     tqdm.write('{} were unable to be matched at all.'.format(
             len(matched_zero)))
     tqdm.write('{} were successfully matched with one line.'.format(
@@ -297,8 +295,7 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
     # Create a pickled file of the transitions that have been found.
     config = configparser.ConfigParser(interpolation=configparser.
                                        ExtendedInterpolation())
-    config.read('config/variables.cfg')
-    pickle_dir = Path(config['PATHS']['pickle_dir'])
+
     pickle_file = pickle_dir / 'transitions.pickle'
     pickle_file_backup = pickle_dir / 'transitions_{}.pickle'.format(
             datetime.date.today().isoformat())
@@ -544,14 +541,14 @@ config = configparser.ConfigParser(interpolation=configparser.
 config.read('/Users/dberke/code/config/variables.cfg')
 
 # These two files produces wavelengths in air, in Angstroms.
-redFile = "data/BRASS2018_Sun_PrelimGraded_Lobel.csv"
-blueFile = "data/BRASS2018_Sun_PrelimSpectroWeblines_Lobel.csv"
+redFile = "../data/BRASS2018_Sun_PrelimGraded_Lobel.csv"
+blueFile = "../data/BRASS2018_Sun_PrelimSpectroWeblines_Lobel.csv"
 
 # This file produces wavelengths in vacuum, in nm.
-purpleFile = 'data/BRASS_Vac_Line_Depths_All.csv'
+purpleFile = '../data/BRASS_Vac_Line_Depths_All.csv'
 
 # Define useful values relating to the Kurucz line list.
-KuruczFile = "data/gfallvac08oct17.dat"
+KuruczFile = "../data/gfallvac08oct17.dat"
 colWidths = (11, 7, 6, 12, 5, 11, 12, 5, 11, 6, 6, 6, 4, 2, 2, 3, 6, 3, 6,
              5, 5, 3, 3, 4, 5, 5, 6)
 colNames = ("wavelength", "log gf", "elem", "energy1", "J1", "label1",
@@ -672,6 +669,7 @@ if args.pair_lines:
                             velocity_separation=800*u.km/u.s,
                             line_depth_difference=0.2)
 
+    print(f'Found {len(pairs)} pairs.')
     with open(pickle_pairs_file, 'w+b') as f:
         pickle.dump(pairs, f)
 

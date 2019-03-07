@@ -104,6 +104,8 @@ class Transition(object):
             except KeyError:
                 raise ValueError('Ionization state {} invalid!'.format(
                         ionizationState))
+        else:
+            self.ionizationState = int(ionizationState)
 
         self.lowerEnergy = None
         self.lowerJ = None
@@ -124,11 +126,9 @@ class Transition(object):
                                        self.ionizationState)
 
     def __str__(self):
-        return "{} {} {} ({:.4f}, {:.4f})".format(self.wavelength,
+        return "{} {} {}".format(self.wavelength,
                                                   self.atomicSymbol,
-                                                  self.ionizationState,
-                                                  self.lowerEnergy,
-                                                  self.higherEnergy)
+                                                  self.ionizationState)
 
     def __lt__(self, other):
         if self.wavelength.value < other.wavelength.value:
