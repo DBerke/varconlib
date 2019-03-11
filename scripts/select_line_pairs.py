@@ -293,22 +293,7 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
         for transition in item:
             print(str(transition))
 
-<<<<<<< HEAD
-    # Create a pickled file of the transitions that have been found.
-    config = configparser.ConfigParser(interpolation=configparser.
-                                       ExtendedInterpolation())
-
-    pickle_file = pickle_dir / 'transitions.pickle'
-    pickle_file_backup = pickle_dir / 'transitions_{}.pickle'.format(
-            datetime.date.today().isoformat())
-    tqdm.write('Saving transitions to {}'.format(pickle_file))
-    with open(pickle_file, 'w+b') as f:
-        pickle.dump(matched_one, f)
-    with open(pickle_file_backup, 'w+b') as f:
-        pickle.dump(matched_one, f)
-=======
     return matched_one
->>>>>>> dev
 
 
 def find_line_pairs(transition_list, out_file=None,
