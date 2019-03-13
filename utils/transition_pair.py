@@ -11,6 +11,7 @@ transitions.
 
 import unyt as u
 
+
 class TransitionPair(object):
     """Holds information relating to a single pair of transition lines, in the
     form of two Transition objects.
@@ -24,7 +25,7 @@ class TransitionPair(object):
         ----------
         transition1, transition2: transition_line.Transition objects
         The transitions should be two Transition objects, each representing a
-        sincle atomic transition.
+        single atomic transition.
 
         """
 
