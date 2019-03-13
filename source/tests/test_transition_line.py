@@ -58,3 +58,4 @@ class TestTransition(object):
         a = Transition(500 * u.nm, 26, 'I')
         assert a.ionizationState == 1
         assert a.atomicSpecies == 'Fe I'
+        assert a.atomicSymbol == 'Fe'
