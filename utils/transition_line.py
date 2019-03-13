@@ -124,15 +124,13 @@ class Transition(object):
 
     def __str__(self):
         if self.lowerEnergy and self.higherEnergy:
-            return "{} {} {} ({:.4f}, {:.4f})".format(self.wavelength,
-                                                      self.atomicSymbol,
-                                                      self.ionizationState,
-                                                      self.lowerEnergy,
-                                                      self.higherEnergy)
+            return "{:.4f} {} ({:.4f}, {:.4f})".format(self.wavelength,
+                                                       self.atomicSpecies,
+                                                       self.lowerEnergy,
+                                                       self.higherEnergy)
         else:
-            return "{} {} {}".format(self.wavelength,
-                                     self.atomicSymbol,
-                                     self.ionizationState)
+            return "{:.4f} {}".format(self.wavelength,
+                                      self.atomicSpecies)
 
     def __lt__(self, other):
         if self.wavelength.value < other.wavelength.value:
