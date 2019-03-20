@@ -127,19 +127,19 @@ def line_is_masked(line, mask):
     return False
 
 
-def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
+def harmonize_lists(transitions1, transitions2, spectral_mask,
                     wl_tolerance=1000, energy_tolerance=10000):
     """Iterate over the BRASS list of transtitions and harmonize it with the
     Kurucz list.
 
     Parameters
     ----------
-    BRASS_transitions : list of Transitions
+    transitions1 : list of Transitions
         A list of Transition objects representing transitions from the BRASS
         list. These will contain the vacuum wavelength of the transition, the
         element and ionization state it came from, the lower energy of the
         orbital, and the normalized depth of the absorption line it produces.
-    Kurucz_transitions : list of Transitions
+    transitions2 : list of Transitions
         A list of Transition objects representing transitions from the Kurucz
         list. These will contain the vacuum wavelength of the transition, the
         element and ionization state it came from, the lower and higher
@@ -148,12 +148,25 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
     spectral_mask : list of tuples
         A list of tuples delimiting 'bad' regions of the spectrum that should
         be avoided.
-    wl_tolerance : int
+
+    Optional
+    --------
+    wl_tolerance : int, Default : 1000
         The tolerance in m/s (though the units are added internally) to search
         within around the BRASS list's given wavelength.
-    energy_tolerance : int
+    energy_tolerance : int, Default: 10000
         The tolerance in m/s (though the units are added internally) to search
         within around the BRASS list's lower energy value.
+
+    Returns
+    -------
+    list
+        A list containing all the Transition objects from the second list
+        that were successfully matched with Transitions in the first list;
+        either by being the only match to a Transition within the given
+        parameters, or by coming from the isotope with the highest abundance
+        in case of multiple lines from different isotopes of the same element
+        matching to a Transition in the first list.
 
     """
 
@@ -168,30 +181,30 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
     matched_one = []
     matched_mult = []
 
-    for b_line in tqdm(BRASS_transitions, unit='transitions'):
+    for line1 in tqdm(transitions1, unit='transitions'):
         # If the line is in a masked region of the spectrum, don't bother with
         # it, just pass.
-        if line_is_masked(float(b_line.wavelength.to(u.nm).value),
+        if line_is_masked(float(line1.wavelength.to(u.nm).value),
                           spectral_mask):
-            tqdm.write('{} is in a masked region.'.format(str(b_line)))
+            tqdm.write('{} is in a masked region.'.format(str(line1)))
             n_masked_lines += 1
             continue
 
         delta_wavelength = vcl.get_wavelength_separation(wl_tolerance,
-                                                         b_line.wavelength)
+                                                         line1.wavelength)
         delta_wavelength.convert_to_units(u.nm)
 
         delta_wl_energy = vcl.get_wavelength_separation(energy_tolerance,
-                                                        b_line.wavelength)
+                                                        line1.wavelength)
 
-        energy1 = (1 / b_line.wavelength).to(u.cm ** -1)
-        energy2 = (1 / (b_line.wavelength + delta_wl_energy)).to(u.cm ** -1)
+        energy1 = (1 / line1.wavelength).to(u.cm ** -1)
+        energy2 = (1 / (line1.wavelength + delta_wl_energy)).to(u.cm ** -1)
 
         delta_energy = abs(energy2 - energy1)
 
         if args.verbose:
             tqdm.write('For {} (Z = {}), the wavelength tolerance is {:.4f},'.
-                       format(str(b_line), b_line.atomicNumber,
+                       format(str(line1), line1.atomicNumber,
                               delta_wavelength))
 
             tqdm.write('and the lower energy tolerance is {:.4f}.'.format(
@@ -203,31 +216,43 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
         # ionic species.
         same_species_lines = []
 
-        # Go through Kurucz lines and store any that match.
-        for k_line in Kurucz_transitions:
-            if (k_line.atomicNumber == b_line.atomicNumber)\
-              and (k_line.ionizationState == b_line.ionizationState):
+        # Go through lines in the second list and store any that match.
+        for line2 in transitions2:
+            if (line2.atomicNumber == line1.atomicNumber)\
+              and (line2.ionizationState == line1.ionizationState):
 
-                energy_diff = abs(k_line.lowerEnergy - b_line.lowerEnergy)
-                wavelength_diff = abs(k_line.wavelength - b_line.wavelength)
-
-                same_species_lines.append((k_line, wavelength_diff,
+                energy_diff = abs(line2.lowerEnergy - line1.lowerEnergy)
+                wavelength_diff = abs(line2.wavelength - line1.wavelength)
+                same_species_lines.append((line2, wavelength_diff,
                                            energy_diff))
 
-                if (energy_diff < delta_energy) and\
-                   (wavelength_diff < delta_wavelength):
-                    matched_lines.append(k_line)
+                # If both line lists include higher energies for the orbitals,
+                # match those as well using the energy tolerance.
+                if hasattr(line1, 'higherEnergy') and\
+                   hasattr(line2, 'higherEnergy'):
+                        energy_diff2 = abs(line2.higherEnergy -
+                                           line1.higherEnergy)
+                        if (energy_diff <= delta_energy) and\
+                           (energy_diff2 <= delta_energy) and\
+                           (wavelength_diff <= delta_wavelength):
+                            matched_lines.append(line2)
+
+                else:
+                    if (energy_diff <= delta_energy) and\
+                       (wavelength_diff <= delta_wavelength):
+                        matched_lines.append(line2)
 
         # If there's only one match (yay!) just save it.
         if len(matched_lines) == 1:
-            matched_lines[0].normalizedDepth = b_line.normalizedDepth
+            if hasattr(line1, 'normalizedDepth'):
+                matched_lines[0].normalizedDepth = line1.normalizedDepth
             matched_one.append(matched_lines[0])
-            tqdm.write('{} matched with one line.'.format(str(b_line)))
+            tqdm.write('{} matched with one line.'.format(str(line1)))
 
         # If there's no match, list nearest possible matches.
         elif len(matched_lines) == 0:
-            matched_zero.append((b_line, delta_wavelength, delta_energy))
-            tqdm.write('{} unmatched.'.format(str(b_line)))
+            matched_zero.append((line1, delta_wavelength, delta_energy))
+            tqdm.write('{} unmatched.'.format(str(line1)))
 
             closest_lines = {}
             diff_scores = []
@@ -236,8 +261,8 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
                 closest_lines[diff_score] = item
                 diff_scores.append(diff_score)
 
-            tqdm.write('{}{}:'.format(b_line.atomicSymbol,
-                       b_line.ionizationState))
+            tqdm.write('{}{}:'.format(line1.atomicSymbol,
+                       line1.ionizationState))
             for score in sorted(diff_scores)[:5]:
                 item = closest_lines[score]
                 tqdm.write('{:.2f} | {:8.4f} ({:.4f}) | {:.4f} ({:.4f})'
@@ -248,45 +273,56 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
         # If there's more than one match, it could be due to isotopes, so check
         # that first:
         elif len(matched_lines) > 1:
-            atomic_numbers = set()
-            ion_states = set()
-            lower_energies = set()
-            for transition in matched_lines:
-                atomic_numbers.add(transition.atomicNumber)
-                ion_states.add(transition.ionizationState)
-                lower_energies.add(float(transition.lowerEnergy.value))
-            if (len(atomic_numbers) == 1)\
-                    and (len(ion_states) == 1)\
-                    and (len(lower_energies) == 1):
-                isotope_dict = {t.isotopeFraction: t for t in matched_lines}
-                # Sort the dictionary keys to find the transition with the
-                # highest isotope fraction, and use that one.
-                line_to_use = isotope_dict[sorted(isotope_dict.keys())[-1]]
-                line_to_use.normalizedDepth = b_line.normalizedDepth
-                matched_one.append(line_to_use)
-                n_multi_isotopes += 1
-                tqdm.write('{} matched out of multiple isotope lines.'.format(
-                        str(b_line)))
-            # If it's not isotopes, then it truly is matched to multiple lines,
-            # so note that.
+            # If matching from the Kurucz line list where the lines have an
+            # associated isotopeFraction, use that to potentially choose
+            # between multiple matches.
+            if hasattr(matched_lines[0], 'isotopeFraction'):
+                atomic_numbers = set()
+                ion_states = set()
+                lower_energies = set()
+                for transition in matched_lines:
+                    atomic_numbers.add(transition.atomicNumber)
+                    ion_states.add(transition.ionizationState)
+                    lower_energies.add(float(transition.lowerEnergy.value))
+                if (len(atomic_numbers) == 1)\
+                        and (len(ion_states) == 1)\
+                        and (len(lower_energies) == 1):
+                    isotope_dict = {t.isotopeFraction: t for t
+                                    in matched_lines}
+                    # Sort the dictionary keys to find the transition with the
+                    # highest isotope fraction, and use that one.
+                    line_to_use = isotope_dict[sorted(isotope_dict.keys())[-1]]
+                    line_to_use.normalizedDepth = line1.normalizedDepth
+                    matched_one.append(line_to_use)
+                    n_multi_isotopes += 1
+                    tqdm.write('{} matched out of multiple isotope lines.'.
+                               format(str(line1)))
+                # If it's not isotopes, then it truly is matched to multiple
+                # lines, so note that.
+                else:
+                    matched_lines.insert(0, line1)
+                    matched_mult.append(matched_lines)
+                    tqdm.write('{} matched to multiple lines.'.
+                               format(str(line1)))
             else:
-                matched_lines.insert(0, b_line)
+                matched_lines.insert(0, line1)
                 matched_mult.append(matched_lines)
-                tqdm.write('{} matched to multiple lines.'.format(str(b_line)))
-
+                tqdm.write('{} matched to multiple lines.'.
+                           format(str(line1)))
+    tqdm.write('-+-+-+-+-+-+-')
     for item in matched_zero:
         print('{} {:.4f} {:.4f}'.format(*item))
     print('wavelength tolerance: {}, energy tolerance: {}'.format(wl_tolerance,
           energy_tolerance))
-    tqdm.write('Out of {} lines in the BRASS list:'.format(len(
-            BRASS_transitions)))
+    tqdm.write('Out of {} lines in the first list:'.format(len(
+            transitions1)))
     tqdm.write('{} were in masked regions.'.format(n_masked_lines))
-    tqdm.write('{} were unable to be matched at all.'.format(
-            len(matched_zero)))
-    tqdm.write('{} were successfully matched with one line.'.format(
-            len(matched_one)))
+    tqdm.write('{} ({:.1%}) were successfully matched with one line.'.format(
+            len(matched_one), len(matched_one)/len(transitions1)))
     tqdm.write('(Of those, {} were picked out of multiple isotopes.)'.format(
             n_multi_isotopes))
+    tqdm.write('{} were unable to be matched at all.'.format(
+            len(matched_zero)))
     tqdm.write('{} were matched with multiple (non-isotope) lines.'.format(
             len(matched_mult)))
     for item in matched_mult:
@@ -296,38 +332,39 @@ def harmonize_lists(BRASS_transitions, Kurucz_transitions, spectral_mask,
     return matched_one
 
 
-def find_line_pairs(transition_list, out_file=None,
-                    min_norm_depth=0.3, max_norm_depth=0.7,
+def find_line_pairs(transition_list, min_norm_depth=0.3, max_norm_depth=0.7,
                     velocity_separation=400*u.km/u.s,
                     line_depth_difference=0.05):
     """Find pairs of nearby transitions from a list, within constraints.
 
     Parameters
     ----------
-    transition_list : a list of transition_line.Transition objects.
+    transition_list : list
+        A list of transition_line.Transition objects.
 
-    out_file : Path object
-    A Path object pointing to a file where the list of line pairs can be
-    pickled to.
 
+    Optional
+    --------
     min_norm_depth : float
-    A float between 0 and 1 representing the minimum normalized depth of an
-    absorption line to consider (0 being continuum, 1 being saturated). Should
-    be less than maxNormDepth in absolute value.
-
+        A float between 0 and 1 representing the minimum normalized depth of an
+        absorption line to consider (0 being continuum, 1 being saturated).
+        Should be less than maxNormDepth in absolute value.
     max_norm_depth : float
-    A float between 0 and 1 representing the maximum normalized depth of an
-    absorption line to consider (0 being continuum, 1 being saturated). Should
-    be greater in absolute value than minNormDepth.
-
+        A float between 0 and 1 representing the maximum normalized depth of an
+        absorption line to consider (0 being continuum, 1 being saturated).
+        Should be greater in absolute value than minNormDepth.
     velocity_separation : unyt_quantity, dimensions of velocity
-    A velocity representing how far around a transition to search for matching
-    transitions. Can use any units of velocity, will be converted to m/s
-    interally.
-
+        A velocity representing how far around a transition to search for
+        matching transitions. Can use any units of velocity, will be converted
+        to m/s interally.
     line_depth_difference : float
-    A number representing how much two transitions can vary in normalized depth
-    before being considered unfit as a pair.
+        A number representing how much two transitions can vary in normalized
+        depth before being considered unfit as a pair.
+
+    Returns
+    -------
+    list
+        A list of transition_pair.TransitionPair objects.
 
     """
 
@@ -378,10 +415,10 @@ def find_line_pairs(transition_list, out_file=None,
 
             # Only bother with transitions from the same element and ionization
             # state.
-            if (transition1.atomicNumber !=
-                transition2.atomicNumber) or (transition1.ionizationState !=
-                                              transition2.ionizationState):
-                continue
+#            if (transition1.atomicNumber !=
+#                transition2.atomicNumber) or (transition1.ionizationState !=
+#                                              transition2.ionizationState):
+#                continue
 
             # If a line makes it through all the checks, it's considered a
             # match for the initial line. Create a TransitionPair object
@@ -391,10 +428,6 @@ def find_line_pairs(transition_list, out_file=None,
                 pass
             else:
                 transition_pair_list.append(pair)
-
-    if out_file is not None:
-        with open(out_file, 'w+b') as f:
-            pickle.dump(transition_pair_list, f)
 
     return transition_pair_list
 
@@ -420,7 +453,7 @@ def query_nist(transition_list, species_set):
     Returns
     -------
     dict
-        A dictionary with species a keys and lists of Transition objects of
+        A dictionary with species as keys and lists of Transition objects of
         that species as values.
         Example: {"Fe I": [Transition(500 u.nm, 26, 1),...]}
 
@@ -428,42 +461,49 @@ def query_nist(transition_list, species_set):
 
     # Query NIST for information on each transition.
     tqdm.write('Querying NIST for transition information...')
-    master_transition_dict = {}
+    master_nist_dict = {}
     for species in tqdm(species_set):
-        tqdm.write('--------------')
-        tqdm.write(f'Querying {species}...')
+
         species_list = []
         for transition in transition_list:
             if transition.atomicSpecies == species:
                 species_list.append(transition)
+        tqdm.write('--------------')
+        tqdm.write(f'Querying {species} with {len(species_list)} transitions.')
 
-        min_wavelength = species_list[0].wavelength - 0.5 * u.angstrom
-        max_wavelength = species_list[-1].wavelength + 0.5 * u.angstrom
+        species_list.sort()
+        min_wavelength = species_list[0].wavelength - 1 * u.angstrom
+        max_wavelength = species_list[-1].wavelength + 1 * u.angstrom
+        tqdm.write(str(species_list[0].wavelength))
+        tqdm.write(str(species_list[-1].wavelength))
+        tqdm.write(f'Min: {min_wavelength:.4f},  max: {max_wavelength:.4f}')
 
-        tqdm.write(f'Min: {min_wavelength},  max: {max_wavelength}')
-
-        sleep(1)
-        table = Nist.query(min_wavelength.to_astropy(),
-                           max_wavelength.to_astropy(),
-                           energy_level_unit='cm-1',
-                           output_order='wavelength',
-                           wavelength_type='vacuum',
-                           linename=species)
+        sleep(1.5)
+        try:
+            table = Nist.query(min_wavelength.to_astropy(),
+                               max_wavelength.to_astropy(),
+                               energy_level_unit='cm-1',
+                               output_order='wavelength',
+                               wavelength_type='vacuum',
+                               linename=species)
+        except Exception:
+            tqdm.write('!!!!!!!!!!')
+            tqdm.write('No results found for this species!')
+            continue
         tqdm.write(f'{len(table)} transitions found for {species}.')
         if len(table) != 0:
             table.remove_columns(['Ritz', 'Rel.', 'Aki', 'fik', 'Acc.', 'Type',
                                   'TP', 'Line'])
-
             nist_transitions = []
             for row in tqdm(table):
                 if row[0] is ma.masked:
                     nist_wavenumber = float(row[1]) * u.cm ** -1
                     nist_wavelength = (1 / nist_wavenumber).to(u.nm)
-                    tqdm.write(f'{nist_wavenumber} --> {nist_wavelength}')
+                    tqdm.write(f'{nist_wavenumber} --> {nist_wavelength:.4f}')
                 elif row[1] is ma.masked:
                     nist_wavelength = float(row[0]) * u.nm
                     nist_wavenumber = (1 / nist_wavelength).to(u.cm ** -1)
-                    tqdm.write(f'{nist_wavelength} --> {nist_wavenumber}')
+                    tqdm.write(f'{nist_wavelength} --> {nist_wavenumber:.4f}')
                 elif row[2] is ma.masked:
                     tqdm.write(f'No energy information for {row[0]}')
                     continue
@@ -471,11 +511,15 @@ def query_nist(transition_list, species_set):
                     nist_wavelength = float(row[0]) * u.nm
                     nist_wavenumber = float(row[1]) * u.cm ** -1
                 nist_energy_levels = row[2].split('-')
-                strip_chars = ' &d?'
+                strip_chars = ' &?;abcdefghijklmnopqrstuvwxyz'
                 nist_energy1 = float(nist_energy_levels[0].strip(strip_chars))
                 nist_energy2 = float(nist_energy_levels[1].strip(strip_chars))
-                nist_lower_orbital = row[3]
-                nist_upper_orbital = row[4]
+                nist_lower = [x.strip() for x in row[3].split('|')]
+                nist_upper = [x.strip() for x in row[4].split('|')]
+                nist_lower_J = nist_lower[-1].strip()
+                nist_upper_J = nist_upper[-1].strip()
+                nist_lower_orbital = ' '.join(nist_lower[0:2]).strip()
+                nist_upper_orbital = ' '.join(nist_upper[0:2]).strip()
                 try:
                     nist_transition = Transition(nist_wavelength,
                                                  *species.split())
@@ -486,13 +530,16 @@ def query_nist(transition_list, species_set):
                 nist_transition.higherEnergy = nist_energy2 * u.cm ** -1
                 nist_transition.lowerOrbital = nist_lower_orbital
                 nist_transition.higherOrbital = nist_upper_orbital
+                nist_transition.lowerJ = nist_lower_J
+                nist_transition.higherJ = nist_upper_J
                 nist_transition.wavenumber = nist_wavenumber
 
                 nist_transitions.append(nist_transition)
+                master_nist_dict[species] = nist_transitions
+        else:
+            print(f'No results returned for {species}.')
 
-            master_transition_dict[species] = nist_transitions
-
-    return master_transition_dict
+    return master_nist_dict
 
 
 # ----- Main routine of code -----
@@ -513,9 +560,15 @@ parser.add_argument('--pair_lines', action='store_true',
                     default=False,
                     help='Find pairs of transition lines from list.')
 
-parser.add_argument('--query_lines', action='store_true',
+parser.add_argument('--query_nist', action='store_true',
                     default=False,
                     help='Query transitions from NIST.')
+parser.add_argument('--match_nist', action='store_true',
+                    default=False,
+                    help='Match previous transition list with NIST.')
+parser.add_argument('--format_lines', action='store_true',
+                    default=False,
+                    help='Format output from matching NIST list.')
 
 parser.add_argument('--verbose', action='store_true',
                     default=False,
@@ -554,8 +607,23 @@ colDtypes = (float, float, "U6", float, float, "U11", float, float, "U11",
              float, float, float, "U4", int, int, int, float, int, float,
              int, int, "U3", "U3", "U4", int, int, float)
 
-pickle_file = pickle_dir / 'transitions.pickle'
-pickle_pairs_file = pickle_dir / 'transition_pairs.pickle'
+
+# Define various pickle files.
+
+# All transitions matched between BRASS and Kurucz lists:
+pickle_file = pickle_dir / 'transitions.pkl'
+# All pairs found from those transitions:
+pickle_pairs_file = pickle_dir / 'transition_pairs.pkl'
+# All unique transitions found within those pairs:
+pickle_pairs_transitions_file = pickle_dir / 'pair_transitions.pkl'
+# All transitions returned by querying NiST:
+nist_pickle_file = pickle_dir / 'transitions_NIST_returned.pkl'
+# All transitions from NIST matched with ours:
+nist_matched_pickle_file = pickle_dir / 'transitions_NIST_matched.pkl'
+
+# File to write out formatted NIST transitions into.
+nist_formatted_file = data_dir / 'NIST_formatted_transitions.txt'
+
 
 CCD_bounds_file = masks_dir / 'unusable_spectrum_CCDbounds.txt'
 # Path('/Users/dberke/code/data/unusable_spectrum_CCDbounds.txt')
@@ -673,14 +741,10 @@ if args.pair_lines:
                             line_depth_difference=0.2)
 
     print(f'Found {len(pairs)} pairs.')
+    print('Pickling pairs to file.')
     with open(pickle_pairs_file, 'w+b') as f:
         pickle.dump(pairs, f)
 
-
-if args.query_lines:
-
-    with open(pickle_pairs_file, 'r+b') as f:
-        pairs = pickle.load(f)
     transition_set = set()
     species_set = set()
     high_energy_pairs = []
@@ -692,10 +756,25 @@ if args.query_lines:
                (transition.lowerEnergy > 50000 * u.cm ** -1):
                 if pair not in high_energy_pairs:
                     high_energy_pairs.append(pair)
-
+    tqdm.write('Total of {} unique transitions.'.format(len(transition_set)))
     transition_list = [x for x in transition_set]
-
     transition_list.sort()
+
+    # Pickle the list of unique transitions in the returned pairs.
+    print('Pickling unique transitions to file.')
+    with open(pickle_pairs_transitions_file, 'w+b') as f:
+        pickle.dump(transition_list, f)
+
+
+if args.query_nist:
+
+    with open(pickle_pairs_transitions_file, 'r+b') as f:
+        transitions = pickle.load(f)
+    tqdm.write(f'{len(transitions)} transitions found.')
+    species_set = set()
+    for transition in transitions:
+        species_set.add(transition.atomicSpecies)
+
 #    high_energy_lines = set()
 #
 #    print(f'Total distinct transitions: {len(transition_list)}')
@@ -708,14 +787,94 @@ if args.query_lines:
 #
 #    print(f'Total affected pairs: {len(high_energy_pairs)}')
 
-    nist_pickle_file = pickle_dir / 'transitions_NIST_returned.pickle'
-    try:
-        with open(nist_pickle_file, 'r+b') as f:
-            transition_dict = pickle.load(f)
-    except FileNotFoundError:
-        transition_dict = query_nist(transition_list, species_set)
-        tqdm.write('Pickling NIST query...')
-        with open(nist_pickle_file, 'w+b') as f:
-            pickle.dump(transition_dict, f)
+    # Pickle the transitions returned from NIST
+    nist_transition_dict = query_nist(transitions, species_set)
+    tqdm.write('Pickling NIST query...')
+    with open(nist_pickle_file, 'w+b') as f:
+        pickle.dump(nist_transition_dict, f)
 
-    print(transition_dict.keys())
+    print(sorted(nist_transition_dict.keys()))
+
+if args.match_nist:
+    if not (args.delta_wavelength and args.delta_energy):
+        print('Need delta_wavelength and delta_energy arguments!')
+    else:
+        try:
+            with open(nist_pickle_file, 'r+b') as f:
+                nist_transition_dict = pickle.load(f)
+        except FileNotFoundError:
+            nist_transition_dict = query_nist(transition_list, species_set)
+            tqdm.write('Pickling NIST query...')
+            with open(nist_pickle_file, 'w+b') as f:
+                pickle.dump(nist_transition_dict, f)
+
+    print('Unpickling transition lines...')
+    with open(pickle_pairs_transitions_file, 'r+b') as f:
+        transitions_list = pickle.load(f)
+    print('Found {} unique transitions.'.format(len(transitions_list)))
+
+    species_set = set()
+    transitions_dict = {}
+    for transition in tqdm(transitions_list, unit='transitions'):
+        species_set.add(transition.atomicSpecies)
+        try:
+            transitions_dict[transition.atomicSpecies].append(transition)
+        except KeyError:
+            transitions_dict[transition.atomicSpecies] = [transition]
+
+    print(transitions_dict.keys())
+    master_match_dict = {}
+    for species in tqdm(transitions_dict.keys()):
+        if species in nist_transition_dict.keys():
+            print('-----------------------')
+            print('Matching {} {} transitions with NIST list...'.format(
+                  len(transitions_dict[species]), species))
+            species_list = harmonize_lists(transitions_dict[species],
+                                           nist_transition_dict[species],
+                                           mask_no_CCD_bounds,
+                                           wl_tolerance=args.delta_wavelength,
+                                           energy_tolerance=args.delta_energy)
+            master_match_dict[species] = species_list
+        else:
+            print(f'No results for {species} in NIST results!')
+
+    print(master_match_dict.keys())
+    total = 0
+    for key in master_match_dict.keys():
+        total += len(master_match_dict[key])
+    print(f'{total} transitions matched total out of {len(transitions_list)}.')
+
+    tqdm.write('Pickling NIST matches...')
+    with open(nist_matched_pickle_file, 'w+b') as f:
+        pickle.dump(master_match_dict, f)
+
+if args.format_lines:
+    with open(nist_matched_pickle_file, 'r+b') as f:
+        print('Unpickling NIST-matched transitions...')
+        nist_dict = pickle.load(f)
+
+    all_transitions = []
+    print(nist_dict.keys())
+    for key in nist_dict.keys():
+        for transition in nist_dict[key]:
+            all_transitions.append(transition)
+    print(f'{len(all_transitions)} transitions found matched.')
+
+    all_transitions.sort()
+    with open(nist_formatted_file, 'w') as f:
+        f.write('lambda (nm) | wavenumber (cm^-1) | species | '
+                'lower energy - upper energy | '
+                'lower orbital configuration | lower J | '
+                'upper orbital configuration | upper J\n')
+        for transition in tqdm(all_transitions):
+            str1 = '{:.4f} | {:.3f} | '.format(transition.wavelength.value,
+                                               transition.wavenumber.value)
+            str2 = '{:5} | '.format(transition.atomicSpecies)
+            str3 = '{:9.3f} - {:9.3f} | '.format(transition.lowerEnergy.value,
+                                                 transition.higherEnergy.value)
+            str4 = '{:30} | {:4} | '.format(transition.lowerOrbital,
+                                            transition.lowerJ)
+            str5 = '{:30} | {:4}\n'.format(transition.higherOrbital,
+                                           transition.higherJ)
+            write_str = str1 + str2 + str3 + str4 + str5
+            f.write(write_str)
