@@ -35,23 +35,48 @@ def generic_test_file(tmpdir_factory):
 
 
 class TestGeneric2DFile(object):
-    def testRawFileRead(self, generic_test_file):
-        s = HARPSFile2D(generic_test_file)
-        assert s.getHeaderCard('INSTRUME') == 'HARPS',\
-            "Couldn't read header card."
+
+    @pytest.fixture(scope='class')
+    def s(self, generic_test_file):
+
+        return HARPSFile2D(generic_test_file)
+
+    def testRawFileRead(self, s):
+        assert s.getHeaderCard('INSTRUME') == 'HARPS'
+
+    def testHasAttributes(self, s):
+        assert hasattr(s, '_header')
+        assert hasattr(s, '_rawData')
 
 
 class TestScience2DFile(object):
-    def testObsFileRead(self, generic_test_file):
-        s = HARPSFile2DScience(generic_test_file)
-        assert s.getHeaderCard('INSTRUME') == 'HARPS',\
-            "Couldn't read header card."
 
-    def testArraysPresent(self, generic_test_file):
-        s = HARPSFile2DScience(generic_test_file)
-        assert np.shape(s._wavelengthArray) == (72, 4096),\
-            f'Wavelength array wrong shape! {np.shape(s._wavelengthArray)}'
-        assert np.shape(s._photonFluxArray) == (72, 4096),\
-            f'Flux array wrong shape! {np.shape(s._photonFluxArray)}'
-        assert np.shape(s._errorArray) == (72, 4096),\
-            f'Error array wrong shape! {np.shape(s._errorArray)}'
+    @pytest.fixture(scope='class')
+    def s(self, generic_test_file):
+
+        return HARPSFile2DScience(generic_test_file)
+
+    def testObsFileRead(self, s):
+        assert s.getHeaderCard('INSTRUME') == 'HARPS'
+
+    def testHasGenericAttributes(self, s):
+        assert hasattr(s, '_header')
+        assert hasattr(s, '_rawData')
+
+    def testHasSpecificAttributes(self, s):
+        assert hasattr(s, '_BERV')
+        assert hasattr(s, '_radialVelocity')
+
+    def testArrayProperties(self, s):
+        assert hasattr(s, 'wavelengthArray')
+        assert hasattr(s, 'barycentricArray')
+        assert hasattr(s, 'photonFluxArray')
+        assert hasattr(s, 'errorArray')
+        assert hasattr(s, 'blazeArray')
+
+    def testArraysShapes(self, s):
+        assert np.shape(s._wavelengthArray) == (72, 4096)
+        assert np.shape(s._barycentricArray) == (72, 4096)
+        assert np.shape(s._photonFluxArray) == (72, 4096)
+        assert np.shape(s._errorArray) == (72, 4096)
+        assert np.shape(s._blazeArray) == (72, 4096)
