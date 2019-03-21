@@ -303,7 +303,7 @@ class HARPSFile2DScience(HARPSFile2D):
         """
 
         source_array = self._rawFluxArray
-        wavelength_array = np.zeros(source_array.shape)
+        wavelength_array = np.zeros(source_array.shape, dtype=float)
         for order in trange(0, 72, total=72, unit='orders'):
             for i in range(0, 4, 1):
                 coeff = 'ESO DRS CAL TH COEFF LL{0}'.format((4 * order) + i)
@@ -381,7 +381,7 @@ class HARPSFile2DScience(HARPSFile2D):
         photon_flux_array = self._rawFluxArray
         error_array = np.array([[np.sqrt(x + dark_noise ** 2) if x >= 0
                                  else 1e5 for x in row]
-                                for row in photon_flux_array])
+                                for row in photon_flux_array], dtype=float)
 #        error_array2 = np.ones(photon_flux_array.shape)
 #        for m in range(photon_flux_array.shape[0]):
 #            for n in range(photon_flux_array.shape[1]):
@@ -438,8 +438,9 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
+        self._wavelengthArray = self.getWavelengthArray()
         # Create an HDU for the wavelength array.
-        wavelength_HDU = fits.ImageHDU(data=self.getWavelengthArray(),
+        wavelength_HDU = fits.ImageHDU(data=self.wavelengthArray,
                                        name='WAVE')
         try:
             hdulist['WAVE'] = wavelength_HDU
@@ -468,7 +469,8 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        barycentric_HDU = fits.ImageHDU(data=self.getBarycentricArray(),
+        self._barycentricArray = self.getBarycentricArray()
+        barycentric_HDU = fits.ImageHDU(data=self.barycentricArray,
                                         name='BARY')
         try:
             hdulist['BARY'] = barycentric_HDU
@@ -497,8 +499,9 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
+        self._photonFluxArray = self.getPhotonFluxArray()
         # Create an HDU for the photon flux array.
-        photon_flux_HDU = fits.ImageHDU(data=self.getPhotonFluxArray(),
+        photon_flux_HDU = fits.ImageHDU(data=self.photonFluxArray,
                                         name='FLUX')
         try:
             hdulist['FLUX'] = photon_flux_HDU
@@ -525,8 +528,9 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
+        self._errorArray = self.getErrorArray()
         # Create an HDU for the error array.
-        error_HDU = fits.ImageHDU(data=self.getErrorArray(), name='ERR')
+        error_HDU = fits.ImageHDU(data=self.errorArray, name='ERR')
         try:
             hdulist['ERR'] = error_HDU
         except KeyError:
@@ -552,7 +556,8 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        blaze_HDU = fits.ImageHDU(data=self.getBlazeArray(), name='BLAZE')
+        self._blazeArray = self.getBlazeArray()
+        blaze_HDU = fits.ImageHDU(data=self.blazeArray, name='BLAZE')
 
         try:
             hdulist['BLAZE'] = blaze_HDU
