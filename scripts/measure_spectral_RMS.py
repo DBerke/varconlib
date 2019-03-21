@@ -10,6 +10,8 @@ spectrum matches the error array, to see if the error array is well-estimated.
 """
 
 from pathlib import Path
+from os import mkdir
+import re
 from glob import glob
 import argparse
 import numpy as np
@@ -17,174 +19,181 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import unyt as u
 import varconlib as vcl
-import conversions
-import obs1d
 import obs2d
 
 parser = argparse.ArgumentParser()
-
-parser.add_argument('-1d', '--ADP', action='store_true',
-                    help='Check using 1D ADP files.')
-parser.add_argument('-2d', '--e2ds', action='store_true',
-                    help='Check using 2D e2sd files.')
-parser.add_argument('-u', '--update', action='store_true', default=False,
+parser.add_argument('-u', '--update', action='append', default=[],
                     help='Specifically update the e2ds files.')
-
+parser.add_argument('-n', '--names', action='append', default=[],
+                    help='Name of star to analyze (or "Synthetic").')
 args = parser.parse_args()
+print(args)
 
-baseDir = Path('/Users/dberke/HD68168/data/reduced/')
-baseDir = Path('/Users/dberke/HD78660/data/reduced/')
+#star_name = 'HD68168'
+#star_name = 'HD78660'
+#star_name = 'HD138573'
+#star_name = 'HD183658'
+#star_name = 'Synthetic'
 
+
+
+name_re = re.compile('HD[0-9]{5,6}')
+star_names = args.names
+print(star_names)
 
 limits = ((6198.4, 6198.65) * u.angstrom, (6199.2, 6199.5) * u.angstrom,
           (6201.55, 6201.8) * u.angstrom, (6202.25, 6202.6) * u.angstrom,
-          (6224.2, 6224.5) * u.angstrom, (6236.4, 6236.55) * u.angstrom)
+          (6224.2, 6224.5) * u.angstrom, (6236.4, 6236.65) * u.angstrom)
+# H-alpha
+h_alpha = 6564.614 * u.angstrom
+#limits = ((6562, 6568) * u.angstrom,)
 
-update_status = args.update
+update_status = bool(args.update)
 
-for lims in tqdm(limits):
-    left_lim, right_lim = lims
+observations_dict = {}
 
-    shifted_left_lim = conversions.vac2airESO(left_lim)
-    shifted_right_lim = conversions.vac2airESO(right_lim)
-    print('Original limits (vacuum): {}, {}'.format(left_lim, right_lim))
-    print('Air limits: {:.4f}, {:.4f}'.format(shifted_left_lim,
-                                              shifted_right_lim))
+for star_name in tqdm(star_names) if len(star_names) > 1 else star_names:
 
-    if args.ADP:
+    real_base_dir = Path(f'/Users/dberke/{star_name}/data/reduced/')
+    synth_base_dir = Path('/Users/dberke/code/data/')
+    if star_name == 'Synthetic':
+        base_dir = synth_base_dir
+    else:
+        if not name_re.match(star_name):
+            print('Incorrect star name: {}'.format(star_name))
+            exit()
+        else:
+            base_dir = real_base_dir
+    for lims in tqdm(limits):
+        left_lim, right_lim = lims
 
-        title_name = 'ADP files, flux RMS vs. median error'
-        plot_type = 'ADP'
-
-        baseDir = Path('/Volumes/External Storage/HARPS/HD68168/')
-        files = glob(str(baseDir / 'ADP*.fits'))
-
-        total_fluxes_stddev = []
-        total_median_errors = []
-
-        for file in tqdm(files):
-
-            filename = Path(file).stem
-            tqdm.write('For {}:'.format(filename))
-            data1d = obs1d.readHARPSfile1d(file, radvel=True)
-
-            radvel = float(data1d['radvel']) * u.km / u.s
-            rv_left_lim = vcl.shift_wavelength(shifted_left_lim, radvel).\
-                                               to(u.angstrom)
-            rv_right_lim = vcl.shift_wavelength(shifted_right_lim, radvel).\
-                                                to(u.angstrom)
-
-            tqdm.write('RV shifted limits: {:.4f}, {:.4f}'.format(
-                       rv_left_lim.to(u.angstrom),
-                       rv_right_lim.to(u.angstrom)))
-            wavelengths = []
-            errors = []
-            fluxes = []
-
-            for wl, flux, error in zip(data1d['w'], data1d['f'], data1d['e']):
-                if rv_left_lim <= wl <= rv_right_lim:
-                    wavelengths.append(wl)
-                    errors.append(error)
-                    fluxes.append(flux)
-
-            flux_rms = np.std(fluxes)
-            med_err = np.median(error)
-
-            tqdm.write('Flux RMS: {:.4f}, median error: {:.4f}'.format(
-                       flux_rms,
-                       med_err))
-            total_fluxes_stddev.append(flux_rms)
-            total_median_errors.append(med_err)
-#            fig = plt.figure(figsize=(8, 8))
-#            ax = fig.add_subplot(1, 1, 1)
-#            ax.errorbar(wavelengths, fluxes, yerr=errors, marker='+',
-#                        markeredgecolor='Black', color='CornflowerBlue',
-#                        ecolor='Indigo', linestyle='')
-#            plt.show()
-#            plt.close(fig)
-
-    if args.e2ds:
+        tqdm.write('Original limits (vacuum): {}, {}'.format(left_lim,
+                   right_lim))
 
         title_name = r'e2ds files ({}, {}) $\AA$'.format(left_lim, right_lim)
         plot_type = 'e2ds'
-        files = glob(str(baseDir / '*/*e2ds_A.fits'))
+        files = glob(str(base_dir / '*/*e2ds_A.fits'))
 
         total_fluxes_stddev = []
         total_median_errors = []
         total_mean_fluxes = []
 
         for file in tqdm(files, unit='files'):
-            if update_status:
-                # We only need it to update the files on the first iteration,
-                # after that it can use the updated files without redoing it.
-                data2d = obs2d.HARPSFile2DScience(file, update=True)
-            else:
-                data2d = obs2d.HARPSFile2DScience(file, update=False)
+            try:
+                data2d = observations_dict[file]
+    #            print(f'Found {file} in dictionary.')
+            except KeyError:
+                if update_status:
+                    # We only need it to update the files on the first
+                    # iteration, after that it can use the updated files
+                    # without redoing it.
+                    data2d = obs2d.HARPSFile2DScience(file, update=args.update)
+                    observations_dict[file] = data2d
+                else:
+                    data2d = obs2d.HARPSFile2DScience(file, update=[])
+                    observations_dict[file] = data2d
             filename = Path(file).stem
             tqdm.write('For {}:'.format(filename))
-#            tqdm.write('BERV = {}'.format(data2d._BERV))
-            data2d.BERV_shifted_array = data2d.shiftWavelengthArray(
-                                        data2d._wavelengthArray,
-                                        data2d._BERV)
+    #            tqdm.write('BERV = {}'.format(data2d._BERV))
 
             radvel = data2d._radialVelocity
-            rv_left_lim = vcl.shift_wavelength(shifted_left_lim, radvel)
-            rv_right_lim = vcl.shift_wavelength(shifted_right_lim, radvel)
+            rv_left_lim = vcl.shift_wavelength(left_lim, radvel)
+            rv_right_lim = vcl.shift_wavelength(right_lim, radvel)
             tqdm.write('RV shifted limits: {:.4f}, {:.4f}'.format(
                        rv_left_lim.to(u.angstrom),
                        rv_right_lim.to(u.angstrom)))
 
+            rv_h_alpha = vcl.shift_wavelength(h_alpha, radvel)
+
             wavelengths = []
             errors = []
             fluxes = []
+            blazes = []
 
-            order = data2d.findWavelength(shifted_left_lim)
-            for wl, flux, error in zip(data2d.BERV_shifted_array[order],
-                                       data2d._photonFluxArray[order],
-                                       data2d._errorArray[order]):
+            order = data2d.findWavelength(rv_left_lim)
+            for wl, flux, error, blaze in zip(data2d.barycentricArray[order],
+                                              data2d.photonFluxArray[order],
+                                              data2d.errorArray[order],
+                                              data2d.blazeArray[order]):
                 if rv_left_lim <= wl <= rv_right_lim:
                     wavelengths.append(wl)
                     errors.append(error)
                     fluxes.append(flux)
+                    blazes.append(blaze)
 
             flux_rms = np.std(fluxes)
             mean_flux = np.mean(fluxes)
-            med_err = np.median(error)
+    #        print(fluxes)
+            med_err = np.median(errors)
+    #        print(errors)
+            if flux_rms / mean_flux > 0.08:
+                print(file)
+                print('Prolematic file!')
+                raise
             tqdm.write('Flux RMS: {:.4f}, median error: {:.4f}'.
                        format(flux_rms, med_err))
             total_fluxes_stddev.append(flux_rms)
             total_median_errors.append(med_err)
             total_mean_fluxes.append(mean_flux)
-#            fig = plt.figure(figsize=(8, 8))
-#            ax = fig.add_subplot(1, 1, 1)
-#            ax.errorbar(wavelengths, fluxes, yerr=errors, marker='+',
-#                        markeredgecolor='Black', color='CornflowerBlue',
-#                        ecolor='Indigo', linestyle='')
-#            plt.show()
-#            plt.close(fig)
 
-    fig = plt.figure(figsize=(8, 8))
-    fig.suptitle(title_name)
-    ax = fig.add_subplot(1, 1, 1)
+            save_path = Path('/Users/dberke/Pictures/error_checking/'
+                             f'{star_name}/'
+                             f'{left_lim.to(u.angstrom).value:.2f}_'
+                             f'{right_lim.to(u.angstrom).value:.2f}')
+            if not save_path.exists():
+                try:
+                    mkdir(save_path)
+                except FileNotFoundError:
+                    try:
+                        mkdir(save_path.parent)
+                        mkdir(save_path)
+                    except FileNotFoundError:
+                        raise
+            save_file = save_path / f'{filename}.png'
 
-    total_fluxes_stddev = np.array(total_fluxes_stddev)
-    total_median_errors = np.array(total_median_errors)
-    total_mean_fluxes = np.array(total_mean_fluxes)
+            fig = plt.figure(figsize=(8, 8))
+            ax = fig.add_subplot(1, 1, 1)
+            ax.errorbar(wavelengths, fluxes, yerr=errors, marker='+',
+                        markeredgecolor='Black', color='CornflowerBlue',
+                        ecolor='Indigo', linestyle='')
+    #            ax.axvline(h_alpha.to(u.angstrom).value,
+    #                       color='Red', label='vac H alpha')
+    #            ax.axvline(rv_h_alpha.to(u.angstrom).value,
+    #                       color='Green', label='rv H alpha')
+    #            plt.show()
+            fig.savefig(str(save_file))
+            plt.close(fig)
 
-    x = np.linspace(0, 650, 2)
-#    x = np.linspace(0, 0.2, 2)
-    ax.plot(x, x, linestyle='-', color='Black')
-    ax.scatter(total_fluxes_stddev,
-               total_median_errors / np.sqrt(1.6977))
-    ax.set_xlabel('Flux RMS')
-    ax.set_ylabel('Median error')
-#    plt.show()
+        fig = plt.figure(figsize=(8, 8))
+        fig.suptitle(title_name)
+        ax = fig.add_subplot(1, 1, 1)
 
-    save_path = Path('/Users/dberke/Pictures/error_checking/')
-    save_file = save_path / 'RMS_vs_error_{}_({}-{})_1gain_div.png'.\
-                            format(plot_type, left_lim.value, right_lim.value)
-    tqdm.write(f'Saving file as {save_file.name}')
-    fig.savefig(str(save_file))
-    plt.close(fig)
+        total_fluxes_stddev = np.array(total_fluxes_stddev)
+        total_median_errors = np.array(total_median_errors)
+        total_mean_fluxes = np.array(total_mean_fluxes)
 
-    update_status = False
+        normalized_fluxes = total_fluxes_stddev / total_mean_fluxes
+        normalized_errors = total_median_errors / total_mean_fluxes
+
+        x_vals = total_fluxes_stddev
+        y_vals = total_median_errors
+
+        min_x, max_x = x_vals.max(), x_vals.min()
+
+        x = np.linspace(min_x, max_x, 2)
+        ax.plot(x, x, linestyle='-', color='Black')
+        ax.scatter(x_vals, y_vals)
+        ax.set_xlabel('Flux RMS')
+        ax.set_ylabel('Median error')
+    #    plt.show()
+
+        save_path = Path(f'/Users/dberke/Pictures/error_checking/{star_name}/')
+        save_file = save_path / 'RMS_error_{}_({:.2f}-{:.2f})_old.png'.\
+                                format(star_name,
+                                       left_lim.to(u.angstrom).value,
+                                       right_lim.to(u.angstrom).value)
+        tqdm.write(f'Saving file as {save_file.name}')
+        fig.savefig(str(save_file))
+        plt.close(fig)
+
+        update_status = False
