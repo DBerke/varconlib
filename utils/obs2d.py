@@ -368,17 +368,9 @@ class HARPSFile2DScience(HARPSFile2D):
 
         return photon_flux_array
 
-    def getErrorArray(self, verbose=False):
+    def getErrorArray(self):
         """Construct an error array based on the reported flux values for the
         observation, then blaze-correct it.
-
-        Parameters
-        ----------
-        verbose : bool, Default: False
-            If *True*, the method will print out how many pixels with negative
-            flux were found during the process of constructing the error array
-            (with the position of the pixel in the array and its flux) and
-            in a summary afterwards state how many were found.
 
         Returns
         -------
@@ -389,14 +381,11 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        gain = self._header['HIERARCH ESO DRS CCD CONAD']
-
         # According to Dumusque 2018 HARPS has a dark-current and read-out
         # noise of 12 photo-electrons.
         dark_noise = 12
 
         photon_flux_array = self._rawFluxArray
-        bad_pixels = 0
         error_array = np.array([[np.sqrt(x + dark_noise ** 2) if x >= 0
                                  else 1e5 for x in row]
                                 for row in photon_flux_array])
@@ -413,11 +402,6 @@ class HARPSFile2DScience(HARPSFile2D):
 #                    # Won't affect much unless at low SNR.
 #                    error_array2[m, n] = np.sqrt(photon_flux_array[m, n] +
 #                                                 dark_noise ** 2)
-#        print(error_array[0, 1000:1005])
-#        print(error_array2[0, 1000:1005])
-        if verbose:
-            tqdm.write('{} pixels with negative flux found.'.
-                       format(bad_pixels))
 
         # Correct the error array by the blaze function:
         error_array /= self.blazeArray
