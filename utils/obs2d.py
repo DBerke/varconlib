@@ -120,15 +120,8 @@ class HARPSFile2DScience(HARPSFile2D):
         hdulist = fits.open(self._filename, mode=file_open_mode)
         self._header = hdulist[0].header
         self._rawData = hdulist[0].data
-        self._wavelengthArray = None  # air wavelengths, not barycentric
-        self._vacuumArray = None  # vacuum wavelengths, not barycentric
-        self._barycentricArray = None  # vacuum wavelengths, barycentric
         self._rawFluxArray = copy(self._rawData)
-        self._gainCorrectedFluxArray = None
-        self._photonFluxArray = None
-        self._errorArray = None
         self._blazeFile = None
-        self._blazeArray = None
         self._BERV = None
         self._radialVelocity = None
 
@@ -231,7 +224,7 @@ class HARPSFile2DScience(HARPSFile2D):
     def barycentricArray(self):
         if not hasattr(self, '_barycentricArray'):
             print('Creating barycentric vacuum wavelength array.')
-            self._barycentriArray = self.getBarycentricArray()
+            self._barycentricArray = self.getBarycentricArray()
         return self._barycentricArray
 
     @property
@@ -332,7 +325,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        vacuumArray = air2vacESO(self.wavelengthArray)
+        vacuumArray = air2vacESO(self.getWavelengthArray())
 
         return vacuumArray
 
@@ -347,7 +340,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        barycentricArray = self.shiftWavelengthArray(self.vacuumArray,
+        barycentricArray = self.shiftWavelengthArray(self.getVacuumArray(),
                                                      self._BERV)
         return barycentricArray
 
@@ -364,7 +357,7 @@ class HARPSFile2DScience(HARPSFile2D):
         """
 
         # Blaze-correct the photon flux array:
-        photon_flux_array = self._rawFluxArray / self.blazeArray
+        photon_flux_array = self._rawFluxArray / self.getBlazeArray()
 
         return photon_flux_array
 
@@ -404,7 +397,7 @@ class HARPSFile2DScience(HARPSFile2D):
 #                                                 dark_noise ** 2)
 
         # Correct the error array by the blaze function:
-        error_array /= self.blazeArray
+        error_array = error_array / self.blazeArray
 
         return error_array
 
@@ -419,7 +412,7 @@ class HARPSFile2DScience(HARPSFile2D):
             point in the CCD.
         """
 
-        if not hasattr(self, '_blazeFile'):
+        if not hasattr(self, '_blazeFile') or self._blazeFile is None:
             self._blazeFile = self.getBlazeFile()
         blaze_array = self._blazeFile._rawData
 
@@ -446,7 +439,7 @@ class HARPSFile2DScience(HARPSFile2D):
         """
 
         # Create an HDU for the wavelength array.
-        wavelength_HDU = fits.ImageHDU(data=self.wavelengthArray,
+        wavelength_HDU = fits.ImageHDU(data=self.getWavelengthArray(),
                                        name='WAVE')
         try:
             hdulist['WAVE'] = wavelength_HDU
@@ -475,7 +468,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        barycentric_HDU = fits.ImageHDU(data=self.barycentricArray,
+        barycentric_HDU = fits.ImageHDU(data=self.getBarycentricArray(),
                                         name='BARY')
         try:
             hdulist['BARY'] = barycentric_HDU
@@ -505,7 +498,7 @@ class HARPSFile2DScience(HARPSFile2D):
         """
 
         # Create an HDU for the photon flux array.
-        photon_flux_HDU = fits.ImageHDU(data=self.photonFluxArray,
+        photon_flux_HDU = fits.ImageHDU(data=self.getPhotonFluxArray(),
                                         name='FLUX')
         try:
             hdulist['FLUX'] = photon_flux_HDU
@@ -533,7 +526,7 @@ class HARPSFile2DScience(HARPSFile2D):
         """
 
         # Create an HDU for the error array.
-        error_HDU = fits.ImageHDU(data=self.errorArray, name='ERR')
+        error_HDU = fits.ImageHDU(data=self.getErrorArray(), name='ERR')
         try:
             hdulist['ERR'] = error_HDU
         except KeyError:
@@ -559,7 +552,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        blaze_HDU = fits.ImageHDU(data=self.blazeArray, name='BLAZE')
+        blaze_HDU = fits.ImageHDU(data=self.getBlazeArray(), name='BLAZE')
 
         try:
             hdulist['BLAZE'] = blaze_HDU

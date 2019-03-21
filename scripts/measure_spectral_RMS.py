@@ -188,7 +188,7 @@ for star_name in tqdm(star_names) if len(star_names) > 1 else star_names:
     #    plt.show()
 
         save_path = Path(f'/Users/dberke/Pictures/error_checking/{star_name}/')
-        save_file = save_path / 'RMS_error_{}_({:.2f}-{:.2f})_old.png'.\
+        save_file = save_path / 'RMS_error_{}_({:.2f}-{:.2f})_oldmaster.png'.\
                                 format(star_name,
                                        left_lim.to(u.angstrom).value,
                                        right_lim.to(u.angstrom).value)
