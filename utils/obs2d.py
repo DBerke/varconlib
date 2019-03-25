@@ -125,12 +125,6 @@ class HARPSFile2DScience(HARPSFile2D):
         self._BERV = None
         self._radialVelocity = None
 
-        # BERV = Barycentric Earth Radial Velocity
-        self._BERV = float(self.getHeaderCard(
-                'HIERARCH ESO DRS BERV')) * u.km / u.s
-        self._radialVelocity = float(self.getHeaderCard(
-                'HIERARCH ESO TEL TARG RADVEL')) * u.km / u.s
-
         # Since we may not have the blaze files on hand, only try to find
         # them if we really need them, i.e. when opening a file for the
         # first time or when explicitly updating it.
@@ -247,6 +241,30 @@ class HARPSFile2DScience(HARPSFile2D):
             self._blazeArray = self.getBlazeArray()
         return self._blazeArray
 
+    @property
+    def radialVelocity(self):
+        if not hasattr(self, '_radialVelocity'):
+            try:
+                rv_card = 'HIERARCH ESO TEL TARG RADVEL'
+                self._radialVelocity = u.km / u.s * \
+                                       float(self.getHeaderCard(rv_card))
+            except KeyError:
+                print('No radial velocity card found for this observation!')
+                raise
+        return self._radialVelocity
+
+    @property
+    def BERV(self):
+        # BERV = Barycentric Earth Radial Velocity
+        if not hasattr(self, '_BERV'):
+            try:
+                berv_card = 'HIERARCH ESO DRS BERV'
+                self._BERV = float(self.getHeaderCard(berv_card)) * u.km / u.s
+            except KeyError:
+                print('No BERV card found for this observation!')
+                raise
+        return self._BERV
+
     def getBlazeFile(self):
         """Find and return the blaze file associated with this observation.
 
@@ -340,7 +358,7 @@ class HARPSFile2DScience(HARPSFile2D):
         """
 
         barycentricArray = self.shiftWavelengthArray(self.getVacuumArray(),
-                                                     self._BERV)
+                                                     self.BERV)
         return barycentricArray
 
     def getPhotonFluxArray(self):
@@ -574,7 +592,7 @@ class HARPSFile2DScience(HARPSFile2D):
         return vcl.shift_wavelength(wavelength=wavelength_array,
                                     shift_velocity=shift_velocity)
 
-    def findWavelength(self, wavelength=None, closest_only=True):
+    def findWavelength(self, wavelength=None, mid_most=True):
         """Find which orders contain a given wavelength.
 
         This function will return the indices of the wavelength orders that
@@ -587,7 +605,7 @@ class HARPSFile2DScience(HARPSFile2D):
             The wavelength to find in the wavelength array. This should be a
             unyt_quantity object of length 1.
 
-        closest_only : bool, Default : True
+        mid_most : bool, Default : True
             In a 2D extracted echelle spectrograph like HARPS, a wavelength
             near the ends of an order can appear a second time in an adjacent
             order. By default `findWavelength` will return only the single
@@ -599,11 +617,11 @@ class HARPSFile2DScience(HARPSFile2D):
 
         Returns
         -------
-        If closest_only is false: tuple
+        If mid_most is false: tuple
             A tuple of ints of length 1 or 2, representing the indices of
             the orders in which the input wavelength is found.
 
-        If closest_only is true: int
+        If mid_most is true: int
             An int representing the order in which the wavelength found is
             closest to the geometrical center.
 
@@ -613,29 +631,27 @@ class HARPSFile2DScience(HARPSFile2D):
 
         wavelength_to_find = wavelength.to(u.angstrom)
 
-        # Create the barycentric wavelength array if it doesn't exist yet.
-        if self._barycentricArray is None:
-            self._barycentricArray = self.getBarycentricArray()
-
         # Make sure the wavelength to find is in the array in the first place.
-        array_min = self._barycentricArray[0, 0]
-        array_max = self._barycentricArray[71, -1]
+        array_min = self.barycentricArray[0, 0]
+        array_max = self.barycentricArray[-1, -1]
         assert array_min <= wavelength_to_find <= array_max,\
-            "Given wavelength not found within array limits! ({}, {})".format(
-                    array_min, array_max)
+            "Given wavelength not in array limits! ({}, {})".format(array_min,
+                                                                    array_max)
 
         # Set up a list to hold the indices of the orders where the wavelength
         # is found.
         orders_wavelength_found_in = []
         for order in range(0, 72):
-            order_min = self._wavelengthArray[order, 0]
-            order_max = self._wavelengthArray[order, -1]
+            order_min = self.wavelengthArray[order, 0]
+            order_max = self.wavelengthArray[order, -1]
             if order_min <= wavelength_to_find <= order_max:
                 orders_wavelength_found_in.append(order)
-        assert len(orders_wavelength_found_in) < 3,\
-            "Wavelength found in more than two orders!"
+                if len(orders_wavelength_found_in) == 1:
+                    continue
+                elif len(orders_wavelength_found_in) == 2:
+                    break
 
-        if closest_only:
+        if mid_most:
             # Only one array: great, return it.
             if len(orders_wavelength_found_in) == 1:
                 return orders_wavelength_found_in[0]
@@ -643,18 +659,18 @@ class HARPSFile2DScience(HARPSFile2D):
             # Found in two arrays: figure out which is closer to the geometric
             # center of the CCD, which conveiently falls around the middle
             # of the 4096-element array.
-            elif len(orders_wavelength_found_in == 2):
+            elif len(orders_wavelength_found_in) == 2:
                 order1, order2 = orders_wavelength_found_in
                 index1 = vcl.wavelength2index(wavelength_to_find,
-                                              self._barycentricArray[order1])
+                                              self.barycentricArray[order1])
                 index2 = vcl.wavelength2index(wavelength_to_find,
-                                              self._barycentricArray[order2])
+                                              self.barycentricArray[order2])
                 # Check which index is closest to the pixel in the geometric
-                # center of the array, given 0-indexing in Python.
+                # center of the 4096-length array, given 0-indexing in Python.
                 if abs(index1 - 2047.5) > abs(index2 - 2047.5):
-                    return index1
+                    return order2
                 else:
-                    return index2
+                    return order1
         else:
             return tuple(orders_wavelength_found_in)
 
