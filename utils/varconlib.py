@@ -156,8 +156,7 @@ def wavelength2index(wavelength, wavelength_array, reverse=False):
         wavelength_array.reverse()
     length = len(wavelength_array)
 
-    tqdm.write(f'Finding index for wavelength {wavelength.to(u.nm):.4f}...')
-    for i in trange(0, length, 1):
+    for i in range(0, length, 1):
         # First find the index for which the value is greater than the given
         # wavelength:
         if wavelength_array[i] >= wavelength:
@@ -165,8 +164,8 @@ def wavelength2index(wavelength, wavelength_array, reverse=False):
             # The way it's set up it should always be
             # wl_arr[i-1] <= wl <= wl_arr[i] assuming monotonic increase of
             # wavelengths.
-            if (wavelength_array[i] - wavelength) >\
-               (wavelength - wavelength_array[i - 1]):
+            if abs(wavelength_array[i] - wavelength) >\
+               abs(wavelength - wavelength_array[i - 1]):
                 return i - 1
             else:
                 return i
