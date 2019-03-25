@@ -13,6 +13,8 @@ import configparser
 import numpy as np
 import shutil
 from pathlib import Path
+import unyt as u
+from varconlib import wavelength2index
 from obs2d import HARPSFile2D, HARPSFile2DScience
 
 
@@ -64,8 +66,8 @@ class TestScience2DFile(object):
         assert hasattr(s, '_rawData')
 
     def testHasSpecificAttributes(self, s):
-        assert hasattr(s, '_BERV')
-        assert hasattr(s, '_radialVelocity')
+        assert hasattr(s, 'BERV')
+        assert hasattr(s, 'radialVelocity')
 
     def testArrayProperties(self, s):
         assert hasattr(s, 'wavelengthArray')
@@ -80,3 +82,11 @@ class TestScience2DFile(object):
         assert np.shape(s._photonFluxArray) == (72, 4096)
         assert np.shape(s._errorArray) == (72, 4096)
         assert np.shape(s._blazeArray) == (72, 4096)
+
+    def testFindWavelength(self, s):
+        assert s.findWavelength(5039 * u.angstrom, mid_most=True) == 40
+        assert s.findWavelength(5039 * u.angstrom,
+                                mid_most=False) == (39, 40)
+        index1 = wavelength2index(5039 * u.angstrom, s.barycentricArray[39])
+        index2 = wavelength2index(5039 * u.angstrom, s.barycentricArray[40])
+        assert abs(index1 - 2047.5) > abs(index2 - 2047.5)
