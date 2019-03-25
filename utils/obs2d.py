@@ -135,8 +135,7 @@ class HARPSFile2DScience(HARPSFile2D):
         # them if we really need them, i.e. when opening a file for the
         # first time or when explicitly updating it.
         if (len(hdulist) == 1) or file_open_mode == 'update':
-            if not hasattr(self, '_blazeArray'):
-                self._blazeFile = self.getBlazeFile()
+            self._blazeFile = self.getBlazeFile()
 
         # Try to read the wavelength array, or create it if it doesn't
         # exist.
@@ -286,7 +285,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         Returns
         -------
-        NumPy array
+        `numpy.ndarray`
             An array of the same shape as the input array specifying the
             wavelength of each pixel (element in the array) in Angstroms.
 
@@ -318,7 +317,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         Returns
         -------
-        unyt_array
+        `unyt.unyt_array`
             The wavelength array for the observation converted into vacuum
             wavelengths using the Edlen 1953 formula used by the HARPS
             pipeline.
@@ -335,7 +334,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         Returns
         -------
-        unyt_array
+        `unyt.unyt_array`
             The vacuum wavelength array in barycentric coordinates.
 
         """
@@ -350,7 +349,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         Returns
         -------
-        numpy.ndarray
+        `numpy.ndarray`
             An array created by multiplying the input array by the gain from
             the file header.
 
@@ -382,19 +381,6 @@ class HARPSFile2DScience(HARPSFile2D):
         error_array = np.array([[np.sqrt(x + dark_noise ** 2) if x >= 0
                                  else 1e5 for x in row]
                                 for row in photon_flux_array], dtype=float)
-#        error_array2 = np.ones(photon_flux_array.shape)
-#        for m in range(photon_flux_array.shape[0]):
-#            for n in range(photon_flux_array.shape[1]):
-#                if photon_flux_array[m, n] < 0:
-#                    if verbose:
-#                        tqdm.write(photon_flux_array[m, n], m, n)
-#                    error_array2[m, n] = 1e5
-#                    bad_pixels += 1
-#                else:
-#                    # Add the dark noise in quadrature with the photon noise.
-#                    # Won't affect much unless at low SNR.
-#                    error_array2[m, n] = np.sqrt(photon_flux_array[m, n] +
-#                                                 dark_noise ** 2)
 
         # Correct the error array by the blaze function:
         error_array = error_array / self.blazeArray
@@ -440,8 +426,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         self._wavelengthArray = self.getWavelengthArray()
         # Create an HDU for the wavelength array.
-        wavelength_HDU = fits.ImageHDU(data=self.wavelengthArray,
-                                       name='WAVE')
+        wavelength_HDU = fits.ImageHDU(data=self.wavelengthArray, name='WAVE')
         try:
             hdulist['WAVE'] = wavelength_HDU
         except KeyError:
@@ -501,8 +486,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         self._photonFluxArray = self.getPhotonFluxArray()
         # Create an HDU for the photon flux array.
-        photon_flux_HDU = fits.ImageHDU(data=self.photonFluxArray,
-                                        name='FLUX')
+        photon_flux_HDU = fits.ImageHDU(data=self.photonFluxArray, name='FLUX')
         try:
             hdulist['FLUX'] = photon_flux_HDU
         except KeyError:
