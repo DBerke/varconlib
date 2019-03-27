@@ -122,8 +122,6 @@ class HARPSFile2DScience(HARPSFile2D):
         self._rawData = hdulist[0].data
         self._rawFluxArray = copy(self._rawData)
         self._blazeFile = None
-        self._BERV = None
-        self._radialVelocity = None
 
         # Since we may not have the blaze files on hand, only try to find
         # them if we really need them, i.e. when opening a file for the
