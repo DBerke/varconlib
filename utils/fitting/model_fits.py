@@ -10,12 +10,18 @@ Code to define a class for a model fit to an absorption line.
 """
 
 import configparser
+import os
 from pathlib import Path
 import numpy as np
 from scipy.optimize import curve_fit, OptimizeWarning
+import matplotlib
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import unyt as u
 from tqdm import tqdm
 import varconlib as vcl
+
+matplotlib.rcParams['axes.formatter.useoffset'] = False
 
 config_file = Path('/Users/dberke/code/config/variables.cfg')
 config = configparser.ConfigParser(interpolation=configparser.
@@ -23,7 +29,7 @@ config = configparser.ConfigParser(interpolation=configparser.
 config.read(config_file)
 
 
-class AbsorptionFeatureFitGaussian(object):
+class GaussianFit(object):
     """A class to fit an absorption line and store information about the fit.
 
     """
@@ -69,10 +75,11 @@ class AbsorptionFeatureFitGaussian(object):
         self.correctedWavelength = vcl.shift_wavelength(nominal_wavelength,
                                                         radial_velocity)
         self.correctedWavelength.convert_to_units(u.nm)
-        tqdm.write('Given RV {:.2f}: line {:.4f} should be at {:.4f}'.
-                   format(radial_velocity,
-                          nominal_wavelength.to(u.nm),
-                          self.correctedWavelength.to(u.nm)))
+        if verbose:
+            tqdm.write('Given RV {:.2f}: line {:.4f} should be at {:.4f}'.
+                       format(radial_velocity,
+                              nominal_wavelength.to(u.nm),
+                              self.correctedWavelength.to(u.nm)))
         # Find which order of the echelle spectrum the wavelength falls in.
         order = self.observation.findWavelength(self.correctedWavelength,
                                                 mid_most=True)
@@ -122,9 +129,9 @@ class AbsorptionFeatureFitGaussian(object):
         self.initial_guess = (line_depth * -1,
                               self.correctedWavelength.to(u.angstrom).value,
                               0.08)
-
-        tqdm.write('Attempting to fit line at {:.4f} with initial guess:'.
-                   format(self.correctedWavelength))
+        if verbose:
+            tqdm.write('Attempting to fit line at {:.4f} with initial guess:'.
+                       format(self.correctedWavelength))
         if verbose:
             print('Initial parameters are:\n{}\n{}\n{}'.format(
                   *self.initial_guess))
@@ -195,31 +202,47 @@ class AbsorptionFeatureFitGaussian(object):
             raise KeyError('No appropriately named "Err" attribute found.')
         return vcl.get_velocity_offset(wavelength1, wavelength2)
 
-    def plotFit(self, outfile=None):
-        import matplotlib.pyplot as plt
+    def plotFit(self, outfile=None, verbose=False):
+        """Plot a graph of this fit.
+
+        Optional
+        --------
+        outfile : string or `pathlib.Path`
+            If given, will attempt to save the plot to the path given.
+        verbose : bool, Default : False
+            If *True*, the function will print out additional information as it
+            runs.
+
+        """
+
         # Set up the figure.
         fig = plt.figure(figsize=(8, 8))
         ax = fig.add_subplot(1, 1, 1)
 
+        ax.set_xlabel('Wavelength (angstroms)')
+        ax.set_ylabel('Flux (photo-electrons)')
+        ax.xaxis.set_major_locator(ticker.FixedLocator(self.wavelengths
+                                                       .to(u.angstrom).value))
+        ax.xaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.3f}'))
         # Begin plotting.
         ax.axvline(self.correctedWavelength.to(u.angstrom),
-                   color='SeaGreen', linestyle='--',
+                   color='LightSteelBlue', linestyle='-.',
                    label='RV-corrected transition λ',)
         ax.axvline(self.centroid.to(u.angstrom),
-                   color='PaleVioletRed', label='Fitted centroid',
+                   color='OliveDrab', label='Fitted centroid',
                    linestyle='-')
         ax.errorbar(self.wavelengths.to(u.angstrom),
                     self.fluxes-self.continuum_level,
                     yerr=self.errors,
-                    color='SaddleBrown', marker='o', linestyle='',
+                    color='DimGray', marker='o', linestyle='',
                     ecolor='Peru', label='Data')
-        ax.plot(self.wavelengths.to(u.angstrom),
-                (vcl.gaussian(self.wavelengths.value, *self.initial_guess)),
-                color='DeepSkyBlue', label='Initial guess',
-                linestyle='--')
         x = np.linspace(self.wavelengths.to(u.angstrom).min().value,
                         self.wavelengths.to(u.angstrom).max().value, 40)
-        ax.plot(x, (vcl.gaussian(x, *self.popt)), color='Olive',
+        ax.plot(x, vcl.gaussian(x, *self.initial_guess),
+                color='SlateGray', label='Initial guess',
+                linestyle='--')
+        ax.plot(x, vcl.gaussian(x, *self.popt),
+                color='SeaGreen',
                 linestyle='-', label='Fitted Gaussian')
 
         ax.legend()
@@ -229,6 +252,12 @@ class AbsorptionFeatureFitGaussian(object):
             outfile = stars_dir /\
                 'Transition_{:.3f}.png'.format(
                         self.transition.wavelength.to(u.angstrom).value)
-        print('Created plot at {}'.format(outfile))
+        else:
+            outfile = Path(outfile)
+        if verbose:
+            tqdm.write('Created plot at {}'.format(outfile))
+        if not outfile.parent.exists():
+            tqdm.write(str(outfile.parent))
+            os.mkdir(outfile.parent)
         fig.savefig(str(outfile))
         plt.close(fig)
