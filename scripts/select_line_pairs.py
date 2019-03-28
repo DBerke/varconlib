@@ -191,11 +191,11 @@ def harmonize_lists(transitions1, transitions2, spectral_mask,
             continue
 
         delta_wavelength = vcl.velocity2wavelength(wl_tolerance,
-                                                         line1.wavelength)
+                                                   line1.wavelength)
         delta_wavelength.convert_to_units(u.nm)
 
         delta_wl_energy = vcl.velocity2wavelength(energy_tolerance,
-                                                        line1.wavelength)
+                                                  line1.wavelength)
 
         energy1 = (1 / line1.wavelength).to(u.cm ** -1)
         energy2 = (1 / (line1.wavelength + delta_wl_energy)).to(u.cm ** -1)
@@ -386,7 +386,7 @@ def find_line_pairs(transition_list, min_norm_depth=0.3, max_norm_depth=0.7,
         # If it's fine, figure out how much wavelength space to search around
         # it based on the velocity separation.
         delta_wl = vcl.velocity2wavelength(velocity_separation,
-                                                 transition1.wavelength)
+                                           transition1.wavelength)
         lowerLim = transition1.wavelength - delta_wl
         upperLim = transition1.wavelength + delta_wl
 
