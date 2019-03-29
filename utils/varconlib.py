@@ -308,29 +308,43 @@ def simpleparabola(x, x0, a, c):
     return a * (x - x0)**2 + c
 
 
-def gaussian(x, a, b, c):
-    """Return the value of a Gaussian function with parameters a, b, and c.
+def gaussian(x, a, b, c, d=0):
+    """Return the value of a Gaussian function with the given parameters.
+
+
+    The parameter `d` controls the baseline of the Gaussian; if it is not
+    present, the function will default to a baseline of zero.
 
     Parameters
     ----------
     x : float
         The independent variable.
     a : float
-        The amplitude of the Gaussian.
+        The amplitude of the Gaussian. Must be real.
     b : float
-        The center of the Gaussian.
+        The median (also the center) of the Gaussian. Must be real.
     c : float
-        The standard deviation of the Gaussian.
+        The standard deviation of the Gaussian. Must be non-zero.
+
+    Optional
+    --------
+    d : float
+        The baseline of the Gaussian. If not given, will default to zero.
 
     Returns
     -------
     float
-        The value of a Gaussian with the given parameters at the given _x_
+        The value of a Gaussian with the given parameters at the given `x`
         position.
+
+    Notes
+    -----
+    A Gaussian function is given by:
+    .. math::    f(x) = D + A e^{- \frac{(x - B)^2}{2C^2}}
 
     """
 
-    return a * np.exp(-1 * ((x - b)**2 / (2 * c * c)))
+    return d + a * np.exp(-1 * ((x - b) ** 2 / (2 * c * c)))
 
 
 def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
