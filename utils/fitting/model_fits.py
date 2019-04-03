@@ -114,7 +114,7 @@ class GaussianFit(object):
         self.continuum_level = fluxArray[low_continuum_index:
                                          high_continuum_index].max()
 
-        flux_minimum = fluxArray[central_index]
+        self.flux_minimum = fluxArray[central_index]
 
         low_fit_index = central_index - pixel_range
         high_fit_index = central_index + pixel_range + 1
@@ -124,11 +124,12 @@ class GaussianFit(object):
         self.fluxes = fluxArray[low_fit_index:high_fit_index]
         self.errors = errorArray[low_fit_index:high_fit_index]
 
-        line_depth = self.continuum_level - flux_minimum
+        line_depth = self.continuum_level - self.flux_minimum
 
         self.initial_guess = (line_depth * -1,
                               self.correctedWavelength.to(u.angstrom).value,
-                              0.08)
+                              0.08,
+                              self.continuum_level)
         if verbose:
             tqdm.write('Attempting to fit line at {:.4f} with initial guess:'.
                        format(self.correctedWavelength))
@@ -140,8 +141,7 @@ class GaussianFit(object):
         try:
             self.popt, self.pcov = curve_fit(vcl.gaussian,
                                              self.wavelengths.value,
-                                             self.fluxes -
-                                             self.continuum_level,
+                                             self.fluxes,
                                              sigma=self.errors,
                                              absolute_sigma=True,
                                              p0=self.initial_guess,
@@ -166,17 +166,19 @@ class GaussianFit(object):
         self.standardDevErr = self.perr[2] * u.angstrom
 
         # Compute the χ^2 value:
-        residuals = (self.fluxes - self.continuum_level) - \
+        residuals = self.fluxes - \
             vcl.gaussian(self.wavelengths.value, *self.popt)
 
         self.chiSquared = sum((residuals / self.errors) ** 2)
-        self.chiSquaredNu = self.chiSquared / 4  # ν = 7 (pixels) - 3 (params)
+        self.chiSquaredNu = self.chiSquared / 3  # ν = 7 (pixels) - 4 (params)
         if (self.chiSquaredNu > 1):
             self.centroidErr *= np.sqrt(self.chiSquaredNu)
 
-        # Find the full width at half max:
-        self.FWHM = 2 * np.sqrt(2 * np.log(2)) * self.standardDev
-        self.FWHMErr = 2 * np.sqrt(2 * np.log(2)) * self.standardDevErr
+        # Find the full width at half max.
+        # 2.354820 ≈ 2 * sqrt(2 * ln(2)), the relationship of FWHM to the
+        # standard deviation of a Gaussian.
+        self.FWHM = 2.354820 * self.standardDev
+        self.FWHMErr = 2.354820 * self.standardDevErr
         self.velocityFWHM = vcl.wavelength2velocity(self.centroid,
                                                     self.centroid +
                                                     self.FWHM / 2)
@@ -191,7 +193,7 @@ class GaussianFit(object):
 
         if verbose:
             print(self.continuum_level)
-            print(flux_minimum)
+            print(self.flux_minimum)
             print(self.wavelengths)
 
     def toVelocity(self, attribute):
@@ -232,7 +234,7 @@ class GaussianFit(object):
                    color='OliveDrab', label='Fitted centroid',
                    linestyle='-')
         ax.errorbar(self.wavelengths.to(u.angstrom),
-                    self.fluxes-self.continuum_level,
+                    self.fluxes,
                     yerr=self.errors,
                     color='DimGray', marker='o', linestyle='',
                     ecolor='Peru', label='Data')
