@@ -261,14 +261,13 @@ def harmonize_lists(transitions1, transitions2, spectral_mask,
                 closest_lines[diff_score] = item
                 diff_scores.append(diff_score)
 
-            tqdm.write('{}{}:'.format(line1.atomicSymbol,
-                       line1.ionizationState))
+            tqdm.write('{}:'.format(line1.atomicSpecies))
             for score in sorted(diff_scores)[:5]:
                 item = closest_lines[score]
                 tqdm.write('{:.2f} | {:8.4f} ({:.4f}) | {:.4f} ({:.4f})'
                            .format(score,
-                                   item[0].wavelength, item[1],
-                                   item[0].lowerEnergy, item[2]))
+                                   item[0].wavelength, item[1],  # wavelength
+                                   item[0].lowerEnergy, item[2])) # energy
 
         # If there's more than one match, it could be due to isotopes, so check
         # that first:
@@ -826,8 +825,8 @@ if args.match_nist:
     master_match_dict = {}
     for species in tqdm(transitions_dict.keys()):
         if species in nist_transition_dict.keys():
-            print('-----------------------')
-            print('Matching {} {} transitions with NIST list...'.format(
+            tqdm.write('-----------------------')
+            tqdm.write('Matching {} {} transitions with NIST list...'.format(
                   len(transitions_dict[species]), species))
             species_list = harmonize_lists(transitions_dict[species],
                                            nist_transition_dict[species],
@@ -836,7 +835,11 @@ if args.match_nist:
                                            energy_tolerance=args.delta_energy)
             master_match_dict[species] = species_list
         else:
-            print(f'No results for {species} in NIST results!')
+            tqdm.write('-----------------------')
+            tqdm.write(f'Checking for {species}...')
+            for transition in transitions_dict[species]:
+                tqdm.write('{} unmatched'.format(str(transition)))
+            tqdm.write(f'No results for {species} in NIST results!')
 
     print(master_match_dict.keys())
     total = 0

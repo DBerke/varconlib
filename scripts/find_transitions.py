@@ -53,6 +53,7 @@ glob_search_string = str(observations_dir) + '/*/*e2ds_A.fits'
 data_files = [Path(string) for string in sorted(glob(glob_search_string))]
 
 for obs_path in tqdm(data_files[0:1]):
+    tqdm.write('Fitting {}...'.format(obs_path.stem))
     obs = obs2d.HARPSFile2DScience(obs_path)
     fits_dict = {}
     plots_dir = pictures_dir / 'Stars' / obs_path.stem
