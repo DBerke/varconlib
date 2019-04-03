@@ -672,27 +672,30 @@ class HARPSFile2DScience(HARPSFile2D):
         else:
             return tuple(orders_wavelength_found_in)
 
-    def plotOrder(self, index, passed_axis, **kwargs):
-        """Plot a single order of the data, given its index.
+    def plotErrorbar(self, order, passed_axis, min_index=None,
+                     max_index=None, *args, **kwargs):
+        """Create an errorbar plot of a single order of the observation.
+
+        This method will use the barycentric-corrected wavelength array and
+        blaze-corrected photon flux array.
 
         Parameters
         ----------
-        index : int
+        order : int
             An integer in the range [0, 71] representing the index of the
             order to plot.
         passed_axis : a matplotlib Axes instance
             The order specified will be plotted onto this Axes object.
-        **kwargs
-            Any additional keyword arguments are passed on to matplotlib's
-            `plot` function.
 
         """
 
         # Check that the index is correct.
-        assert 0 <= index <= 71, "Index is not in [0, 71]!"
+        assert 0 <= order <= 71, "Index is not in [0, 71]!"
 
         ax = passed_axis
 
         # Plot onto the given axis.
-        ax.plot(self._wavelengthArray[index], self._photonFluxArray[index],
-                **kwargs)
+        ax.errorbar(self.barycentricArray[order, min_index:max_index],
+                    self.photonFluxArray[order, min_index:max_index],
+                    yerr=self.errorArray[order, min_index:max_index],
+                    *args, **kwargs)
