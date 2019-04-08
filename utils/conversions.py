@@ -107,7 +107,7 @@ def air2vacESO(air_wavelengths_array):
 
     vacuum_wavelengths_list = []
 
-    tqdm.write('Converting air wavelengths to vacuum using Edlen `53 formula.')
+    tqdm.write('Converting air wavelengths to vacuum using Edlen 1953.')
     for i in trange(0, len(air_wavelengths_array)):
         new_wavelength = air_wavelengths_array[i].value
         old_wavelength = 0.
