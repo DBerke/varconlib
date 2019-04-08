@@ -81,12 +81,12 @@ class GaussianFit(object):
                               nominal_wavelength.to(u.nm),
                               self.correctedWavelength.to(u.nm)))
         # Find which order of the echelle spectrum the wavelength falls in.
-        order = self.observation.findWavelength(self.correctedWavelength,
-                                                mid_most=True)
+        self.order = self.observation.findWavelength(self.correctedWavelength,
+                                                     mid_most=True)
 
-        baryArray = self.observation.barycentricArray[order]
-        fluxArray = self.observation.photonFluxArray[order]
-        errorArray = self.observation.errorArray[order]
+        baryArray = self.observation.barycentricArray[self.order]
+        fluxArray = self.observation.photonFluxArray[self.order]
+        errorArray = self.observation.errorArray[self.order]
 
         # Figure out the range in wavelength space to search around the nominal
         # wavelength for the flux minimum, as well as the range to take for
@@ -102,34 +102,34 @@ class GaussianFit(object):
         high_search_index = vcl.wavelength2index(self.correctedWavelength +
                                                  search_range,
                                                  baryArray)
-        low_continuum_index = vcl.wavelength2index(self.correctedWavelength -
-                                                   continuum_range,
-                                                   baryArray)
-        high_continuum_index = vcl.wavelength2index(self.correctedWavelength +
-                                                    continuum_range,
-                                                    baryArray)
-        central_index = low_search_index + \
+        self.lowContinuumIndex = vcl.wavelength2index(self.correctedWavelength
+                                                      - continuum_range,
+                                                      baryArray)
+        self.highContinuumIndex = vcl.wavelength2index(self.correctedWavelength
+                                                       + continuum_range,
+                                                       baryArray)
+        self.centralIndex = low_search_index + \
             fluxArray[low_search_index:high_search_index].argmin()
 
-        self.continuum_level = fluxArray[low_continuum_index:
-                                         high_continuum_index].max()
+        self.continuumLevel = fluxArray[self.lowContinuumIndex:
+                                        self.highContinuumIndex].max()
 
-        self.flux_minimum = fluxArray[central_index]
+        self.fluxMinimum = fluxArray[self.centralIndex]
 
-        low_fit_index = central_index - pixel_range
-        high_fit_index = central_index + pixel_range + 1
+        self.lowFitIndex = self.centralIndex - pixel_range
+        self.highFitIndex = self.centralIndex + pixel_range + 1
 
         # Grab the wavelengths, fluxes, and errors from the region to be fit.
-        self.wavelengths = baryArray[low_fit_index:high_fit_index]
-        self.fluxes = fluxArray[low_fit_index:high_fit_index]
-        self.errors = errorArray[low_fit_index:high_fit_index]
+        self.wavelengths = baryArray[self.lowFitIndex:self.highFitIndex]
+        self.fluxes = fluxArray[self.lowFitIndex:self.highFitIndex]
+        self.errors = errorArray[self.lowFitIndex:self.highFitIndex]
 
-        line_depth = self.continuum_level - self.flux_minimum
+        self.lineDepth = self.continuumLevel - self.fluxMinimum
 
-        self.initial_guess = (line_depth * -1,
+        self.initial_guess = (self.lineDepth * -1,
                               self.correctedWavelength.to(u.angstrom).value,
-                              0.08,
-                              self.continuum_level)
+                              0.05,
+                              self.continuumLevel)
         if verbose:
             tqdm.write('Attempting to fit line at {:.4f} with initial guess:'.
                        format(self.correctedWavelength))
@@ -145,8 +145,23 @@ class GaussianFit(object):
                                              sigma=self.errors,
                                              absolute_sigma=True,
                                              p0=self.initial_guess,
-                                             method='lm')
+                                             method='lm', maxfev=10000)
         except (OptimizeWarning, RuntimeError):
+            print(self.continuumLevel)
+            print(self.lineDepth)
+            print(self.initial_guess)
+            fig = plt.figure(figsize=(8, 8))
+            ax = fig.add_subplot(1, 1, 1)
+            ax.errorbar(self.wavelengths.value,
+                        self.fluxes,
+                        yerr=self.errors,
+                        color='Blue', marker='o', linestyle='')
+            ax.plot(self.wavelengths.value,
+                    vcl.gaussian(self.wavelengths.value, *self.initial_guess),
+                    color='Black')
+            outfile = Path('/Users/dberke/Pictures/debug_norm.png')
+            fig.savefig(str(outfile))
+            plt.close(fig)
             raise
 
         if verbose:
@@ -192,25 +207,23 @@ class GaussianFit(object):
         # TODO: Error for velocity offset.
 
         if verbose:
-            print(self.continuum_level)
-            print(self.flux_minimum)
+            print(self.continuumLevel)
+            print(self.fluxMminimum)
             print(self.wavelengths)
 
-    def toVelocity(self, attribute):
-        wavelength1 = attribute
-        try:
-            wavelength2 = getattr(self, attribute.__name__ + 'Err')
-        except KeyError:
-            raise KeyError('No appropriately named "Err" attribute found.')
-        return vcl.get_velocity_offset(wavelength1, wavelength2)
-
-    def plotFit(self, outfile=None, verbose=False):
+    def plotFit(self, close_up, context, verbose=False):
         """Plot a graph of this fit.
+
+        This method will produce a very close-in plot of just the fitted region
+        itself, in order to check out the fit has worked out.
 
         Optional
         --------
-        outfile : string or `pathlib.Path`
-            If given, will attempt to save the plot to the path given.
+        close_up : string or `pathlib.Path`
+            The file name to save a close-up plot of the fit to.
+        context : string of `pathlib.Path`
+            The file name to save a wider context (±25 km/s) around the fitted
+            feature to.
         verbose : bool, Default : False
             If *True*, the function will print out additional information as it
             runs.
@@ -223,43 +236,57 @@ class GaussianFit(object):
 
         ax.set_xlabel('Wavelength (angstroms)')
         ax.set_ylabel('Flux (photo-electrons)')
-        ax.xaxis.set_major_locator(ticker.FixedLocator(self.wavelengths
-                                                       .to(u.angstrom).value))
+#        ax.xaxis.set_major_locator(ticker.FixedLocator(self.wavelengths
+#                                                       .to(u.angstrom).value))
         ax.xaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.3f}'))
-        # Begin plotting.
+        ax.set_xlim(left=self.observation.barycentricArray
+                    [self.order, self.lowContinuumIndex - 1],
+                    right=self.observation.barycentricArray
+                    [self.order, self.highContinuumIndex + 1])
+
+        # Plot the expected and measured wavelengths.
         ax.axvline(self.correctedWavelength.to(u.angstrom),
-                   color='LightSteelBlue', linestyle='-.',
+                   color='LightSteelBlue', linestyle=':',
                    label='RV-corrected transition λ',)
         ax.axvline(self.centroid.to(u.angstrom),
-                   color='OliveDrab', label='Fitted centroid',
+                   color='IndianRed', label='Fitted centroid',
                    linestyle='-')
-        ax.errorbar(self.wavelengths.to(u.angstrom),
-                    self.fluxes,
-                    yerr=self.errors,
-                    color='DimGray', marker='o', linestyle='',
-                    ecolor='Peru', label='Data')
-        x = np.linspace(self.wavelengths.to(u.angstrom).min().value,
-                        self.wavelengths.to(u.angstrom).max().value, 40)
+        # Plot the actual data.
+        self.observation.plotErrorbar(self.order, ax,
+                                      min_index=self.lowContinuumIndex,
+                                      max_index=self.highContinuumIndex,
+                                      color='SandyBrown', ecolor='Sienna',
+                                      label='Flux', barsabove=True)
+
+        # Generate some x-values across the plot range.
+        x = np.linspace(self.observation.barycentricArray[self.order,
+                        self.lowContinuumIndex].value,
+                        self.observation.barycentricArray[self.order,
+                        self.highContinuumIndex].value, 1000)
+        # Plot the initial guess for the gaussian.
         ax.plot(x, vcl.gaussian(x, *self.initial_guess),
                 color='SlateGray', label='Initial guess',
-                linestyle='--')
+                linestyle='--', alpha=0.8)
+        # Plot the fitted gaussian.
         ax.plot(x, vcl.gaussian(x, *self.popt),
-                color='SeaGreen',
+                color='DarkGreen',
                 linestyle='-', label='Fitted Gaussian')
 
         ax.legend()
         # Save the resultant plot.
-        if outfile is None:
-            stars_dir = Path(config['PATHS']['stars_dir'])
-            outfile = stars_dir /\
-                'Transition_{:.3f}.png'.format(
-                        self.transition.wavelength.to(u.angstrom).value)
-        else:
-            outfile = Path(outfile)
+        fig.savefig(str(context))
         if verbose:
-            tqdm.write('Created plot at {}'.format(outfile))
-        if not outfile.parent.exists():
-            tqdm.write(str(outfile.parent))
-            os.mkdir(outfile.parent)
-        fig.savefig(str(outfile))
+            tqdm.write('Created wider context plot at {}'.format(context))
+
+        # Now create a close-in version to focus on the fit.
+        ax.set_xlim(left=self.observation.barycentricArray
+                    [self.order, self.lowFitIndex - 1],
+                    right=self.observation.barycentricArray
+                    [self.order, self.highFitIndex])
+        ax.set_ylim(top=self.fluxes.max() * 1.08,
+                    bottom=self.fluxes.min() * 0.93)
+
+        fig.savefig(str(close_up))
+        if verbose:
+            tqdm.write('Created close up plot at {}'.format(close_up))
         plt.close(fig)
