@@ -228,8 +228,8 @@ def harmonize_lists(transitions1, transitions2, spectral_mask,
 
                 # If both line lists include higher energies for the orbitals,
                 # match those as well using the energy tolerance.
-                if hasattr(line1, 'higherEnergy') and\
-                   hasattr(line2, 'higherEnergy'):
+                if (line1.higherEnergy is not None) and\
+                   (line2.higherEnergy is not None):
                         energy_diff2 = abs(line2.higherEnergy -
                                            line1.higherEnergy)
                         if (energy_diff <= delta_energy) and\
@@ -549,10 +549,10 @@ parser.add_argument('--match_lines', action='store_true',
                     default=False,
                     help='Flag to match transitions between lists.')
 parser.add_argument('-dw', '--delta_wavelength', action='store',
-                    default=1000, type=int,
+                    default=3000, type=int,
                     help='The wavelength tolerance in m/s.')
 parser.add_argument('-de', '--delta_energy', action='store',
-                    default=10000, type=int,
+                    default=100000, type=int,
                     help='The energy tolerance in m/s.')
 
 parser.add_argument('--pair_lines', action='store_true',
