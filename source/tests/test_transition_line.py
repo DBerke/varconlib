@@ -11,7 +11,7 @@ Test suite for the transition_line.Transition object.
 import pytest
 from transition_line import Transition
 import unyt as u
-
+# TODO: possibly add a fixture for test cases?
 
 class TestTransition(object):
     def test_no_units(self):
@@ -59,3 +59,20 @@ class TestTransition(object):
         assert a.ionizationState == 1
         assert a.atomicSpecies == 'Fe I'
         assert a.atomicSymbol == 'Fe'
+
+    def test_wavenumber_conversion(self):
+        a = Transition(500 * u.nm, 26, 1)
+        assert a.wavenumber.value == pytest.approx(20000)
+        a.wavenumber = 25000
+        assert a.wavelength.value == pytest.approx(4e-5)
+        a.wavenumber = 20000 * u.cm ** -1
+        assert a.wavelength.value == pytest.approx(5e-5)
+
+    def test_wavenumber_assignment(self):
+        a = Transition(500 * u.nm, 26, 1)
+        with pytest.raises(ValueError):
+            a.wavenumber = 25000 * u.nm ** -1
+        a.wavenumber = 25000
+        assert a.wavelength.value == pytest.approx(4e-5)
+        assert a.wavelength.units == u.cm
+        assert a.wavenumber.units == u.cm ** -1

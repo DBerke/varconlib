@@ -69,6 +69,7 @@ class Transition(object):
             print('Given wavelength has no units!')
             raise
         # Check if the element is given as a number in a string.
+        # ??? class `numpy.str_` fails here, maybe refactor?
         if (type(element) is str) and (len(element) < 3):
             try:
                 self.atomicNumber = int(element)
@@ -91,8 +92,12 @@ class Transition(object):
         elif (type(element) is int) and (len(element) > 2):
             print('Given string for parameter "element" is too long!')
         else:
-            raise TypeError("'element' parameter must be an integer atomic " +
-                            "number or correct atomic symbol (e.g., 'Fe').")
+            try:
+                self.atomicNumber = int(element)
+            except ValueError:
+                raise TypeError("'element' parameter must be a valid "
+                                "integer atomic number or atomic symbol " +
+                                "(e.g., 'Fe').")
 
         # Next check the given ionization state.
         try:
@@ -115,6 +120,21 @@ class Transition(object):
     @property
     def atomicSpecies(self):
         return(f'{self.atomicSymbol} {roman_numerals[self.ionizationState]}')
+
+    @property
+    def wavenumber(self):
+        return 1 / self.wavelength.to(u.cm)
+
+    @wavenumber.setter
+    def wavenumber(self, new_wavenumber):
+        if type(new_wavenumber) is u.unyt_quantity:
+            if new_wavenumber.units == u.cm ** -1:
+                self.wavelength = 1 / new_wavenumber
+            else:
+                raise ValueError('Units for given wavenumber are {}!'.format(
+                        new_wavenumber.units))
+        else:
+            self.wavelength = 1 / (new_wavenumber * u.cm ** -1)
 
     def __repr__(self):
         return "{}({:.4f}, {}, {})".format(self.__class__.__name__,
