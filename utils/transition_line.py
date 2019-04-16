@@ -69,7 +69,6 @@ class Transition(object):
             print('Given wavelength has no units!')
             raise
         # Check if the element is given as a number in a string.
-        # ??? class `numpy.str_` fails here, maybe refactor?
         if (type(element) is str) and (len(element) < 3):
             try:
                 self.atomicNumber = int(element)
@@ -94,6 +93,7 @@ class Transition(object):
         else:
             try:
                 self.atomicNumber = int(element)
+                self.atomicSymbol = elements[self.atomicNumber]
             except ValueError:
                 raise TypeError("'element' parameter must be a valid "
                                 "integer atomic number or atomic symbol " +
@@ -160,6 +160,51 @@ class Transition(object):
 
     def __gt__(self, other):
         if self.wavelength.value > other.wavelength.value:
+            return True
+        else:
+            return False
+
+    def __eq__(self, other):
+        from math import isclose
+        if type(other) is Transition:
+            # If the other thing to be compared is a transition, we need to
+            # check all of its attributes and whether they A) exist and B) are
+            # equal. Basically this function checks multiple ways they could be
+            # NOT equal, and only if none of them trigger does it return that
+            # they are.
+            if not (isclose(self.wavelength, other.wavelength,
+                            rel_tol=1e-5) and
+                    self.atomicNumber == other.atomicNumber and
+                    self.ionizationState == other.ionizationState):
+                return False
+            if (self.lowerEnergy is not None) and\
+                    (other.lowerEnergy is not None):
+                if not isclose(self.lowerEnergy, other.lowerEnergy,
+                               rel_tol=1e-5):
+                    return False
+            if (self.higherEnergy is not None) and\
+                    (other.higherEnergy is not None):
+                if not isclose(self.higherEnergy, other.higherEnergy,
+                               rel_tol=1e-5):
+                    return False
+            if (self.lowerJ is not None) and\
+                    (other.lowerJ is not None):
+                if not isclose(self.lowerJ, other.lowerJ,
+                               rel_tol=1e-5):
+                    return False
+            if (self.higherJ is not None) and\
+                    (other.higherJ is not None):
+                if not isclose(self.higherJ, other.higherJ,
+                               rel_tol=1e-5):
+                    return False
+            if (self.lowerOrbital is not None) and\
+                    (other.lowerOrbital is not None):
+                if self.lowerOrbital != other.lowerOrbital:
+                    return False
+            if (self.higherOrbital is not None) and\
+                    (other.higherOrbital is not None):
+                if self.higherOrbital != other.higherOrbital:
+                    return False
             return True
         else:
             return False

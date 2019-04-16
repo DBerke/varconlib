@@ -48,6 +48,44 @@ class TestTransition(object):
         assert a < b
         assert b > a
 
+    def test_equality(self):
+        a = Transition(500.0 * u.nm, 26, 1)
+        b = Transition(500.0 * u.nm, 26, 1)
+        assert a == b
+        a.lowerEnergy = b.lowerEnergy = 1.3 * u.eV
+        assert a == b
+        a.higherEnergy = b.higherEnergy = 5.6 * u.eV
+        assert a == b
+        a.lowerJ = b.lowerJ = 1.5
+        assert a == b
+        a.higherJ = b.higherJ = 0.5
+        assert a == b
+        a.lowerOrbital = b.lowerOrbital = '3d8.(3F).4s.4p.(3P*)'
+        assert a == b
+        a.higherOrbital = b.higherOrbital = '3d8.4s.(2F).5s '
+        assert a == b
+        # Now test for inequality.
+        b.higherOrbital = 'non-existent'
+        assert a != b
+        b.lowerOrbital = "it's gone too"
+        assert a != b
+        b.higherJ = 3
+        assert a != b
+        b.lowerJ = 0
+        assert a != b
+        b.higherEnergy = 4 * u.eV
+        assert a != b
+        b.lowerEnergy = 3 * u.eV
+        assert a != b
+        b.ionizationState = 2
+        assert a != b
+        b.ionizationState = 1
+        b.atomicNumber = 27
+        assert a != b
+        b.atomicNumber = 26
+        b.wavelength = 501 * u.nm
+        assert a != b
+
     def test_atomic_species(self):
         a = Transition(500 * u.nm, 26, 1)
         assert a.atomicSpecies == 'Fe I'
