@@ -10,6 +10,7 @@ The Transition class contains information about a single atomic transition.
 
 import unyt as u
 from bidict import bidict
+from fractions import Fraction
 
 elements = bidict({1: "H", 2: "He", 3: "Li", 4: "Be", 5: "B", 6: "C", 7: "N",
                    8: "O", 9: "F", 10: "Ne", 11: "Na", 12: "Mg",  13: "Al",
@@ -101,21 +102,47 @@ class Transition(object):
 
         # Next check the given ionization state.
         try:
-            self.ionizationState = int(ionizationState)
+            ionizationState = int(ionizationState)
+            assert ionizationState >= 0, 'Ionization state cannot be negative.'
         except ValueError:
             # If it's a string, see if it's a Roman numeral.
             try:
-                self.ionizationState = roman_numerals.inv[ionizationState]
+                ionizationState = roman_numerals.inv[ionizationState]
             except KeyError:
                 raise ValueError('Ionization state "{}" invalid!'.format(
                                  ionizationState))
+        self.ionizationState = ionizationState
 
         self.lowerEnergy = None
-        self.lowerJ = None
+        self._lowerJ = None
         self.lowerOrbital = None
         self.higherEnergy = None
-        self.higherJ = None
+        self._higherJ = None
         self.higherOrbital = None
+
+    @property
+    def lowerJ(self):
+        return self._lowerJ
+
+    @lowerJ.setter
+    def lowerJ(self, new_lowerJ):
+        if new_lowerJ is None:
+            self._lowerJ = None
+        elif type(new_lowerJ) is not Fraction:
+            new_lowerJ = Fraction(new_lowerJ)
+        self._lowerJ = new_lowerJ
+
+    @property
+    def higherJ(self):
+        return self._higherJ
+
+    @higherJ.setter
+    def higherJ(self, new_higherJ):
+        if new_higherJ is None:
+            self._higherJ = None
+        elif type(new_higherJ) is not Fraction:
+            new_higherJ = Fraction(new_higherJ)
+        self._higherJ = new_higherJ
 
     @property
     def atomicSpecies(self):
@@ -189,13 +216,11 @@ class Transition(object):
                     return False
             if (self.lowerJ is not None) and\
                     (other.lowerJ is not None):
-                if not isclose(self.lowerJ, other.lowerJ,
-                               rel_tol=1e-5):
+                if self.lowerJ != other.lowerJ:
                     return False
             if (self.higherJ is not None) and\
                     (other.higherJ is not None):
-                if not isclose(self.higherJ, other.higherJ,
-                               rel_tol=1e-5):
+                if self.higherJ != other.higherJ:
                     return False
             if (self.lowerOrbital is not None) and\
                     (other.lowerOrbital is not None):

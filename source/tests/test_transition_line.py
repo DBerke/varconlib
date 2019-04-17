@@ -8,10 +8,13 @@ Created on Fri Mar  1 09:55:59 2019
 Test suite for the transition_line.Transition object.
 """
 
+from fractions import Fraction
 import pytest
-from transition_line import Transition
 import unyt as u
+from transition_line import Transition
+
 # TODO: possibly add a fixture for test cases?
+
 
 class TestTransition(object):
     def test_no_units(self):
@@ -21,6 +24,12 @@ class TestTransition(object):
     def test_unphysical_atomic_number(self):
         with pytest.raises(AssertionError):
             Transition(500 * u.nm, 0, 1)
+        with pytest.raises(AssertionError):
+            Transition(500 * u.nm, -1, 1)
+
+    def test_negative_ionization_state(self):
+        with pytest.raises(AssertionError):
+            Transition(500 * u.nm, 0, -1)
 
     def test_atomic_symbol_string(self):
         a = Transition(500 * u.nm, 'fe', 1)
@@ -40,7 +49,7 @@ class TestTransition(object):
 
     def test_unphysical_atomic_symbol(self):
         with pytest.raises(KeyError):
-            Transition(500 * u.nm, 'Uo', 1)  # Unobtanium
+            Transition(500 * u.nm, 'X', 1)
 
     def test_wavelength_sorting(self):
         a = Transition(500 * u.nm, 26, 1)
@@ -114,3 +123,10 @@ class TestTransition(object):
         assert a.wavelength.value == pytest.approx(4e-5)
         assert a.wavelength.units == u.cm
         assert a.wavenumber.units == u.cm ** -1
+
+    def test_fractional_J_conversion(self):
+        a = Transition(500 * u.nm, 26, 1)
+        a.lowerJ = 1.5
+        assert a.lowerJ == Fraction(3, 2)
+        a.higherJ = 2
+        assert a.higherJ == Fraction(2, 1)
