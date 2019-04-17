@@ -14,6 +14,7 @@ import configparser
 import pickle
 import datetime
 from math import sqrt
+from fractions import Fraction
 from time import sleep
 from pathlib import Path
 import numpy as np
@@ -144,7 +145,7 @@ def harmonize_lists(transitions1, transitions2, spectral_mask,
         list. These will contain the vacuum wavelength of the transition, the
         element and ionization state it came from, the lower and higher
         energies, momentums (J), and orbital configurations of the transition,
-        and the log of the isotope abundance.
+        and (optionally) the log of the isotope abundance.
     spectral_mask : list of tuples
         A list of tuples delimiting 'bad' regions of the spectrum that should
         be avoided.
@@ -173,6 +174,7 @@ def harmonize_lists(transitions1, transitions2, spectral_mask,
     # Variables to keep track of how many lines fall into various categories.
     n_masked_lines = 0
     n_multi_isotopes = 0
+    n_duplicate_lines = 0
 
     wl_tolerance = wl_tolerance * u.m / u.s
     energy_tolerance = energy_tolerance * u.m / u.s
@@ -267,7 +269,7 @@ def harmonize_lists(transitions1, transitions2, spectral_mask,
                 tqdm.write('{:.2f} | {:8.4f} ({:.4f}) | {:.4f} ({:.4f})'
                            .format(score,
                                    item[0].wavelength, item[1],  # wavelength
-                                   item[0].lowerEnergy, item[2])) # energy
+                                   item[0].lowerEnergy, item[2]))  # energy
 
         # If there's more than one match, it could be due to isotopes, so check
         # that first:
@@ -304,10 +306,18 @@ def harmonize_lists(transitions1, transitions2, spectral_mask,
                     tqdm.write('{} matched to multiple lines.'.
                                format(str(line1)))
             else:
-                matched_lines.insert(0, line1)
-                matched_mult.append(matched_lines)
-                tqdm.write('{} matched to multiple lines.'.
-                           format(str(line1)))
+                match = [line1.__eq__(line) for line in matched_lines]
+                if np.all(match):
+                    tqdm.write('{} matched to multiple lines!'.
+                               format(str(line1)))
+                    tqdm.write('However it appear matches are duplicates.')
+                    n_duplicate_lines += 1
+                    matched_one.append(matched_lines[0])
+                else:
+                    matched_lines.insert(0, line1)
+                    matched_mult.append(matched_lines)
+                    tqdm.write('{} matched to multiple lines!'.
+                               format(str(line1)))
     tqdm.write('-+-+-+-+-+-+-')
     for item in matched_zero:
         print('{} {:.4f} {:.4f}'.format(*item))
@@ -320,6 +330,8 @@ def harmonize_lists(transitions1, transitions2, spectral_mask,
             len(matched_one), len(matched_one)/len(transitions1)))
     tqdm.write('(Of those, {} were picked out of multiple isotopes.)'.format(
             n_multi_isotopes))
+    tqdm.write('And {} were picked out of duplicate lines.'.format(
+            n_duplicate_lines))
     tqdm.write('{} were unable to be matched at all.'.format(
             len(matched_zero)))
     tqdm.write('{} were matched with multiple (non-isotope) lines.'.format(
@@ -495,28 +507,28 @@ def query_nist(transition_list, species_set):
                                   'TP', 'Line'])
             nist_transitions = []
             for row in tqdm(table):
-                if row[0] is ma.masked:
+                if row[2] is ma.masked:
+                    tqdm.write(f'No energy information for {row[0]}!')
+                    continue
+                elif row[0] is ma.masked:
+                    tqdm.write(f'No observed wavelength for {row[1]}!')
                     nist_wavenumber = float(row[1]) * u.cm ** -1
                     nist_wavelength = (1 / nist_wavenumber).to(u.nm)
                     tqdm.write(f'{nist_wavenumber} --> {nist_wavelength:.4f}')
-                elif row[1] is ma.masked:
-                    nist_wavelength = float(row[0]) * u.nm
-                    nist_wavenumber = (1 / nist_wavelength).to(u.cm ** -1)
-                    tqdm.write(f'{nist_wavelength} --> {nist_wavenumber:.4f}')
-                elif row[2] is ma.masked:
-                    tqdm.write(f'No energy information for {row[0]}')
-                    continue
                 else:
                     nist_wavelength = float(row[0]) * u.nm
-                    nist_wavenumber = float(row[1]) * u.cm ** -1
                 nist_energy_levels = row[2].split('-')
-                strip_chars = ' &?;abcdefghijklmnopqrstuvwxyz'
+                strip_chars = ' &?;†abcdefghijklmnopqrstuvwxyz'
                 nist_energy1 = float(nist_energy_levels[0].strip(strip_chars))
                 nist_energy2 = float(nist_energy_levels[1].strip(strip_chars))
                 nist_lower = [x.strip() for x in row[3].split('|')]
                 nist_upper = [x.strip() for x in row[4].split('|')]
-                nist_lower_J = nist_lower[-1].strip()
-                nist_upper_J = nist_upper[-1].strip()
+                try:
+                    nist_lower_J = float(Fraction(nist_lower[-1].strip()))
+                    nist_upper_J = float(Fraction(nist_upper[-1].strip()))
+                except ValueError:
+                    print(row)
+                    raise
                 nist_lower_orbital = ' '.join(nist_lower[0:2]).strip()
                 nist_upper_orbital = ' '.join(nist_upper[0:2]).strip()
                 try:
@@ -531,7 +543,6 @@ def query_nist(transition_list, species_set):
                 nist_transition.higherOrbital = nist_upper_orbital
                 nist_transition.lowerJ = nist_lower_J
                 nist_transition.higherJ = nist_upper_J
-                nist_transition.wavenumber = nist_wavenumber
 
                 nist_transitions.append(nist_transition)
                 master_nist_dict[species] = nist_transitions
@@ -620,8 +631,10 @@ nist_pickle_file = pickle_dir / 'transitions_NIST_returned.pkl'
 # All transitions from NIST matched with ours:
 nist_matched_pickle_file = pickle_dir / 'transitions_NIST_matched.pkl'
 
-# File to write out formatted NIST transitions into.
+# File to write out formatted NIST-matched transitions into.
 nist_formatted_file = data_dir / 'NIST_formatted_transitions.txt'
+# File to write out all transitions in NIST format.
+nist_formatted_all_file = data_dir / 'NIST_formatted_transitions_all.txt'
 
 
 CCD_bounds_file = masks_dir / 'unusable_spectrum_CCDbounds.txt'
@@ -856,15 +869,39 @@ if args.format_lines:
         print('Unpickling NIST-matched transitions...')
         nist_dict = pickle.load(f)
 
-    all_transitions = []
+    all_nist_transitions = []
     print(nist_dict.keys())
     for key in nist_dict.keys():
         for transition in nist_dict[key]:
-            all_transitions.append(transition)
-    print(f'{len(all_transitions)} transitions found matched.')
+            all_nist_transitions.append(transition)
+    print(f'{len(all_nist_transitions)} transitions found matched.')
 
-    all_transitions.sort()
+    all_nist_transitions.sort()
     with open(nist_formatted_file, 'w') as f:
+        f.write('lambda (nm) | wavenumber (cm^-1) | species | '
+                'lower energy - upper energy | '
+                'lower orbital configuration | lower J | '
+                'upper orbital configuration | upper J\n')
+        for transition in tqdm(all_nist_transitions):
+            str1 = '{:.4f} | {:.3f} | '.format(transition.wavelength.value,
+                                               transition.wavenumber.value)
+            str2 = '{:5} | '.format(transition.atomicSpecies)
+            str3 = '{:9.3f} - {:9.3f} | '.format(transition.lowerEnergy.value,
+                                                 transition.higherEnergy.value)
+            str4 = '{:30} | {:4} | '.format(transition.lowerOrbital,
+                                            transition.lowerJ)
+            str5 = '{:30} | {:4}\n'.format(transition.higherOrbital,
+                                           transition.higherJ)
+            write_str = str1 + str2 + str3 + str4 + str5
+            f.write(write_str)
+    tqdm.write('NIST-matched transitions written out to {}'.format(
+            nist_formatted_file))
+
+    with open(pickle_pairs_transitions_file, 'r+b') as f:
+        all_transitions = pickle.load(f)
+    tqdm.write(f'{len(all_transitions)} unique transitions found.')
+
+    with open(nist_formatted_all_file, 'w') as f:
         f.write('lambda (nm) | wavenumber (cm^-1) | species | '
                 'lower energy - upper energy | '
                 'lower orbital configuration | lower J | '
@@ -881,3 +918,6 @@ if args.format_lines:
                                            transition.higherJ)
             write_str = str1 + str2 + str3 + str4 + str5
             f.write(write_str)
+
+    tqdm.write('All transitions written out in NIST format to {}'.format(
+            nist_formatted_all_file))
