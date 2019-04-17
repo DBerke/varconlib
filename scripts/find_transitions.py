@@ -23,12 +23,33 @@ from fitting import GaussianFit
 
 desc = 'Fit absorption features in spectra from a given list of transitions.'
 parser = argparse.ArgumentParser(description=desc)
-#parser.add_argument('star_dir', action='store')
-#parser.add_argument('plot_dir', action='store')
-#parser.add_argument('transition_list', action='store')
-#parser.add_argument('results_out', action='store')
+parser.add_argument('object_dir', action='store',
+                    help='Directory in which to find e2ds sub-folders.')
+parser.add_argument('object_name', action='store',
+                    help='Name of object to use for storing output.')
+#parser.add_argument('--transition_dict', action='store',
+#                    help='Collection of transitions to use.')
 
 args = parser.parse_args()
+
+observations_dir = Path(args.object_dir)
+# Check that the path given exists:
+if not observations_dir.exists():
+    tqdm.write(observations_dir)
+    raise RuntimeError('The given directory does not exist.')
+
+# Check if the given path ends in data/reduced:
+if observations_dir.match('*/data/reduced'):
+    pass
+else:
+    observations_dir = observations_dir / 'data/reduced'
+    if not observations_dir.exists():
+        raise RuntimeError('The directory does not contain "data/reduced".')
+
+# Currenttly using /Users/dberke/HD146233/data/reduced/ for a specific file.
+glob_search_string = str(observations_dir) + '/2016-03-29/*e2ds_A.fits'
+# Get a list of all the data files in the data directory:
+data_files = [Path(string) for string in sorted(glob(glob_search_string))]
 
 config_file = Path('/Users/dberke/code/config/variables.cfg')
 config = configparser.ConfigParser(interpolation=configparser.
@@ -36,45 +57,63 @@ config = configparser.ConfigParser(interpolation=configparser.
 config.read(config_file)
 
 pickle_dir = Path(config['PATHS']['pickle_dir'])
-nist_matched_pickle_file = pickle_dir / 'transitions_NIST_matched.pkl'
+# All unique transitions found within pairs found:
+pickle_pairs_transitions_file = pickle_dir / 'pair_transitions.pkl'
 
+# output_dir = /Users/dberke/data_output
+output_dir = Path(config['PATHS']['output_dir'])
+object_dir = output_dir / args.object_name
+if not object_dir.exists():
+    os.mkdir(object_dir)
+# Define directory for output pickle files:
+output_pickle_dir = object_dir / 'pickles'
+if not output_pickle_dir.exists():
+    os.mkdir(output_pickle_dir)
 # Define paths for plots to go in:
-pictures_dir = Path(config['PATHS']['pictures_dir'])
+output_plots_dir = object_dir / 'plots'
+if not output_plots_dir.exists():
+    os.mkdir(output_plots_dir)
+closeup_dir = output_plots_dir / 'close_up'
+if not closeup_dir.exists():
+    os.mkdir(closeup_dir)
+context_dir = output_plots_dir / 'context'
+if not context_dir.exists():
+    os.mkdir(context_dir)
 
 # Read the dictionary of transitions matched with NIST.
-with open(nist_matched_pickle_file, 'r+b') as f:
+with open(pickle_pairs_transitions_file, 'r+b') as f:
     tqdm.write('Unpickling NIST-matched transitions...')
-    nist_dict = pickle.load(f)
+    transitions_list = pickle.load(f)
 
-observations_dir = Path('/Users/dberke/HD78660/data/reduced/')
-glob_search_string = str(observations_dir) + '/*/*e2ds_A.fits'
+tqdm.write('Found {} pickled transitions in {}.'.format(len(transitions_list),
+           pickle_pairs_transitions_file.name))
 
-# Get a list of all the data files in the data directory:
-data_files = [Path(string) for string in sorted(glob(glob_search_string))]
-
-for obs_path in tqdm(data_files[0:1]):
-    tqdm.write('Fitting {}...'.format(obs_path.stem))
+for obs_path in tqdm(data_files) if len(data_files) > 1 else data_files:
+    tqdm.write('Fitting {}...'.format(obs_path.name))
     obs = obs2d.HARPSFile2DScience(obs_path)
-    fits_dict = {}
-    plots_dir = pictures_dir / 'Stars' / obs_path.stem
-    for species in tqdm(nist_dict.keys()):
-        tqdm.write('Fitting {}...'.format(species))
-        fits_list = []
-        for transition in tqdm(nist_dict[species]):
-            plot_file = str(plots_dir / 'Transition_{:.4f}.png'.format(
-                    transition.wavelength.to(u.angstrom).value))
-            fit = GaussianFit(transition, obs, verbose=False)
-            fit.plotFit(outfile=plot_file)
-            fits_list.append(fit)
-        fits_dict[species] = tuple(fits_list)
 
-    total = 0
-    for value in fits_dict.values():
-        total += len(value)
-    tqdm.write('Found {} total transitions in {}.'.format(total,
-               obs_path.stem))
-    outfile = pickle_dir / obs_path.stem / 'gaussian_fits.pkl'
+    fits_list = []
+    for transition in tqdm(transitions_list):
+        plot_closeup = closeup_dir / 'Transition_{:.4f}_{}{}.png'.format(
+                transition.wavelength.to(u.angstrom).value,
+                transition.atomicSymbol, transition.ionizationState)
+        plot_context = context_dir / 'Transition_{:.4f}_{}{}.png'.format(
+                transition.wavelength.to(u.angstrom).value,
+                transition.atomicSymbol, transition.ionizationState)
+        try:
+            fit = GaussianFit(transition, obs, verbose=False)
+            fit.plotFit(plot_closeup, plot_context)
+            fits_list.append(fit)
+        except RuntimeError:
+            pass
+    fits_list.append(fit)
+
+    tqdm.write('Found {} transitions in {}.'.format(len(fits_list),
+               obs_path.name))
+    outfile = output_pickle_dir / '{}_gaussian_fits.pkl'.format(
+            obs._filename.stem)
     if not outfile.parent.exists():
         os.mkdir(outfile.parent)
     with open(outfile, 'w+b') as f:
-        pickle.dump(fits_dict, f)
+        tqdm.write(f'Pickling list of fits at {outfile}')
+        pickle.dump(fits_list, f)
