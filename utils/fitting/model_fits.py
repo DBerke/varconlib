@@ -10,7 +10,6 @@ Code to define a class for a model fit to an absorption line.
 """
 
 import configparser
-import os
 from pathlib import Path
 import numpy as np
 from scipy.optimize import curve_fit, OptimizeWarning
@@ -125,6 +124,7 @@ class GaussianFit(object):
         self.errors = errorArray[self.lowFitIndex:self.highFitIndex]
 
         self.lineDepth = self.continuumLevel - self.fluxMinimum
+        self.normalizedLineDepth = self.lineDepth / self.continuumLevel
 
         self.initial_guess = (self.lineDepth * -1,
                               self.correctedWavelength.to(u.angstrom).value,
@@ -173,6 +173,12 @@ class GaussianFit(object):
         self.centroid = self.popt[1] * u.angstrom
         self.standardDev = self.popt[2] * u.angstrom
 
+        if self.amplitude > 0:
+            if verbose:
+                tqdm.write('Bad fit for {}'.format(
+                        self.transition.wavelength))
+            raise RuntimeError('Positive amplitude from fit.')
+
         # Find 1-σ errors from the covariance matrix:
         self.perr = np.sqrt(np.diag(self.pcov))
 
@@ -196,14 +202,16 @@ class GaussianFit(object):
         self.FWHMErr = 2.354820 * self.standardDevErr
         self.velocityFWHM = vcl.wavelength2velocity(self.centroid,
                                                     self.centroid +
-                                                    self.FWHM / 2)
-        # TODO: Error for FWHM velocity.
+                                                    self.FWHM)
+        self.velocityFWHMErr = vcl.wavelength2velocity(self.centroid,
+                                                       self.centroid +
+                                                       self.FWHMErr)
 
         # Compute the offset between the input wavelength and the wavelength
         # found in the fit.
-        self.offset = self.centroid - self.correctedWavelength
-        self.velocityOffset = vcl.wavelength2velocity(self.centroid,
-                                                      self.correctedWavelength)
+        self.offset = self.correctedWavelength - self.centroid
+        self.velocityOffset = vcl.wavelength2velocity(self.correctedWavelength,
+                                                      self.centroid)
         # TODO: Error for velocity offset.
 
         if verbose:
@@ -234,7 +242,7 @@ class GaussianFit(object):
         fig = plt.figure(figsize=(8, 8))
         ax = fig.add_subplot(1, 1, 1)
 
-        ax.set_xlabel('Wavelength (angstroms)')
+        ax.set_xlabel(r'Wavelength ($\AA$)')
         ax.set_ylabel('Flux (photo-electrons)')
 #        ax.xaxis.set_major_locator(ticker.FixedLocator(self.wavelengths
 #                                                       .to(u.angstrom).value))
@@ -243,13 +251,18 @@ class GaussianFit(object):
                     [self.order, self.lowContinuumIndex - 1],
                     right=self.observation.barycentricArray
                     [self.order, self.highContinuumIndex + 1])
+        # Set y-limits so a fit doesn't balloon the plot scale out.
+        ax.set_ylim(top=self.continuumLevel * 1.1,
+                    bottom=self.fluxMinimum * 0.9)
 
         # Plot the expected and measured wavelengths.
         ax.axvline(self.correctedWavelength.to(u.angstrom),
                    color='LightSteelBlue', linestyle=':',
                    label='RV-corrected transition λ',)
         ax.axvline(self.centroid.to(u.angstrom),
-                   color='IndianRed', label='Fitted centroid',
+                   color='IndianRed',
+                   label='Fit ({:.2f})'.
+                   format(self.velocityOffset.to(u.m/u.s)),
                    linestyle='-')
         # Plot the actual data.
         self.observation.plotErrorbar(self.order, ax,
