@@ -214,13 +214,13 @@ class Transition(object):
                 if not isclose(self.higherEnergy, other.higherEnergy,
                                rel_tol=1e-5):
                     return False
-            if (self.lowerJ is not None) and\
-                    (other.lowerJ is not None):
-                if self.lowerJ != other.lowerJ:
+            if (self._lowerJ is not None) and\
+                    (other._lowerJ is not None):
+                if self._lowerJ != other._lowerJ:
                     return False
-            if (self.higherJ is not None) and\
-                    (other.higherJ is not None):
-                if self.higherJ != other.higherJ:
+            if (self._higherJ is not None) and\
+                    (other._higherJ is not None):
+                if self._higherJ != other._higherJ:
                     return False
             if (self.lowerOrbital is not None) and\
                     (other.lowerOrbital is not None):
