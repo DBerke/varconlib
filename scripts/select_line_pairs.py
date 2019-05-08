@@ -306,11 +306,16 @@ def harmonize_lists(transitions1, transitions2, spectral_mask,
                     tqdm.write('{} matched to multiple lines.'.
                                format(str(line1)))
             else:
-                match = [line1.__eq__(line) for line in matched_lines]
+                try:
+                    match = [line1.__eq__(line) for line in matched_lines]
+                except AttributeError:
+                    for line in matched_lines:
+                        print(line)
+                    raise
                 if np.all(match):
                     tqdm.write('{} matched to multiple lines!'.
                                format(str(line1)))
-                    tqdm.write('However it appear matches are duplicates.')
+                    tqdm.write('However it appears all are duplicates.')
                     n_duplicate_lines += 1
                     matched_one.append(matched_lines[0])
                 else:
@@ -473,6 +478,7 @@ def query_nist(transition_list, species_set):
     # Query NIST for information on each transition.
     tqdm.write('Querying NIST for transition information...')
     master_nist_dict = {}
+    # Regexes for things to search for.
     for species in tqdm(species_set):
 
         species_list = []
@@ -517,18 +523,33 @@ def query_nist(transition_list, species_set):
                     tqdm.write(f'{nist_wavenumber} --> {nist_wavelength:.4f}')
                 else:
                     nist_wavelength = float(row[0]) * u.nm
+#                if '†' in row[2]:
+#                    print('----Found a †----')
+#                if '?' in row[2]:
+#                    print('----Found a ?----')
                 nist_energy_levels = row[2].split('-')
-                strip_chars = ' &?;†abcdefghijklmnopqrstuvwxyz'
-                nist_energy1 = float(nist_energy_levels[0].strip(strip_chars))
-                nist_energy2 = float(nist_energy_levels[1].strip(strip_chars))
+                strip_chars = ' ?†'
+                try:
+                    nist_energy1 = float(nist_energy_levels[0].
+                                         strip(strip_chars))
+                    nist_energy2 = float(nist_energy_levels[1].
+                                         strip(strip_chars))
+                except ValueError:
+                    print(row)
+                    raise
                 nist_lower = [x.strip() for x in row[3].split('|')]
                 nist_upper = [x.strip() for x in row[4].split('|')]
                 try:
                     nist_lower_J = float(Fraction(nist_lower[-1].strip()))
                     nist_upper_J = float(Fraction(nist_upper[-1].strip()))
                 except ValueError:
+                    print()
+                    print('----------')
                     print(row)
-                    raise
+                    for item in row:
+                        print(f"'{item}'")
+                    print(nist_energy_levels)
+                    continue
                 nist_lower_orbital = ' '.join(nist_lower[0:2]).strip()
                 nist_upper_orbital = ' '.join(nist_upper[0:2]).strip()
                 try:
@@ -573,12 +594,18 @@ parser.add_argument('--pair_lines', action='store_true',
 parser.add_argument('--query_nist', action='store_true',
                     default=False,
                     help='Query transitions from NIST.')
+# Upping -dw to 3300 helps match one or two additionaly lines that are right
+# on the edge.
 parser.add_argument('--match_nist', action='store_true',
                     default=False,
                     help='Match previous transition list with NIST.')
 parser.add_argument('--format_lines', action='store_true',
                     default=False,
                     help='Format output from matching NIST list.')
+
+parser.add_argument('--rate_pairs', action='store_true',
+                    default=False,
+                    help='List pairs based on blend status.')
 
 parser.add_argument('--verbose', action='store_true',
                     default=False,
@@ -653,10 +680,12 @@ mask_no_CCD_bounds = vcl.parse_spectral_mask_file(no_CCD_bounds_file)
 #print("Read blue line list.")
 
 if args.match_lines:
+    tqdm.write('Reading BRASS line list...')
     purpleData = np.genfromtxt(purpleFile, delimiter=",", skip_header=1,
                                dtype=(float, "U2", int, float, float, float))
     tqdm.write("Read purple line list.")
 
+    tqdm.write('Reading Kurucz line list...')
     KuruczData = np.genfromtxt(KuruczFile, delimiter=colWidths, autostrip=True,
                                skip_header=842959, skip_footer=987892,
                                names=colNames, dtype=colDtypes,
@@ -665,6 +694,7 @@ if args.match_lines:
 
     # Create lists of transitions from the BRASS and Kurucz line lists.
     b_transition_lines = []
+    tqdm.write('Parsing BRASS line list...')
     for b_transition in tqdm(purpleData, unit='transitions'):
         wl = b_transition[0] * u.nm
         elem = elements[b_transition[1]]
@@ -679,6 +709,7 @@ if args.match_lines:
         b_transition_lines.append(transition)
 
     k_transition_lines = []
+    tqdm.write('Parsing Kurucz line list...')
     for k_transition in tqdm(KuruczData, unit='transitions'):
         wl = k_transition['wavelength'] * u.nm
         # The element and ionionzation state from the Kurucz list is given as a
@@ -726,8 +757,7 @@ if args.match_lines:
                                   energy_tolerance=args.delta_energy)
 
     # Create a pickled file of the transitions that have been found.
-    pickle_file = pickle_dir / 'transitions.pickle'
-    pickle_file_backup = pickle_dir / 'transitions_{}.pickle'.format(
+    pickle_file_backup = pickle_dir / 'transitions_{}.pkl'.format(
             datetime.date.today().isoformat())
     tqdm.write('Saving transitions to {}'.format(pickle_file))
     with open(pickle_file, 'w+b') as f:
@@ -757,19 +787,12 @@ if args.pair_lines:
     with open(pickle_pairs_file, 'w+b') as f:
         pickle.dump(pairs, f)
 
-    transition_set = set()
-    species_set = set()
-    high_energy_pairs = []
+    transition_list = []
     for pair in pairs:
         for transition in pair:
-            transition_set.add(transition)
-            species_set.add(transition.atomicSpecies)
-            if (transition.higherEnergy > 50000 * u.cm ** -1) or\
-               (transition.lowerEnergy > 50000 * u.cm ** -1):
-                if pair not in high_energy_pairs:
-                    high_energy_pairs.append(pair)
-    tqdm.write('Total of {} unique transitions.'.format(len(transition_set)))
-    transition_list = [x for x in transition_set]
+            if transition not in transition_list:
+                transition_list.append(transition)
+    tqdm.write('Total of {} unique transitions.'.format(len(transition_list)))
     transition_list.sort()
 
     # Pickle the list of unique transitions in the returned pairs.
@@ -810,6 +833,7 @@ if args.query_nist:
 if args.match_nist:
     if not (args.delta_wavelength and args.delta_energy):
         print('Need delta_wavelength and delta_energy arguments!')
+        # TODO: Pointless if-statement with default values.
     else:
         try:
             with open(nist_pickle_file, 'r+b') as f:
@@ -850,9 +874,12 @@ if args.match_nist:
         else:
             tqdm.write('-----------------------')
             tqdm.write(f'Checking for {species}...')
+            species_list = []
             for transition in transitions_dict[species]:
+                species_list.append(transition)
                 tqdm.write('{} unmatched'.format(str(transition)))
             tqdm.write(f'No results for {species} in NIST results!')
+            master_match_dict[species] = species_list
 
     print(master_match_dict.keys())
     total = 0
@@ -888,9 +915,9 @@ if args.format_lines:
             str2 = '{:5} | '.format(transition.atomicSpecies)
             str3 = '{:9.3f} - {:9.3f} | '.format(transition.lowerEnergy.value,
                                                  transition.higherEnergy.value)
-            str4 = '{:30} | {:4} | '.format(transition.lowerOrbital,
+            str4 = '{:35} | {!s:4} | '.format(transition.lowerOrbital,
                                             transition.lowerJ)
-            str5 = '{:30} | {:4}\n'.format(transition.higherOrbital,
+            str5 = '{:35} | {!s:4} | \n'.format(transition.higherOrbital,
                                            transition.higherJ)
             write_str = str1 + str2 + str3 + str4 + str5
             f.write(write_str)
@@ -912,9 +939,9 @@ if args.format_lines:
             str2 = '{:5} | '.format(transition.atomicSpecies)
             str3 = '{:9.3f} - {:9.3f} | '.format(transition.lowerEnergy.value,
                                                  transition.higherEnergy.value)
-            str4 = '{:30} | {:4} | '.format(transition.lowerOrbital,
+            str4 = '{:35} | {!s:4} | '.format(transition.lowerOrbital,
                                             transition.lowerJ)
-            str5 = '{:30} | {:4}\n'.format(transition.higherOrbital,
+            str5 = '{:35} | {!s:4} | \n'.format(transition.higherOrbital,
                                            transition.higherJ)
             write_str = str1 + str2 + str3 + str4 + str5
             f.write(write_str)
