@@ -20,6 +20,8 @@ import unyt as u
 from tqdm import tqdm
 import varconlib as vcl
 
+# This line prevents the wavelength formatting from being in the form of
+# scientific notation.
 matplotlib.rcParams['axes.formatter.useoffset'] = False
 
 config_file = Path('/Users/dberke/code/config/variables.cfg')
@@ -33,7 +35,9 @@ class GaussianFit(object):
 
     """
 
-    def __init__(self, transition, observation, verbose=False):
+    def __init__(self, transition, observation, radial_velocity=None,
+                 close_up_plot_path=None, context_plot_path=None,
+                 verbose=False):
         """Construct a fit to an absorption feature using a gaussian.
 
         Parameters
@@ -45,6 +49,19 @@ class GaussianFit(object):
 
         Optional
         --------
+        radial_velocity : `unyt.unyt_quantity`
+            A radial velocity (dimensions of length / time) for the object in
+            the observation. Most of the time the radial velocity should be
+            picked up from the observation itself, but for certain objects
+            such as asteroids the supplied radial velocity may not be correct.
+            In such cases, this parameter can be used to override the given
+            radial velocity.
+        close_up_plot_path : string or `pathlib.Path`
+            The file name to save a close-up plot of the fit to in case the fit
+            attempt fails.
+        context_plot_path : string or `pathlib.Path`
+            The file name to save a wider context plot (±25 km/s) around the
+            fitted feature to in case the fit attempt fails.
         verbose : bool, Default : False
             Whether to print out extra diagnostic information while running
             the function.
@@ -67,7 +84,12 @@ class GaussianFit(object):
         # fit.
         pixel_range = 3
 
-        radial_velocity = self.observation.radialVelocity
+        # If no radial velocity is given, use the radial velocity from the
+        # supplied observation. This is mostly for use with things like
+        # asteroids that might not have a radial velocity assigned.
+        if radial_velocity is None:
+            radial_velocity = self.observation.radialVelocity
+
         # Shift the wavelength being searched for to correct for the radial
         # velocity of the star.
         nominal_wavelength = self.transition.wavelength
@@ -150,18 +172,20 @@ class GaussianFit(object):
             print(self.continuumLevel)
             print(self.lineDepth)
             print(self.initial_guess)
-            fig = plt.figure(figsize=(8, 8))
-            ax = fig.add_subplot(1, 1, 1)
-            ax.errorbar(self.wavelengths.value,
-                        self.fluxes,
-                        yerr=self.errors,
-                        color='Blue', marker='o', linestyle='')
-            ax.plot(self.wavelengths.value,
-                    vcl.gaussian(self.wavelengths.value, *self.initial_guess),
-                    color='Black')
-            outfile = Path('/Users/dberke/Pictures/debug_norm.png')
-            fig.savefig(str(outfile))
-            plt.close(fig)
+            self.plotFit(close_up_plot_path, context_plot_path,
+                         plot_fit=False, verbose=False)
+#            fig = plt.figure(figsize=(8, 8))
+#            ax = fig.add_subplot(1, 1, 1)
+#            ax.errorbar(self.wavelengths.value,
+#                        self.fluxes,
+#                        yerr=self.errors,
+#                        color='Blue', marker='o', linestyle='')
+#            ax.plot(self.wavelengths.value,
+#                    vcl.gaussian(self.wavelengths.value, *self.initial_guess),
+#                    color='Black')
+#            outfile = Path('/Users/dberke/Pictures/debug_norm.png')
+#            fig.savefig(str(outfile))
+#            plt.close(fig)
             raise
 
         if verbose:
@@ -177,6 +201,8 @@ class GaussianFit(object):
             if verbose:
                 tqdm.write('Bad fit for {}'.format(
                         self.transition.wavelength))
+            self.plotFit(close_up_plot_path, context_plot_path,
+                         plot_fit=True, verbose=False)
             raise RuntimeError('Positive amplitude from fit.')
 
         # Find 1-σ errors from the covariance matrix:
@@ -219,7 +245,8 @@ class GaussianFit(object):
             print(self.fluxMminimum)
             print(self.wavelengths)
 
-    def plotFit(self, close_up, context, verbose=False):
+    def plotFit(self, close_up_plot_path, context_plot_path, plot_fit=True,
+                verbose=False):
         """Plot a graph of this fit.
 
         This method will produce a very close-in plot of just the fitted region
@@ -227,11 +254,15 @@ class GaussianFit(object):
 
         Optional
         --------
-        close_up : string or `pathlib.Path`
+        close_up_plot_path : string or `pathlib.Path`
             The file name to save a close-up plot of the fit to.
-        context : string of `pathlib.Path`
-            The file name to save a wider context (±25 km/s) around the fitted
-            feature to.
+        context_plot_path : string or `pathlib.Path`
+            The file name to save a wider context plot (±25 km/s) around the
+            fitted feature to.
+        plot_fit : bool, Default : True
+            If *True*, plot the centroid of the fit and the fitted Gaussian.
+            Otherwise, don't plot those two things. This allows creating plots
+            of failed fits to see the context of the data.
         verbose : bool, Default : False
             If *True*, the function will print out additional information as it
             runs.
@@ -258,12 +289,16 @@ class GaussianFit(object):
         # Plot the expected and measured wavelengths.
         ax.axvline(self.correctedWavelength.to(u.angstrom),
                    color='LightSteelBlue', linestyle=':',
-                   label='RV-corrected transition λ',)
-        ax.axvline(self.centroid.to(u.angstrom),
-                   color='IndianRed',
-                   label='Fit ({:.2f})'.
-                   format(self.velocityOffset.to(u.m/u.s)),
-                   linestyle='-')
+                   label='RV-corrected λ={:.3f}'.format(
+                           self.correctedWavelength.to(u.angstrom)))
+        # Don't plot the centroid if this is a failed fit.
+        if hasattr(self, 'centroid') and hasattr(self, 'velocityOffset'):
+            ax.axvline(self.centroid.to(u.angstrom),
+                       color='IndianRed',
+                       label='Fit ({:.3f}, {:+.2f})'.
+                       format(self.centroid.to(u.angstrom),
+                              self.velocityOffset.to(u.m/u.s)),
+                       linestyle='-')
         # Plot the actual data.
         self.observation.plotErrorbar(self.order, ax,
                                       min_index=self.lowContinuumIndex,
@@ -280,16 +315,18 @@ class GaussianFit(object):
         ax.plot(x, vcl.gaussian(x, *self.initial_guess),
                 color='SlateGray', label='Initial guess',
                 linestyle='--', alpha=0.8)
-        # Plot the fitted gaussian.
-        ax.plot(x, vcl.gaussian(x, *self.popt),
-                color='DarkGreen',
-                linestyle='-', label='Fitted Gaussian')
+        # Plot the fitted gaussian, unless this is a failed fit attempt.
+        if plot_fit:
+            ax.plot(x, vcl.gaussian(x, *self.popt),
+                    color='DarkGreen',
+                    linestyle='-', label='Fitted Gaussian')
 
         ax.legend()
         # Save the resultant plot.
-        fig.savefig(str(context))
+        fig.savefig(str(context_plot_path))
         if verbose:
-            tqdm.write('Created wider context plot at {}'.format(context))
+            tqdm.write('Created wider context plot at {}'.format(
+                    context_plot_path))
 
         # Now create a close-in version to focus on the fit.
         ax.set_xlim(left=self.observation.barycentricArray
@@ -299,7 +336,8 @@ class GaussianFit(object):
         ax.set_ylim(top=self.fluxes.max() * 1.08,
                     bottom=self.fluxes.min() * 0.93)
 
-        fig.savefig(str(close_up))
+        fig.savefig(str(close_up_plot_path))
         if verbose:
-            tqdm.write('Created close up plot at {}'.format(close_up))
+            tqdm.write('Created close up plot at {}'.format(
+                    close_up_plot_path))
         plt.close(fig)
