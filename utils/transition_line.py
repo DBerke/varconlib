@@ -155,6 +155,7 @@ class Transition(object):
     @wavenumber.setter
     def wavenumber(self, new_wavenumber):
         if type(new_wavenumber) is u.unyt_quantity:
+            # TODO: Change to a try new_wavenumber.to(u.cm ** -1)...except
             if new_wavenumber.units == u.cm ** -1:
                 self.wavelength = 1 / new_wavenumber
             else:
@@ -170,7 +171,8 @@ class Transition(object):
                                            self.ionizationState)
 
     def __str__(self):
-        if self.lowerEnergy and self.higherEnergy:
+        if (self.lowerEnergy is not None) and\
+          (self.higherEnergy is not None):
             return "{:.4f} {} ({:.4f}, {:.4f})".format(self.wavelength,
                                                        self.atomicSpecies,
                                                        self.lowerEnergy,
