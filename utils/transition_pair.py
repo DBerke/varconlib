@@ -53,10 +53,13 @@ class TransitionPair(object):
                                    self._lowerEnergyTransition)
 
     def __str__(self):
-        return '{} ({} {}): {:.4f}, {:.4f}'.format(self.__class__.__name__,
+        return 'Pair: {} {} {:.4f}, '.format(
                 self._higherEnergyTransition.atomicSymbol,
                 self._higherEnergyTransition.ionizationState,
-                self._higherEnergyTransition.wavelength,
+                self._higherEnergyTransition.wavelength) +\
+                '{} {} {:.4f}'.format(
+                self._lowerEnergyTransition.atomicSymbol,
+                self._lowerEnergyTransition.ionizationState,
                 self._lowerEnergyTransition.wavelength)
 
     def __eq__(self, other):
@@ -66,7 +69,7 @@ class TransitionPair(object):
         """
 
         if (self._lowerEnergyTransition == other._lowerEnergyTransition)\
-          and (self._higherEnergyTransition == other._higherEnergyTransition):
+           and (self._higherEnergyTransition == other._higherEnergyTransition):
             return True
         else:
             return False
