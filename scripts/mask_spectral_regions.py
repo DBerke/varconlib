@@ -20,8 +20,7 @@ from adjustText import adjust_text
 
 def find_telluric_lines(wavelength, flux, smallwindow, largewindow, threshold,
                         start=None, end=None):
-    """
-    Steps through a spectrum returning pixels likely to be part of telluric
+    """Steps through a spectrum returning pixels likely to be part of telluric
     absorption lines.
 
     Parameters
@@ -44,6 +43,7 @@ def find_telluric_lines(wavelength, flux, smallwindow, largewindow, threshold,
         The wavelength to begin at.
     end : float
         The wavelength to end at.
+
     """
 
     masked_pixels = []
@@ -93,7 +93,9 @@ def find_CCD_boundaries(proximity, blueformat, redformat,
     redcoeffs : array-like
         A list of coefficients for fits to the x-y pixel positions of the
         spectral orders on the red CCD.
+
     """
+
     coeffs_file = '/Users/dberke/HD146233/ADP.2014-09-16T11:06:39.660.fits'
     coeffs_dict = vcl.readHARPSfile(coeffs_file, coeffs=True)
     masked_wls = []
@@ -172,7 +174,13 @@ def find_CCD_boundaries(proximity, blueformat, redformat,
 
 
 def merge_list_entries(list_to_merge):
-    """Merged overlapping tuples in a list.
+    """Merge overlapping tuples in a list.
+
+
+    This function takes a list of tuples containing exactly two numbers (as
+    floats) with the smaller number first. It sorts them by lower bound, and
+    then compares them to see if any overlap. Ultimately it returns a list of
+    tuples containing the union of any tuples that overlap in range.
 
     Parameters
     ----------
