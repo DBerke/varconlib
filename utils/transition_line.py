@@ -166,14 +166,15 @@ class Transition(object):
 
     def __repr__(self):
         return "{}({:.4f}, {}, {})".format(self.__class__.__name__,
-                                           self.wavelength.value,
+                                           self.wavelength.to(u.nm),
                                            self.atomicNumber,
                                            self.ionizationState)
 
     def __str__(self):
         if (self.lowerEnergy is not None) and\
           (self.higherEnergy is not None):
-            return "{:.4f} {} ({:.4f}, {:.4f})".format(self.wavelength,
+            return "{:.4f} {} ({:.4f}, {:.4f})".format(self.wavelength.
+                                                       to(u.nm),
                                                        self.atomicSpecies,
                                                        self.lowerEnergy,
                                                        self.higherEnergy)
