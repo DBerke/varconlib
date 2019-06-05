@@ -770,12 +770,15 @@ nist_pickle_file = pickle_dir / 'transitions_NIST_returned.pkl'
 # All transitions from NIST matched with ours:
 nist_matched_pickle_file = pickle_dir / 'transitions_NIST_matched.pkl'
 
+# ! The pickle file containing final selection of transitions to use.
+final_selection_file = pickle_dir / 'final_transitions_selection.pkl'
+
 # File to write out formatted NIST-matched transitions into.
 nist_formatted_file = data_dir / 'NIST_formatted_transitions.txt'
 # File to write out all transitions in NIST format.
 nist_formatted_all_file = data_dir / 'NIST_formatted_transitions_all.txt'
 # File to contain all the least-blended transitions.
-nist_best_formatted_file = data_dir /'NIST_formatted_best_transitions.txt'
+nist_best_formatted_file = data_dir / 'NIST_formatted_best_transitions.txt'
 
 
 CCD_bounds_file = masks_dir / 'unusable_spectrum_CCDbounds.txt'
@@ -1168,3 +1171,10 @@ if args.rate_pairs:
         f.write(header)
         for write_str in lines_to_write:
             f.write(write_str)
+
+    # This pickle file is the finaly selection of transitions.
+    print('Pickling final selection of transitions to file: {}.'.format(
+            final_selection_file))
+    with open(final_selection_file, 'w+b') as f:
+        pickle.dump(good_transitions, f)
+
