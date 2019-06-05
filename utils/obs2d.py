@@ -11,18 +11,28 @@ files.
 
 import configparser
 from copy import copy
-import numpy as np
-import unyt as u
-import varconlib as vcl
-from tqdm import tqdm, trange
-from astropy.io import fits
+from math import isnan
 from pathlib import Path
+
+from astropy.io import fits
+import numpy as np
+from tqdm import tqdm, trange
+import unyt as u
+
 from conversions import air2vacESO
+import varconlib as vcl
+from exceptions import BadRadialVelocityError
+
 
 config_file = Path('/Users/dberke/code/config/variables.cfg')
 config = configparser.ConfigParser(interpolation=configparser.
                                    ExtendedInterpolation())
 config.read(config_file)
+
+# Read some path variables from the config file.
+blaze_file_dir = Path(config['PATHS']['blaze_file_dir'])
+pixel_geom_files_dir = Path(config['PATHS']['pixel_geom_files_dir'])
+wavelength_cals_dir = Path(config['PATHS']['wavelength_cal_dir'])
 
 
 class HARPSFile2D(object):
@@ -35,6 +45,10 @@ class HARPSFile2D(object):
             self._filename = Path(FITSfile)
         else:
             self._filename = FITSfile
+        if not self._filename.exists():
+            tqdm.write('Given filename does not exist!')
+            tqdm.write(self._filename)
+            raise FileNotFoundError
         with fits.open(self._filename) as hdulist:
             self._header = hdulist[0].header
             self._rawData = hdulist[0].data
@@ -52,7 +66,7 @@ class HARPSFile2D(object):
         Parameters
         ----------
         flag : str
-            The key of of the FITS header to get the value of.
+            The key of the FITS header to get the value of.
 
         Returns
         -------
@@ -76,7 +90,8 @@ class HARPSFile2DScience(HARPSFile2D):
 
     """
 
-    def __init__(self, FITSfile, update=[]):
+    def __init__(self, FITSfile, update=[], use_new_coefficients=True,
+                 use_pixel_positions=True):
         """Parse a given FITS file containing an observation into a usable
         HARPSFile2DScience object.
 
@@ -127,22 +142,30 @@ class HARPSFile2DScience(HARPSFile2D):
         # them if we really need them, i.e. when opening a file for the
         # first time or when explicitly updating it.
         if (len(hdulist) == 1) or file_open_mode == 'update':
-            self._blazeFile = self.getBlazeFile()
+            self._blazeFile = HARPSFile2D(self.getBlazeFile())
+
+        # Define an error string for updating a file that hasn't been opened
+        # previously
+        err_str = "File opened in 'update' mode but no arrays exist!"
 
         # Try to read the wavelength array, or create it if it doesn't
         # exist.
-        err_str = "File opened in 'update' mode but no arrays exist!"
+        # ??? See if these can be covered with a wrapper.
         try:
             self._wavelengthArray = hdulist['WAVE'].data * u.angstrom
         except KeyError:
             if ('ALL' in update) or ('WAVE' in update):
                 raise RuntimeError(err_str)
             tqdm.write('Writing new wavelength HDU.')
-            self.writeWavelengthHDU(hdulist, verify_action='warn')
+            self.writeWavelengthHDU(hdulist, verify_action='warn',
+                                    use_new_coefficients=use_new_coefficients,
+                                    use_pixel_positions=use_pixel_positions)
         # If we're updating the file, overwrite the existing wavelengths.
         if ('ALL' in update) or ('WAVE' in update):
             tqdm.write('Overwriting wavelength HDU.')
-            self.writeWavelengthHDU(hdulist, verify_action='warn')
+            self.writeWavelengthHDU(hdulist, verify_action='warn',
+                                    use_new_coefficients=use_new_coefficients,
+                                    use_pixel_positions=use_pixel_positions)
 
         # Try to read the barycentric-vacuum wavelength array, or create it if
         # if doesn't exist yet.
@@ -200,42 +223,43 @@ class HARPSFile2DScience(HARPSFile2D):
     @property
     def wavelengthArray(self):
         if not hasattr(self, '_wavelengthArray'):
-            print('Creating wavelength array.')
-            self._wavelengthArray = self.getWavelengthArray()
+            tqdm.write('No wavelength array, something went wrong!')
+#            print('Creating wavelength array.')
+#            self._wavelengthArray = self.getWavelengthArray()
         return self._wavelengthArray
 
     @property
     def vacuumArray(self):
         if not hasattr(self, '_vacuumArray'):
-            print('Creating vacuum wavelength array.')
+            tqdm.write('Creating vacuum wavelength array.')
             self._vacuumArray = self.getVacuumArray()
         return self._vacuumArray
 
     @property
     def barycentricArray(self):
         if not hasattr(self, '_barycentricArray'):
-            print('Creating barycentric vacuum wavelength array.')
+            tqdm.write('Creating barycentric vacuum wavelength array.')
             self._barycentricArray = self.getBarycentricArray()
         return self._barycentricArray
 
     @property
     def photonFluxArray(self):
         if not hasattr(self, '_photonFluxArray'):
-            print('Generating photon flux array.')
+            tqdm.write('Generating photon flux array.')
             self._photonFluxArray = self.getPhotonFluxArray()
         return self._photonFluxArray
 
     @property
     def errorArray(self):
         if not hasattr(self, '_errorArray'):
-            print('Generating error array.')
+            tqdm.write('Generating error array.')
             self._errorArray = self.getErrorArray()
         return self._errorArray
 
     @property
     def blazeArray(self):
         if not hasattr(self, '_blazeArray'):
-            print('Generating blaze array.')
+            tqdm.write('Generating blaze array.')
             self._blazeArray = self.getBlazeArray()
         return self._blazeArray
 
@@ -244,11 +268,20 @@ class HARPSFile2DScience(HARPSFile2D):
         if not hasattr(self, '_radialVelocity'):
             try:
                 rv_card = 'HIERARCH ESO TEL TARG RADVEL'
-                self._radialVelocity = u.km / u.s * \
-                                       float(self.getHeaderCard(rv_card))
+                radial_velocity = float(self.getHeaderCard(rv_card)) * \
+                    u.km / u.s
             except KeyError:
                 print('No radial velocity card found for this observation!')
                 raise
+
+            if isnan(radial_velocity):
+                raise BadRadialVelocityError('Radial velocity is NaN!')
+            if abs(radial_velocity) > 5000:
+                print(radial_velocity)
+                raise BadRadialVelocityError('Radial velocity is suspiciously'
+                                             ' high! {}'.format(
+                                                     radial_velocity))
+            self._radialVelocity = radial_velocity
         return self._radialVelocity
 
     @property
@@ -268,9 +301,9 @@ class HARPSFile2DScience(HARPSFile2D):
 
         Returns
         -------
-        obs2d.HARPSFile2D object
-            A HARPSFile2D object created from the blaze file associated with
-            this observation via its header card.
+        `pathlib.Path` object
+            A `Path` object containing the path to the blaze file associated
+            with this observation via its header card.
 
         """
 
@@ -281,23 +314,125 @@ class HARPSFile2DScience(HARPSFile2D):
 
         file_date = blaze_file[6:16]
 
-        blaze_file_dir = Path(config['PATHS']['blaze_file_dir'])
         blaze_file_path = blaze_file_dir /\
             'data/reduced/{}'.format(file_date) /\
             blaze_file
 
         if not blaze_file_path.exists():
             tqdm.write(str(blaze_file_path))
-            raise RuntimeError("Blaze file path doesn't exist!")
+            raise FileNotFoundError("Blaze file path doesn't exist!")
 
-        return HARPSFile2D(blaze_file_path)
+        return blaze_file_path
 
-    def getWavelengthArray(self):
+    def getPixelPositionGeomFile(self):
+        """Return the path ot the pixel position geometry file.
+
+        The pixel sizes in the HARPS CCDs are not entirely uniform across their
+        widths, as shown in Coffinet et al. 2019 [1]_. This leads to systematic
+        erros in the wavelength calibration, which by default assumes perfectly
+        regular pixel sizes at all locations. This method retrieves information
+        on the pixel center positions across the CCDs [2]_ in the form of a
+        72x4096 array corresponding to the shape of an exracted 2D spectrum.
+
+        Returns
+        -------
+        `pathlib.Path` object
+            A `Path` object pointing to the pixel position geometry file
+            provided by C. Lovis.
+
+        References
+        ----------
+        [1] A. Coffinet, C. Lovis, X. Dumusque, F. Pepe, "New wavelength
+        calibration of the HARPS spectrograph", Astronomy & Astrophysics, 2019
+
+        [2] C. Lovis, private communication.
+
+        """
+
+        pixel_pos_file_path = pixel_geom_files_dir /\
+            'pixel_geom_pos_HARPS_2004_A.fits'
+
+        if not pixel_pos_file_path.exists():
+            tqdm.write(str(pixel_pos_file_path))
+            raise FileNotFoundError("Pixel positions file doesn't exist!")
+
+        return pixel_pos_file_path
+
+    def getPixelSizeGeomFile(self):
+        """Return the path to the pixel size geometry file.
+
+        The pixel sizes in the HARPS CCDs are not entirely uniform across their
+        widths, as shown in Coffinet et al. 2019 [1]_. This leads to systematic
+        erros in the wavelength calibration, which by default assumes perfectly
+        regular pixel sizes at all locations. This method retrieves information
+        on the pixel sizes across the CCDs [2]_ in the form of a 72x4096 array
+        corresponding to the shape of an exracted 2D spectrum.
+
+        Returns
+        -------
+        `pathlib.Path` object
+            A `Path` object pinting to the pixel size geometry file
+            provided by C. Lovis.
+
+        References
+        ----------
+        [1] A. Coffinet, C. Lovis, X. Dumusque, F. Pepe, "New wavelength
+        calibration of the HARPS spectrograph", Astronomy & Astrophysics, 2019
+
+        [2] C. Lovis, private communication.
+
+        """
+
+        pixel_size_file_path = pixel_geom_files_dir /\
+            'pixel_geom_size_HARPS_2004_A.fits'
+
+        if not pixel_size_file_path.exists():
+            tqdm.write(str(pixel_size_file_path))
+            raise FileNotFoundError("Pixel size file doesn't exist!")
+
+        return pixel_size_file_path
+
+    def getWavelengthCalibrationFile(self):
+        """Return the path to the wavelength calibration file associated with
+        this observation from its header keyword.
+
+        Returns
+        -------
+        `pathlib.Path` object
+            A `Path` object pointing to the re-calibrated wavelength
+            calibration file associated with this observation, which should
+            have the same name as the file mentioned in the 'HIERARCH ESO DRS
+            CAL TH FILE' header card.
+
+        """
+
+        cal_file_name = self.getHeaderCard("HIERARCH ESO DRS CAL TH FILE")
+        cal_file_path = wavelength_cals_dir / cal_file_name
+
+        if not cal_file_path.exists():
+            tqdm.write(str(cal_file_path))
+            raise FileNotFoundError("Calibration file doesn't exist!")
+
+        return cal_file_path
+
+    def getWavelengthArray(self, use_new_coefficients=True,
+                           use_pixel_positions=True):
         """Construct a wavelength array (in Angstroms) for the observation.
 
         By default, the wavelength array returned using the coefficients in
         the headers are in air wavelengths, and uncorrected for the Earth's
         barycentric motion.
+
+        Optional
+        --------
+        use_new_coefficients : bool, Default : True
+            Whether or not to attempt to use newly-derived wavelength
+            calibration coefficients following Coffinet et al. 2019 [1]_.
+
+        use_pixel_positions : bool, Default : True
+            Whether or not to use more accurate positions (in 'pixel space')
+            for the centers of pixels when evaluating the wavelength solution,
+            as detailed in Coffinet et al. 2019 [1]_.
 
         Returns
         -------
@@ -307,24 +442,59 @@ class HARPSFile2DScience(HARPSFile2D):
 
         Notes
         -----
-        The algorithm used is derived from Dumusque 2018 [1]_.
+        The algorithm used is derived from Dumusque 2018 [2]_:
+        .. math::
+            \lambda_{i,j}=P_{4\cdot i}+P_{4\cdot i+1}\times j+\\
+            P_{4\cdot i+2}\times j^2+P_{4\cdot i+3}\times j^3
+
+        where :math:`\lambda_{i,j}` is the wavelength at pixel *j* in order
+        *i*, in ångströms. The `use_pixel_positions` keyword controls whether
+        to assume all pixels have the same size (normalized to integer
+        positions) or to use the values derived in Coffinet et al. 2019 [1]_
 
         References
         ----------
-        [1] Dumusque, X. "Measuring precise radial velocities on individual
+        [1] A. Coffinet, C. Lovis, X. Dumusque, F. Pepe, "New wavelength
+        calibration of the HARPS spectrograph", Astronomy & Astrophysics, 2019
+
+        [2] X. Dumusque, "Measuring precise radial velocities on individual
         spectral lines I. Validation of the method and application to mitigate
         stellar activity", Astronomy & Astrophysics, 2018
 
         """
 
+        if use_new_coefficients:
+            # Try to use the new coefficients provided, unless there
+            # isn't a file containing them.
+            try:
+                coeffs_file = HARPSFile2D(self.getWavelengthCalibrationFile())
+                tqdm.write('Found new calibration file.')
+            except FileNotFoundError:
+                coeffs_file = self
+                tqdm.write('New calibration file could not be found!')
+                tqdm.write('Falling back on old calibration coefficients.')
+        else:
+            coeffs_file = self
+
+        if use_pixel_positions:
+            # Use the new pixel positions file provided.
+            pixel_pos_file = HARPSFile2D(self.getPixelPositionGeomFile())
+            pixel_positions = pixel_pos_file._rawData
+        else:
+            pixel_positions = np.array([[x for x in range(0, 4096)]
+                                       for row in range(0, 72)])
+
         source_array = self._rawFluxArray
         wavelength_array = np.zeros(source_array.shape, dtype=float)
+        # Step through the 72 spectral orders
         for order in trange(0, 72, total=72, unit='orders'):
+            # Iterate through the third-order fit coefficients
             for i in range(0, 4, 1):
                 coeff = 'ESO DRS CAL TH COEFF LL{0}'.format((4 * order) + i)
-                coeff_val = self._header[coeff]
-                for pixel in range(0, 4096):
-                    wavelength_array[order, pixel] += coeff_val * (pixel ** i)
+                coeff_val = coeffs_file.getHeaderCard(coeff)
+                for pixel, pixel_pos in enumerate(pixel_positions[order, :]):
+                    wavelength_array[order, pixel] += coeff_val *\
+                                                      (pixel_pos ** i)
 
         return wavelength_array * u.angstrom
 
@@ -340,7 +510,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        vacuumArray = air2vacESO(self.getWavelengthArray())
+        vacuumArray = air2vacESO(self.wavelengthArray)
 
         return vacuumArray
 
@@ -355,7 +525,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        barycentricArray = self.shiftWavelengthArray(self.getVacuumArray(),
+        barycentricArray = self.shiftWavelengthArray(self.vacuumArray,
                                                      self.BERV)
         return barycentricArray
 
@@ -372,7 +542,7 @@ class HARPSFile2DScience(HARPSFile2D):
         """
 
         # Blaze-correct the photon flux array:
-        photon_flux_array = self._rawFluxArray / self.getBlazeArray()
+        photon_flux_array = self._rawFluxArray / self.blazeArray
 
         return photon_flux_array
 
@@ -415,12 +585,12 @@ class HARPSFile2DScience(HARPSFile2D):
         """
 
         if not hasattr(self, '_blazeFile') or self._blazeFile is None:
-            self._blazeFile = self.getBlazeFile()
+            self._blazeFile = HARPSFile2D(self.getBlazeFile())
         blaze_array = self._blazeFile._rawData
 
         return blaze_array
 
-    def writeWavelengthHDU(self, hdulist, verify_action='exception'):
+    def writeWavelengthHDU(self, hdulist, verify_action='warn', **kwargs):
         """Write out a wavelength array HDU to the currently opened file.
 
         Parameters
@@ -433,14 +603,14 @@ class HARPSFile2DScience(HARPSFile2D):
         verify_action : str
             One of either ``'exception'``, ``'ignore'``, ``'fix'``,
             ``'silentfix'``, or ``'warn'``.
-            <http://docs.astropy.org/en/stable/io/fits/api/verification.html
+            `<http://docs.astropy.org/en/stable/io/fits/api/verification.html
             #verify>`_
             The default value is to print a warning upon encountering a
             violation of any FITS standard.
 
         """
 
-        self._wavelengthArray = self.getWavelengthArray()
+        self._wavelengthArray = self.getWavelengthArray(**kwargs)
         # Create an HDU for the wavelength array.
         wavelength_HDU = fits.ImageHDU(data=self.wavelengthArray, name='WAVE')
         try:
@@ -449,7 +619,7 @@ class HARPSFile2DScience(HARPSFile2D):
             hdulist.append(wavelength_HDU)
         hdulist.flush(output_verify=verify_action, verbose=True)
 
-    def writeBarycentricHDU(self, hdulist, verify_action='exception'):
+    def writeBarycentricHDU(self, hdulist, verify_action='warn'):
         """Write out an array of barycentric vacuum wavelengths to the
         currently-opened file.
 
@@ -463,7 +633,7 @@ class HARPSFile2DScience(HARPSFile2D):
         verify_action : str
             One of either ``'exception'``, ``'ignore'``, ``'fix'``,
             ``'silentfix'``, or ``'warn'``.
-            <http://docs.astropy.org/en/stable/io/fits/api/verification.html
+            `<http://docs.astropy.org/en/stable/io/fits/api/verification.html
             #verify>`_
             The default value is to print a warning upon encountering a
             violation of any FITS standard.
@@ -479,7 +649,7 @@ class HARPSFile2DScience(HARPSFile2D):
             hdulist.append(barycentric_HDU)
         hdulist.flush(output_verify=verify_action, verbose=True)
 
-    def writePhotonFluxHDU(self, hdulist, verify_action='exception'):
+    def writePhotonFluxHDU(self, hdulist, verify_action='warn'):
         """Write out a photon flux array HDU to the currently opened file.
 
         Parameters
@@ -493,7 +663,7 @@ class HARPSFile2DScience(HARPSFile2D):
         verify_action : str
             One of either ``'exception'``, ``'ignore'``, ``'fix'``,
             ``'silentfix'``, or ``'warn'``.
-            <http://docs.astropy.org/en/stable/io/fits/api/verification.html
+            `<http://docs.astropy.org/en/stable/io/fits/api/verification.html
             #verify>`_
             The default value is to print a warning upon encountering a
             violation of any FITS standard.
@@ -509,7 +679,7 @@ class HARPSFile2DScience(HARPSFile2D):
             hdulist.append(photon_flux_HDU)
         hdulist.flush(output_verify=verify_action, verbose=True)
 
-    def writeErrorHDU(self, hdulist, verify_action='exception'):
+    def writeErrorHDU(self, hdulist, verify_action='warn'):
         """Write out an error array HDU to the currently opened file.
 
         Parameters
@@ -521,7 +691,7 @@ class HARPSFile2DScience(HARPSFile2D):
             One of either ``'exception'``, ``'ignore'``, ``'fix'``,
             ``'silentfix'``, or ``'warn'``.
             More information can be found in the Astropy `documentation.
-            <http://docs.astropy.org/en/stable/io/fits/api/verification.html
+            `<http://docs.astropy.org/en/stable/io/fits/api/verification.html
             #verify>`_
             The default value is to print a warning upon encountering a
             violation of any FITS standard.
@@ -537,7 +707,7 @@ class HARPSFile2DScience(HARPSFile2D):
             hdulist.append(error_HDU)
         hdulist.flush(output_verify=verify_action, verbose=True)
 
-    def writeBlazeHDU(self, hdulist, verify_action='exception'):
+    def writeBlazeHDU(self, hdulist, verify_action='warn'):
         """Write out a blaze function array to the currently opened file.
 
         Parameters
@@ -549,7 +719,7 @@ class HARPSFile2DScience(HARPSFile2D):
             One of either ``'exception'``, ``'ignore'``, ``'fix'``,
             ``'silentfix'``, or ``'warn'``.
             More information can be found in the Astropy `documentation.
-            <http://docs.astropy.org/en/stable/io/fits/api/verification.html
+            `<http://docs.astropy.org/en/stable/io/fits/api/verification.html
             #verify>`_
             The default value is to print a warning upon encountering a
             violation of any FITS standard.
@@ -571,17 +741,17 @@ class HARPSFile2DScience(HARPSFile2D):
 
         Parameters
         ----------
-        wavelength_array : unyt_array
+        wavelength_array : `unyt.unyt_array`
             An array containing wavelengths to be Doppler shifted. Needs units
             of dimension length.
 
-        velocity : unyt_quantity
+        velocity : `unyt.unyt_quantity`
             A Unyt quantity with dimensions length/time to shift the wavelength
             array by.
 
         Returns
         -------
-        Unyt unyt_array
+        `unyt.unyt_array`
             An array of the same shape as the given array, Doppler shifted by
             the given radial velocity.
 
@@ -590,12 +760,12 @@ class HARPSFile2DScience(HARPSFile2D):
         return vcl.shift_wavelength(wavelength=wavelength_array,
                                     shift_velocity=shift_velocity)
 
-    def findWavelength(self, wavelength=None, mid_most=True):
+    def findWavelength(self, wavelength, mid_most=True, verbose=False):
         """Find which orders contain a given wavelength.
 
         This function will return the indices of the wavelength orders that
-        contain the given wavelength. The result will be a length-1 or -2 tuple
-        containing integers in the range [0, 71].
+        contain the given wavelength. The result will be a tuple of length 1 or
+        2 containing integers in the range [0, 71].
 
         Parameters
         ----------
@@ -603,6 +773,8 @@ class HARPSFile2DScience(HARPSFile2D):
             The wavelength to find in the wavelength array. This should be a
             unyt_quantity object of length 1.
 
+        Optional
+        --------
         mid_most : bool, Default : True
             In a 2D extracted echelle spectrograph like HARPS, a wavelength
             near the ends of an order can appear a second time in an adjacent
@@ -612,6 +784,10 @@ class HARPSFile2DScience(HARPSFile2D):
             ratio is highest. Setting this to *False* will allow for the
             possibility of a length-2 tuble being returned containing the
             numbers of both orders a wavelength is found in.
+
+        verbose : bool, Default : False
+            If *True*, the function will print out additional information such
+            as the minimum and maximum values of the array and for each order.
 
         Returns
         -------
@@ -632,16 +808,22 @@ class HARPSFile2DScience(HARPSFile2D):
         # Make sure the wavelength to find is in the array in the first place.
         array_min = self.barycentricArray[0, 0]
         array_max = self.barycentricArray[-1, -1]
-        assert array_min <= wavelength_to_find <= array_max,\
-            "Given wavelength not in array limits! ({}, {})".format(array_min,
-                                                                    array_max)
+        if verbose:
+            tqdm.write(str(array_min), str(array_max))
+        if not (array_min <= wavelength_to_find <= array_max):
+            tqdm.write("Given wavelength not in array limits!")
+            tqdm.write("Given wavelength: {} ({}, {})".format(
+                    wavelength_to_find, array_min, array_max))
+            raise RuntimeError
 
         # Set up a list to hold the indices of the orders where the wavelength
         # is found.
         orders_wavelength_found_in = []
         for order in range(0, 72):
-            order_min = self.wavelengthArray[order, 0]
-            order_max = self.wavelengthArray[order, -1]
+            order_min = self.barycentricArray[order, 0]
+            order_max = self.barycentricArray[order, -1]
+            if verbose:
+                tqdm.write(str(order_min), str(order_max))
             if order_min <= wavelength_to_find <= order_max:
                 orders_wavelength_found_in.append(order)
                 if len(orders_wavelength_found_in) == 1:
@@ -649,6 +831,8 @@ class HARPSFile2DScience(HARPSFile2D):
                 elif len(orders_wavelength_found_in) == 2:
                     break
 
+        if len(orders_wavelength_found_in) == 0:
+            raise RuntimeError('Wavelength not found in array!')
         if mid_most:
             # Only one array: great, return it.
             if len(orders_wavelength_found_in) == 1:
@@ -669,6 +853,8 @@ class HARPSFile2DScience(HARPSFile2D):
                     return order2
                 else:
                     return order1
+            else:
+                raise RuntimeError("Wavelength found in >2 arrays!")
         else:
             return tuple(orders_wavelength_found_in)
 
