@@ -103,14 +103,10 @@ class HARPSFile2DScience(HARPSFile2D):
 
         Optional
         --------
-        update : collection of strings
+        update : list of strings
             Whether to force writing of the wavelength, flux, and error arrays.
-            `update` may be given either as a boolean or a list of strings
-            containing some or all of 'WAVE', 'BARY', 'FLUX', or 'ERR'.
-
-            Setting it as *False* will cause the initialization process to use
-            the values already present in the file being opened. Setting it to
-            *True* will cause all HDUs to be updated.
+            `update` may be given as a list of strings containing some or all
+            of 'WAVE', 'BARY', 'FLUX', 'ERR', or 'BLAZE'.
 
             Any HDUs listed in the tuple will be updated, while those not
             listed will be read from the file being opened. Updating the
