@@ -88,7 +88,7 @@ redCCDpath = Path('/Users/dberke/code/data/HARPS_CCD_red.csv')
 
 # Functions
 def map_spectral_order(order):
-    # TODO: Conver this to a bidict. Also found in maskSpectralRegions.py
+    # TODO: Convert this to a bidict. Also found in maskSpectralRegions.py
     """
     Converts from HARPS' internal 0-71 order numbers to those in the HARPS
     spectral format (89-114, 116-161).
@@ -140,6 +140,8 @@ def wavelength2index(wavelength, wavelength_array, reverse=False):
         increasing order*. If a unyt_array is given, it should have dimensions
         of length and be one-dimensional.
 
+    Optional
+    --------
     reverse : bool, Default: False
         Reverses the given wavelength sequence before evaluating it, in case
         the sequence is given in longer to shorter order.
@@ -159,16 +161,22 @@ def wavelength2index(wavelength, wavelength_array, reverse=False):
     for i in range(0, length, 1):
         # First find the index for which the value is greater than the given
         # wavelength:
-        if wavelength_array[i] >= wavelength:
-            # Then check if it's closest to this index or the previous one.
-            # The way it's set up it should always be
-            # wl_arr[i-1] <= wl <= wl_arr[i] assuming monotonic increase of
-            # wavelengths.
-            if abs(wavelength_array[i] - wavelength) >\
-               abs(wavelength - wavelength_array[i - 1]):
-                return i - 1
-            else:
-                return i
+        try:
+            if wavelength_array[i] >= wavelength:
+                # Then check if it's closest to this index or the previous one.
+                # The way it's set up it should always be
+                # wl_arr[i-1] <= wl <= wl_arr[i] assuming monotonic increase of
+                # wavelengths.
+                if abs(wavelength_array[i] - wavelength) >\
+                   abs(wavelength - wavelength_array[i - 1]):
+                    return i - 1
+                else:
+                    return i
+        except ValueError:
+            print(wavelength_array)
+            print(wavelength_array[i])
+            print(wavelength)
+            raise
 
     # If it reaches the end without finding a matching wavelength, raise an
     # error.
@@ -318,11 +326,11 @@ def gaussian(x, a, b, c, d=0):
     Parameters
     ----------
     x : float
-        The independent variable.
+        The value of the independent variable to evaluate the function at.
     a : float
-        The amplitude of the Gaussian. Must be real.
+        The amplitude of the Gaussian. Must be Real.
     b : float
-        The median (also the center) of the Gaussian. Must be real.
+        The median (also the center) of the Gaussian. Must be Real.
     c : float
         The standard deviation of the Gaussian. Must be non-zero.
 
