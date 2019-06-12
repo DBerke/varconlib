@@ -11,13 +11,16 @@ Code to define a class for a model fit to an absorption line.
 
 import configparser
 from pathlib import Path
-import numpy as np
-from scipy.optimize import curve_fit, OptimizeWarning
+
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-import unyt as u
+import numpy as np
+from scipy.optimize import curve_fit, OptimizeWarning
 from tqdm import tqdm
+import unyt as u
+
+from exceptions import PositiveAmplitudeError
 import varconlib as vcl
 
 # This line prevents the wavelength formatting from being in the form of
@@ -102,8 +105,16 @@ class GaussianFit(object):
                               nominal_wavelength.to(u.nm),
                               self.correctedWavelength.to(u.nm)))
         # Find which order of the echelle spectrum the wavelength falls in.
-        self.order = self.observation.findWavelength(self.correctedWavelength,
-                                                     mid_most=True)
+        try:
+            self.order = self.observation.findWavelength(
+                    self.correctedWavelength, mid_most=True)
+        except RuntimeError:
+            raise
+        else:
+            if verbose:
+                tqdm.write('Order is {}'.format(self.order))
+        if self.order is None:
+            raise RuntimeError('Wavelength found in no order!')
 
         baryArray = self.observation.barycentricArray[self.order]
         fluxArray = self.observation.photonFluxArray[self.order]
@@ -114,15 +125,19 @@ class GaussianFit(object):
         # measuring the continuum.
         search_range = vcl.velocity2wavelength(search_range_vel,
                                                self.correctedWavelength)
+
         continuum_range = vcl.velocity2wavelength(continuum_range_vel,
                                                   self.correctedWavelength)
-
+        if verbose:
+            print(baryArray)
         low_search_index = vcl.wavelength2index(self.correctedWavelength -
                                                 search_range,
                                                 baryArray)
+
         high_search_index = vcl.wavelength2index(self.correctedWavelength +
                                                  search_range,
                                                  baryArray)
+
         self.lowContinuumIndex = vcl.wavelength2index(self.correctedWavelength
                                                       - continuum_range,
                                                       baryArray)
@@ -156,7 +171,7 @@ class GaussianFit(object):
             tqdm.write('Attempting to fit line at {:.4f} with initial guess:'.
                        format(self.correctedWavelength))
         if verbose:
-            print('Initial parameters are:\n{}\n{}\n{}'.format(
+            print('Initial parameters are:\n{}\n{}\n{}\n{}'.format(
                   *self.initial_guess))
 
         # Do the fitting:
@@ -174,18 +189,6 @@ class GaussianFit(object):
             print(self.initial_guess)
             self.plotFit(close_up_plot_path, context_plot_path,
                          plot_fit=False, verbose=False)
-#            fig = plt.figure(figsize=(8, 8))
-#            ax = fig.add_subplot(1, 1, 1)
-#            ax.errorbar(self.wavelengths.value,
-#                        self.fluxes,
-#                        yerr=self.errors,
-#                        color='Blue', marker='o', linestyle='')
-#            ax.plot(self.wavelengths.value,
-#                    vcl.gaussian(self.wavelengths.value, *self.initial_guess),
-#                    color='Black')
-#            outfile = Path('/Users/dberke/Pictures/debug_norm.png')
-#            fig.savefig(str(outfile))
-#            plt.close(fig)
             raise
 
         if verbose:
@@ -194,8 +197,8 @@ class GaussianFit(object):
 
         # Recover the fitted values for the parameters:
         self.amplitude = self.popt[0]
-        self.centroid = self.popt[1] * u.angstrom
-        self.standardDev = self.popt[2] * u.angstrom
+        self.median = self.popt[1] * u.angstrom
+        self.sigma = self.popt[2] * u.angstrom
 
         if self.amplitude > 0:
             if verbose:
@@ -203,14 +206,14 @@ class GaussianFit(object):
                         self.transition.wavelength))
             self.plotFit(close_up_plot_path, context_plot_path,
                          plot_fit=True, verbose=False)
-            raise RuntimeError('Positive amplitude from fit.')
+            raise PositiveAmplitudeError('Positive amplitude from fit.')
 
         # Find 1-σ errors from the covariance matrix:
         self.perr = np.sqrt(np.diag(self.pcov))
 
         self.amplitudeErr = self.perr[0]
-        self.centroidErr = self.perr[1] * u.angstrom
-        self.standardDevErr = self.perr[2] * u.angstrom
+        self.medianErr = self.perr[1] * u.angstrom
+        self.sigmaErr = self.perr[2] * u.angstrom
 
         # Compute the χ^2 value:
         residuals = self.fluxes - \
@@ -219,38 +222,41 @@ class GaussianFit(object):
         self.chiSquared = sum((residuals / self.errors) ** 2)
         self.chiSquaredNu = self.chiSquared / 3  # ν = 7 (pixels) - 4 (params)
         if (self.chiSquaredNu > 1):
-            self.centroidErr *= np.sqrt(self.chiSquaredNu)
+            self.medianErr *= np.sqrt(self.chiSquaredNu)
 
         # Find the full width at half max.
         # 2.354820 ≈ 2 * sqrt(2 * ln(2)), the relationship of FWHM to the
         # standard deviation of a Gaussian.
-        self.FWHM = 2.354820 * self.standardDev
-        self.FWHMErr = 2.354820 * self.standardDevErr
-        self.velocityFWHM = vcl.wavelength2velocity(self.centroid,
-                                                    self.centroid +
+        self.FWHM = 2.354820 * self.sigma
+        self.FWHMErr = 2.354820 * self.sigmaErr
+        self.velocityFWHM = vcl.wavelength2velocity(self.median,
+                                                    self.median +
                                                     self.FWHM)
-        self.velocityFWHMErr = vcl.wavelength2velocity(self.centroid,
-                                                       self.centroid +
+        self.velocityFWHMErr = vcl.wavelength2velocity(self.median,
+                                                       self.median +
                                                        self.FWHMErr)
 
         # Compute the offset between the input wavelength and the wavelength
         # found in the fit.
-        self.offset = self.correctedWavelength - self.centroid
+        self.offset = self.correctedWavelength - self.median
+        self.offsetErr = self.medianErr
         self.velocityOffset = vcl.wavelength2velocity(self.correctedWavelength,
-                                                      self.centroid)
-        # TODO: Error for velocity offset.
+                                                      self.median)
+        self.velocityOffsetErr = vcl.wavelength2velocity(self.median,
+                                                         self.offsetErr)
 
         if verbose:
             print(self.continuumLevel)
-            print(self.fluxMminimum)
+            print(self.fluxMinimum)
             print(self.wavelengths)
 
     def plotFit(self, close_up_plot_path, context_plot_path, plot_fit=True,
                 verbose=False):
         """Plot a graph of this fit.
 
-        This method will produce a very close-in plot of just the fitted region
-        itself, in order to check out the fit has worked out.
+        This method will produce a 'close-up' plot of just the fitted region
+        itself, in order to check out the fit has worked out, and a wider
+        'context' plot of the area around the feature.
 
         Optional
         --------
@@ -260,7 +266,7 @@ class GaussianFit(object):
             The file name to save a wider context plot (±25 km/s) around the
             fitted feature to.
         plot_fit : bool, Default : True
-            If *True*, plot the centroid of the fit and the fitted Gaussian.
+            If *True*, plot the median of the fit and the fitted Gaussian.
             Otherwise, don't plot those two things. This allows creating plots
             of failed fits to see the context of the data.
         verbose : bool, Default : False
@@ -279,9 +285,9 @@ class GaussianFit(object):
 #                                                       .to(u.angstrom).value))
         ax.xaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.3f}'))
         ax.set_xlim(left=self.observation.barycentricArray
-                    [self.order, self.lowContinuumIndex - 1],
+                    [self.order, self.lowContinuumIndex - 3],
                     right=self.observation.barycentricArray
-                    [self.order, self.highContinuumIndex + 1])
+                    [self.order, self.highContinuumIndex + 3])
         # Set y-limits so a fit doesn't balloon the plot scale out.
         ax.set_ylim(top=self.continuumLevel * 1.1,
                     bottom=self.fluxMinimum * 0.9)
@@ -291,12 +297,12 @@ class GaussianFit(object):
                    color='LightSteelBlue', linestyle=':',
                    label='RV-corrected λ={:.3f}'.format(
                            self.correctedWavelength.to(u.angstrom)))
-        # Don't plot the centroid if this is a failed fit.
-        if hasattr(self, 'centroid') and hasattr(self, 'velocityOffset'):
-            ax.axvline(self.centroid.to(u.angstrom),
+        # Don't plot the median if this is a failed fit.
+        if hasattr(self, 'median') and hasattr(self, 'velocityOffset'):
+            ax.axvline(self.median.to(u.angstrom),
                        color='IndianRed',
                        label='Fit ({:.3f}, {:+.2f})'.
-                       format(self.centroid.to(u.angstrom),
+                       format(self.median.to(u.angstrom),
                               self.velocityOffset.to(u.m/u.s)),
                        linestyle='-')
         # Plot the actual data.
