@@ -8,15 +8,42 @@ Created on Wed Jun  5 11:27:00 2019
 Module to contain custom exceptions.
 """
 
+
 class Error(Exception):
     """Base class for exceptions for this module."""
+
     pass
 
 
-class BadRadialVelocityError(Error):
+class ObservationError(Error):
+    """Errors relating to importing or working with observation files."""
+
+    pass
+
+
+class BadRadialVelocityError(ObservationError):
     """Error to raise when radial velocity in a file is 'bad'.
 
     Some HARPS spectra can have non-useful radial velocities, such as -99999.
+
+    """
+
+    def __init__(self, message):
+        self.message = message
+
+
+class FeatureFitError(Error):
+    """Errors relating to fitting absorption features."""
+
+    pass
+
+
+class PositiveAmplitudeError(FeatureFitError):
+    """Error for when fitting an absorption feature returns a positive
+    amplitude.
+
+    By definition an absorption feature should have a negative amplitude
+    compared to the continuum.
 
     """
 
