@@ -24,19 +24,24 @@ from exceptions import PositiveAmplitudeError
 from fitting import GaussianFit
 import obs2d
 
-desc = 'Fit absorption features in spectra from a given list of transitions.'
+desc = 'Fit absorption features in spectra.'
 parser = argparse.ArgumentParser(description=desc)
 parser.add_argument('object_dir', action='store',
                     help='Directory in which to find e2ds sub-folders.')
 parser.add_argument('object_name', action='store',
                     help='Name of object to use for storing output.')
 
+parser.add_argument('--start', type=int, action='store', default=0,
+                    help='Start position in the list of observations.')
+parser.add_argument('--end', type=int, action='store', default=-1,
+                    help='End position in the list of observations.')
+
 parser.add_argument('--pixel-positions', action='store_true',
                     help='Use new pixel positions.')
 parser.add_argument('--new-coefficients', action='store_true',
                     help='Use new calibration coefficients.')
 parser.add_argument('--update', action='store', metavar='HDU-name',
-                    nargs='+',
+                    nargs='+', default=[],
                     help='Which HDUs to update (WAVE, BARY, FLUX, ERR, BLAZE,'
                     ' or ALL)')
 parser.add_argument('--verbose', action='store_true', default=False,
@@ -47,7 +52,7 @@ args = parser.parse_args()
 observations_dir = Path(args.object_dir)
 # Check that the path given exists:
 if not observations_dir.exists():
-    tqdm.write(observations_dir)
+    tqdm.write(str(observations_dir))
     raise RuntimeError('The given directory does not exist.')
 
 # Check if the given path ends in data/reduced:
@@ -66,6 +71,8 @@ glob_search_string = str(observations_dir) + '/*/*e2ds_A.fits'
 data_files = [Path(string) for string in sorted(glob(glob_search_string))]
 # !!!
 #data_files = [data_files[0]]
+
+tqdm.write('Found {} observations in the directory.'.format(len(data_files)))
 
 config_file = Path('/Users/dberke/code/config/variables.cfg')
 config = configparser.ConfigParser(interpolation=configparser.
@@ -97,7 +104,8 @@ new_coeffs = True if args.new_coefficients else False
 if new_coeffs:
     tqdm.write('Using new wavelength calibration coefficients.')
 
-for obs_path in tqdm(data_files) if len(data_files) > 1 else data_files:
+for obs_path in tqdm(data_files[args.start:args.end]) if\
+  len(data_files) > 1 else data_files:
     tqdm.write('Fitting {}...'.format(obs_path.name))
     try:
         obs = obs2d.HARPSFile2DScience(obs_path,
