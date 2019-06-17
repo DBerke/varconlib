@@ -20,8 +20,8 @@ from tqdm import tqdm, trange
 import unyt as u
 
 from conversions import air2vacESO
-import varconlib as vcl
 from exceptions import BadRadialVelocityError
+from varconlib import wavelength2index, shift_wavelength
 
 
 config_file = Path('/Users/dberke/code/config/variables.cfg')
@@ -122,7 +122,7 @@ class HARPSFile2DScience(HARPSFile2D):
         else:
             self._filename = FITSfile
         if not self._filename.exists():
-            print(self._filename)
+            tqdm.write(self._filename)
             raise FileNotFoundError('The given path does not exist!')
         if update:
             file_open_mode = 'update'
@@ -239,6 +239,14 @@ class HARPSFile2DScience(HARPSFile2D):
         return self._barycentricArray
 
     @property
+    def rvCorrectedArray(self):
+        if not hasattr(self, '_rvCorrectedArray'):
+            tqdm.write('Creating RV-corrected array.')
+            self._rvCorrectedArray = shift_wavelength(self.barycentricArray,
+                                                      -1 * self.radialVelocity)
+        return self._rvCorrectedArray
+
+    @property
     def photonFluxArray(self):
         if not hasattr(self, '_photonFluxArray'):
             tqdm.write('Generating photon flux array.')
@@ -267,13 +275,13 @@ class HARPSFile2DScience(HARPSFile2D):
                 radial_velocity = float(self.getHeaderCard(rv_card)) * \
                     u.km / u.s
             except KeyError:
-                print('No radial velocity card found for this observation!')
+                tqdm.write('No radial velocity found for this observation!')
                 raise
 
             if isnan(radial_velocity):
                 raise BadRadialVelocityError('Radial velocity is NaN!')
             if abs(radial_velocity) > 5000:
-                print(radial_velocity)
+                tqdm.write(radial_velocity)
                 raise BadRadialVelocityError('Radial velocity is suspiciously'
                                              ' high! {}'.format(
                                                      radial_velocity))
@@ -288,7 +296,7 @@ class HARPSFile2DScience(HARPSFile2D):
                 berv_card = 'HIERARCH ESO DRS BERV'
                 self._BERV = float(self.getHeaderCard(berv_card)) * u.km / u.s
             except KeyError:
-                print('No BERV card found for this observation!')
+                tqdm.write('No BERV card found for this observation!')
                 raise
         return self._BERV
 
@@ -490,7 +498,7 @@ class HARPSFile2DScience(HARPSFile2D):
                 coeff_val = coeffs_file.getHeaderCard(coeff)
                 for pixel, pixel_pos in enumerate(pixel_positions[order, :]):
                     wavelength_array[order, pixel] += coeff_val *\
-                                                      (pixel_pos ** i)
+                                                      ((pixel_pos) ** i)
 
         return wavelength_array * u.angstrom
 
@@ -753,8 +761,8 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        return vcl.shift_wavelength(wavelength=wavelength_array,
-                                    shift_velocity=shift_velocity)
+        return shift_wavelength(wavelength=wavelength_array,
+                                shift_velocity=shift_velocity)
 
     def findWavelength(self, wavelength, mid_most=True, verbose=False):
         """Find which orders contain a given wavelength.
@@ -839,10 +847,10 @@ class HARPSFile2DScience(HARPSFile2D):
             # of the 4096-element array.
             elif len(orders_wavelength_found_in) == 2:
                 order1, order2 = orders_wavelength_found_in
-                index1 = vcl.wavelength2index(wavelength_to_find,
-                                              self.barycentricArray[order1])
-                index2 = vcl.wavelength2index(wavelength_to_find,
-                                              self.barycentricArray[order2])
+                index1 = wavelength2index(wavelength_to_find,
+                                          self.barycentricArray[order1])
+                index2 = wavelength2index(wavelength_to_find,
+                                          self.barycentricArray[order2])
                 # Check which index is closest to the pixel in the geometric
                 # center of the 4096-length array, given 0-indexing in Python.
                 if abs(index1 - 2047.5) > abs(index2 - 2047.5):

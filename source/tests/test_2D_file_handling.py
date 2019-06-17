@@ -75,6 +75,9 @@ class TestScience2DFile(object):
         assert hasattr(s, 'photonFluxArray')
         assert hasattr(s, 'errorArray')
         assert hasattr(s, 'blazeArray')
+        # Test for created-on-the-fly arrays:
+        assert hasattr(s, 'vacuumArray')
+        assert hasattr(s, 'rvCorrectedArray')
 
     def testArraysShapes(self, s):
         assert np.shape(s._wavelengthArray) == (72, 4096)
