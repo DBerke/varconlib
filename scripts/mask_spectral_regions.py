@@ -325,7 +325,8 @@ for i, window in enumerate(spectral_windows, start=1):
         temp_sort_list.extend(tl_wl)
 
     expanded = []
-    for region in temp_sort_list:
+    for region in tqdm(temp_sort_list):
+        # Value used here is BERVMAX from HARPS files (m/s)
         blueshift = vcl.getwlseparation(-31984 + -1*maxradvel,
                                         region[0]) + region[0]
         redshift = vcl.getwlseparation(31984 + -1*minradvel,
