@@ -681,41 +681,41 @@ def format_transitions(transition_list, blendedness=False):
 
 desc = 'Select line pairs to analyze from the Kurucz and BRASS line lists.'
 parser = argparse.ArgumentParser(description=desc)
-parser.add_argument('--match_lines', action='store_true',
+parser.add_argument('--match-lines', action='store_true',
                     default=False,
                     help='Flag to match transitions between lists.')
-parser.add_argument('-dw', '--delta_wavelength', action='store',
+parser.add_argument('-dw', '--delta-wavelength', action='store',
                     default=3000, type=int,
                     help='The wavelength tolerance in m/s.')
-parser.add_argument('-de', '--delta_energy', action='store',
+parser.add_argument('-de', '--delta-energy', action='store',
                     default=100000, type=int,
                     help='The energy tolerance in m/s.')
 
-parser.add_argument('--pair_lines', action='store_true',
+parser.add_argument('--pair-lines', action='store_true',
                     default=False,
                     help='Find pairs of transition lines from list.')
 
-parser.add_argument('--query_nist', action='store_true',
+parser.add_argument('--query-nist', action='store_true',
                     default=False,
                     help='Query transitions from NIST.')
 # Upping -dw to 3300 helps match one or two additionaly lines that are right
 # on the edge.
-parser.add_argument('--match_nist', action='store_true',
+parser.add_argument('--match-nist', action='store_true',
                     default=False,
                     help='Match previous transition list with NIST.')
-parser.add_argument('--format_lines', action='store_true',
+parser.add_argument('--format-lines', action='store_true',
                     default=False,
                     help='Format output from matching NIST list.')
 
-parser.add_argument('--incorporate_blendedness', action='store_true',
+parser.add_argument('--incorporate-blendedness', action='store_true',
                     default=False,
                     help='Incorporate blend information from a file.')
-parser.add_argument('--blend_file', action='store',
+parser.add_argument('--blend-file', action='store',
                     default=Path('/Users/dberke/code/data/'
                                  'NIST_formatted_transitions_with_blends.txt'),
                     help='The file to get blend information from.')
 
-parser.add_argument('--rate_pairs', action='store_true',
+parser.add_argument('--rate-pairs', action='store_true',
                     default=False,
                     help='List pairs based on blend status.')
 
@@ -1113,6 +1113,9 @@ if args.rate_pairs:
     for key in sorted(blend_dict.keys()):
         tqdm.write(str(key), end='')
         tqdm.write(': ' + str(len(blend_dict[key])))
+
+    print(pairs[0].blendNumber)
+    exit()
 
     good_transitions = []
     blends_of_interest = ((0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2))
