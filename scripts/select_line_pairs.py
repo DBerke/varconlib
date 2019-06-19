@@ -789,13 +789,6 @@ no_CCD_bounds_file = masks_dir / 'unusable_spectrum_noCCDbounds.txt'
 mask_CCD_bounds = vcl.parse_spectral_mask_file(CCD_bounds_file)
 mask_no_CCD_bounds = vcl.parse_spectral_mask_file(no_CCD_bounds_file)
 
-#redData = np.genfromtxt(redFile, delimiter=",", skip_header=1,
-#                        dtype=(float, "U2", int, float, float, float))
-#print("Read red line list.")
-#blueData = np.genfromtxt(blueFile, delimiter=",", skip_header=1,
-#                     dtype=(float, "U2", int, float, float))
-#print("Read blue line list.")
-
 if args.match_lines:
     tqdm.write('Reading BRASS line list...')
     purpleData = np.genfromtxt(purpleFile, delimiter=",", skip_header=1,
@@ -926,18 +919,6 @@ if args.query_nist:
     species_set = set()
     for transition in transitions:
         species_set.add(transition.atomicSpecies)
-
-#    high_energy_lines = set()
-#
-#    print(f'Total distinct transitions: {len(transition_list)}')
-
-#    for transition in tqdm(transition_list):
-#        if (item.higherEnergy > 50000) or (item.lowerEnergy > 50000):
-#            high_energy_lines.add(item)
-#
-#    print(f'High energy lines (E > 50000 cm^-1): {len(high_energy_lines)}')
-#
-#    print(f'Total affected pairs: {len(high_energy_pairs)}')
 
     # Pickle the transitions returned from NIST
     nist_transition_dict = query_nist(transitions, species_set)
@@ -1105,9 +1086,6 @@ if args.incorporate_blendedness:
 
 
 if args.rate_pairs:
-#    tqdm.write('Reading list of transitions...')
-#    with open(pickle_pairs_transitions_file, 'r+b') as f:
-#        all_transitions = pickle.load(f)
 
     tqdm.write('Reading list of pairs...')
     with open(pickle_pairs_file, 'r+b') as g:
@@ -1117,10 +1095,8 @@ if args.rate_pairs:
     blend_dict = {}
 
     for pair in tqdm(pairs):
-#        tqdm.write(str(pair))
         lower_blend = pair._lowerEnergyTransition.blendedness
         higher_blend = pair._higherEnergyTransition.blendedness
-#        tqdm.write('{} - {}'.format(lower_blend, higher_blend))
 
         if lower_blend < higher_blend:
             blend_tuple = (lower_blend, higher_blend)
@@ -1172,9 +1148,8 @@ if args.rate_pairs:
         for write_str in lines_to_write:
             f.write(write_str)
 
-    # This pickle file is the finaly selection of transitions.
+    # This pickle file is the final selection of transitions.
     print('Pickling final selection of transitions to file: {}.'.format(
             final_selection_file))
     with open(final_selection_file, 'w+b') as f:
         pickle.dump(good_transitions, f)
-
