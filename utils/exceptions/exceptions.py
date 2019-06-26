@@ -32,6 +32,20 @@ class BadRadialVelocityError(ObservationError):
         self.message = message
 
 
+class NewCoefficientsNotFoundError(ObservationError):
+    """Error to raise when new calibration coefficients can't be found for an
+    observation.
+
+    Slightly more specific than a FileNotFoundError, since if use of the new
+    calibration is requested we should probably not use observations for which
+    we don't have the new coefficients.
+
+    """
+
+    def __init__(self, message):
+        self.message = message
+
+
 class FeatureFitError(Error):
     """Errors relating to fitting absorption features."""
 
