@@ -20,7 +20,7 @@ from tqdm import tqdm, trange
 import unyt as u
 
 from conversions import air2vacESO
-from exceptions import BadRadialVelocityError
+from exceptions import BadRadialVelocityError, NewCoefficientsNotFoundError
 from varconlib import wavelength2index, shift_wavelength
 
 
@@ -33,6 +33,33 @@ config.read(config_file)
 blaze_file_dir = Path(config['PATHS']['blaze_file_dir'])
 pixel_geom_files_dir = Path(config['PATHS']['pixel_geom_files_dir'])
 wavelength_cals_dir = Path(config['PATHS']['wavelength_cal_dir'])
+
+# Define barycenters of each order of fiber A to use with the new calibration
+# coefficients.
+order_barycenters = {0: 2058.19619875, 1: 2303.03101155, 2: 1714.78184979,
+                     3: 2039.10938787, 4: 2073.83335682, 5: 2113.06660854,
+                     6: 1967.40201128, 7: 1955.5199909, 8: 2260.21532786,
+                     9: 2345.13976825, 10: 1600.67126601, 11: 2219.46465358,
+                     12: 1703.17829463, 13: 1830.43072233, 14: 2330.77633219,
+                     15: 2242.2323373, 16: 2161.63938098, 17: 2103.83909842,
+                     18: 2030.56647448, 19: 2028.10455978, 20: 1987.15700559,
+                     21: 2093.29334908, 22: 1503.40223261, 23: 2218.47620643,
+                     24: 2074.74966125, 25: 1903.88311521, 26: 1804.5784936,
+                     27: 1872.01030628, 28: 1989.48750792, 29: 1808.27607907,
+                     30: 2281.79320743, 31: 2108.80991269, 32: 2046.02691096,
+                     33: 1829.94534136, 34: 2274.82477587, 35: 2018.88758685,
+                     36: 1772.16802274, 37: 1986.35240348, 38: 2357.29421969,
+                     39: 2104.22326262, 40: 1831.90393061, 41: 2285.16323923,
+                     42: 2056.91007412, 43: 1888.3231257, 44: 1826.74684748,
+                     45: 2118.60595923, 46: 2107.16748608, 47: 1788.87547361,
+                     48: 1791.29731027, 49: 2000.83192526, 50: 1568.9476432,
+                     51: 1712.33483484, 52: 1614.5869981, 53: 2496.96599212,
+                     54: 1998.55104358, 55: 2002.86578518, 56: 1597.0016393,
+                     57: 1787.78941935, 58: 2141.16935421, 59: 2140.47316633,
+                     60: 1529.78026616, 61: 1542.81670425, 62: 1857.79112214,
+                     63: 1791.27630583, 64: 1930.19573565, 65: 1937.32176376,
+                     66: 1463.07051377, 67: 2091.18218294, 68: 2240.88136565,
+                     69: 1762.46301572, 70: 2172.64792852, 71: 1904.59716115}
 
 
 class HARPSFile2D(object):
@@ -49,7 +76,7 @@ class HARPSFile2D(object):
             tqdm.write('Given filename does not exist!')
             tqdm.write(self._filename)
             raise FileNotFoundError
-        with fits.open(self._filename) as hdulist:
+        with fits.open(self._filename, mode='readonly') as hdulist:
             self._header = hdulist[0].header
             self._rawData = hdulist[0].data
 
@@ -477,6 +504,7 @@ class HARPSFile2DScience(HARPSFile2D):
                 coeffs_file = self
                 tqdm.write('New calibration file could not be found!')
                 tqdm.write('Falling back on old calibration coefficients.')
+                raise NewCoefficientsNotFoundError
         else:
             coeffs_file = self
 
@@ -492,13 +520,17 @@ class HARPSFile2DScience(HARPSFile2D):
         wavelength_array = np.zeros(source_array.shape, dtype=float)
         # Step through the 72 spectral orders
         for order in trange(0, 72, total=72, unit='orders'):
+            if use_new_coefficients:
+                order_barycenter = order_barycenters[order]
+            else:
+                order_barycenter = 0
             # Iterate through the third-order fit coefficients
             for i in range(0, 4, 1):
                 coeff = 'ESO DRS CAL TH COEFF LL{0}'.format((4 * order) + i)
                 coeff_val = coeffs_file.getHeaderCard(coeff)
                 for pixel, pixel_pos in enumerate(pixel_positions[order, :]):
                     wavelength_array[order, pixel] += coeff_val *\
-                                                      ((pixel_pos) ** i)
+                      ((pixel_pos - order_barycenter) ** i)
 
         return wavelength_array * u.angstrom
 
