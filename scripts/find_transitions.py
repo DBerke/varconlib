@@ -52,7 +52,7 @@ args = parser.parse_args()
 observations_dir = Path(args.object_dir)
 # Check that the path given exists:
 if not observations_dir.exists():
-    tqdm.write(str(observations_dir))
+    print(observations_dir)
     raise RuntimeError('The given directory does not exist.')
 
 # Check if the given path ends in data/reduced:
@@ -61,6 +61,7 @@ if observations_dir.match('*/data/reduced'):
 else:
     observations_dir = observations_dir / 'data/reduced'
     if not observations_dir.exists():
+        print(observations_dir)
         raise RuntimeError('The directory does not contain "data/reduced".')
 
 # Currently using /Users/dberke/HD146233/data/reduced/ for a specific file.
@@ -69,8 +70,6 @@ else:
 glob_search_string = str(observations_dir) + '/*/*e2ds_A.fits'
 # Get a list of all the data files in the data directory:
 data_files = [Path(string) for string in sorted(glob(glob_search_string))]
-# !!!
-#data_files = [data_files[0]]
 
 tqdm.write('Found {} observations in the directory.'.format(len(data_files)))
 
