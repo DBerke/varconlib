@@ -1103,7 +1103,7 @@ if args.rate_pairs:
         else:
             blend_tuple = (higher_blend, lower_blend)
 
-        pair.blendNumber = blend_tuple
+        pair.blendTuple = blend_tuple
         if blend_tuple in blend_dict.keys():
             blend_dict[blend_tuple].append(pair)
         else:
@@ -1114,13 +1114,16 @@ if args.rate_pairs:
         tqdm.write(str(key), end='')
         tqdm.write(': ' + str(len(blend_dict[key])))
 
-    print(pairs[0].blendNumber)
-    exit()
+    # This is the final list of pairs, though it contains all pairs including
+    # ones with bad blending.
+    print('Pickling pairs with blend information to file.')
+    with open(pickle_pairs_file, 'w+b') as f:
+        pickle.dump(pairs, f)
 
     good_transitions = []
     blends_of_interest = ((0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2))
     for pair in tqdm(pairs):
-        if pair.blendNumber in blends_of_interest:
+        if pair.blendTuple in blends_of_interest:
             for transition in pair:
                 if transition not in good_transitions:
                     good_transitions.append(transition)
