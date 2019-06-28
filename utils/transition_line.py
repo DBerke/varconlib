@@ -8,9 +8,11 @@ Created on Tue Dec 18 11:15:44 2018
 The Transition class contains information about a single atomic transition.
 """
 
-import unyt as u
-from bidict import bidict
 from fractions import Fraction
+from math import isclose
+
+from bidict import bidict
+import unyt as u
 
 elements = bidict({1: "H", 2: "He", 3: "Li", 4: "Be", 5: "B", 6: "C", 7: "N",
                    8: "O", 9: "F", 10: "Ne", 11: "Na", 12: "Mg",  13: "Al",
@@ -195,7 +197,6 @@ class Transition(object):
             return False
 
     def __eq__(self, other):
-        from math import isclose
         if type(other) is Transition:
             # If the other thing to be compared is a transition, we need to
             # check all of its attributes and whether they A) exist and B) are
