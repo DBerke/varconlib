@@ -23,7 +23,7 @@ class TransitionPair(object):
 
         Parameters
         ----------
-        transition1, transition2: transition_line.Transition objects
+        transition1, transition2: transition_line.Transition` objects
         The transitions should be two Transition objects, each representing a
         single atomic transition.
 
@@ -114,8 +114,8 @@ class TransitionPair(object):
 
         """
 
-        return self._higherEnergyTransition.wavelength -\
-            self._lowerEnergyTransition.wavelength
+        return self._lowerEnergyTransition.wavelength -\
+            self._higherEnergyTransition.wavelength
 
 
 class TransitionPairError(Exception):
