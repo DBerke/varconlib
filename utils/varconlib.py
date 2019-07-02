@@ -8,14 +8,18 @@ Created on Wed Apr 18 16:28:13 2018
 
 # Module to contain functions potentially useful across multiple programs
 
+
+from math import sqrt, log, tau
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
-from math import sqrt, log
-from pathlib import Path
+from scipy.special import erf
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 import unyt as u
+
 from conversions import air2vacESO
 from obs1d import readHARPSfile1D
 
@@ -291,6 +295,38 @@ def gaussian(x, a, b, c, d=0):
     """
 
     return d + a * np.exp(-1 * ((x - b) ** 2 / (2 * c * c)))
+
+
+def integrated_gaussian(pixel, amplitude, mu, sigma, baseline):
+    """Return the value of a Gaussian integrated between two points (given as a
+    tuple in `pixel`).
+
+    Parameters
+    ----------
+    pixel : tuple containing two floats
+        A tuple containing the two points to integrate the Gaussian between.
+    amplitude : float
+        The amplitude of the Gaussian. Must be Real.
+    mu : float
+        The median (also the center) of the Gaussian. Must be Real.
+    sigma : float
+        The standard deviation of the Gaussian. Must be non-zero.
+    baseline : float
+        The baseline of the Gaussian. Must be Real.
+
+    Returns
+    -------
+    float
+        The integrated value under a Gaussian with the given parameters between
+        the two values supplied.
+
+    """
+
+    return (sqrt(tau / 4) * sigma * amplitude *
+            (erf((pixel[1] - mu) / (sigma * sqrt(2))) -
+            erf((pixel[0] - mu) / (sigma * sqrt(2)))) -
+            (baseline * pixel[0]) + (baseline * pixel[1])) / (pixel[1] -
+                                                              pixel[0])
 
 
 def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
