@@ -9,8 +9,10 @@ Test suite for the transition_line.Transition object.
 """
 
 from fractions import Fraction
+
 import pytest
 import unyt as u
+
 from transition_line import Transition
 
 # TODO: possibly add a fixture for test cases?
