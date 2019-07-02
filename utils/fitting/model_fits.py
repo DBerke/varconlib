@@ -31,6 +31,8 @@ config_file = Path('/Users/dberke/code/config/variables.cfg')
 config = configparser.ConfigParser(interpolation=configparser.
                                    ExtendedInterpolation())
 config.read(config_file)
+pixel_geom_files_dir = Path(config['PATHS']['pixel_geom_files_dir'])
+pixel_size_file = pixel_geom_files_dir / 'pixel_geom_size_HARPS_2004_A.fits'
 
 
 class GaussianFit(object):
@@ -119,6 +121,11 @@ class GaussianFit(object):
         baryArray = self.observation.barycentricArray[self.order]
         fluxArray = self.observation.photonFluxArray[self.order]
         errorArray = self.observation.errorArray[self.order]
+
+#        pixel_sizes = HARPSFile2D(pixel_size_file)._rawData
+#
+#        for i in range(0, 72):
+#            for j in range(0, 4096):
 
         # Figure out the range in wavelength space to search around the nominal
         # wavelength for the flux minimum, as well as the range to take for
