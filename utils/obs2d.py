@@ -20,7 +20,8 @@ from tqdm import tqdm, trange
 import unyt as u
 
 from conversions import air2vacESO
-from exceptions import BadRadialVelocityError, NewCoefficientsNotFoundError
+from exceptions import (BadRadialVelocityError, NewCoefficientsNotFoundError,
+                        BlazeFileNotFoundError)
 from varconlib import wavelength2index, shift_wavelength
 
 
@@ -351,7 +352,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         if not blaze_file_path.exists():
             tqdm.write(str(blaze_file_path))
-            raise FileNotFoundError("Blaze file path doesn't exist!")
+            raise BlazeFileNotFoundError("Blaze file path doesn't exist!")
 
         return blaze_file_path
 
