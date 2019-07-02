@@ -28,7 +28,7 @@ class BadRadialVelocityError(ObservationError):
 
     """
 
-    def __init__(self, message):
+    def __init__(self, message=None):
         self.message = message
 
 
@@ -42,7 +42,16 @@ class NewCoefficientsNotFoundError(ObservationError):
 
     """
 
-    def __init__(self, message):
+    def __init__(self, message=None):
+        self.message = message
+
+
+class BlazeFileNotFoundError(ObservationError):
+    """Error to raise when the blaze file for an observation isn't available.
+
+    """
+
+    def __init__(self, message=None):
         self.message = message
 
 
@@ -61,5 +70,21 @@ class PositiveAmplitudeError(FeatureFitError):
 
     """
 
-    def __init__(self, message):
+    def __init__(self, message=None):
+        self.message = message
+
+
+class TransitionPairError(Error):
+    """Errors relating to TransitionPair objects."""
+
+    pass
+
+
+class SameWavelengthsError(TransitionPairError):
+    """Exception to raise if TransitionPair is given two transitions with the
+    same wavelength.
+
+    """
+
+    def __init__(self, message=None):
         self.message = message
