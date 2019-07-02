@@ -761,7 +761,7 @@ colDtypes = (float, float, "U6", float, float, "U11", float, float, "U11",
 
 # All transitions matched between BRASS and Kurucz lists:
 pickle_file = pickle_dir / 'transitions.pkl'
-# All pairs found from those transitions:
+# All pairs found from those transitions: (also final pair list)
 pickle_pairs_file = pickle_dir / 'transition_pairs.pkl'
 # All unique transitions found within those pairs:
 pickle_pairs_transitions_file = pickle_dir / 'pair_transitions.pkl'
