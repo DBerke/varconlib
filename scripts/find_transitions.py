@@ -20,7 +20,8 @@ import pickle
 from tqdm import tqdm
 import unyt as u
 
-from exceptions import PositiveAmplitudeError
+from exceptions import (PositiveAmplitudeError, BlazeFileNotFoundError,
+                        NewCoefficientsNotFoundError)
 from fitting import GaussianFit
 import obs2d
 
@@ -111,8 +112,11 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
                                        use_pixel_positions=pix_pos,
                                        use_new_coefficients=new_coeffs,
                                        update=args.update)
-    except FileNotFoundError:
+    except BlazeFileNotFoundError:
         tqdm.write('Blaze file not found, continuing.')
+        continue
+    except NewCoefficientsNotFoundError:
+        tqdm.write('New coefficients not found, continuing.')
         continue
 
     object_dir = output_dir / args.object_name / obs_path.stem
