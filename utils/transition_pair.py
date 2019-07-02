@@ -11,6 +11,8 @@ transitions.
 
 import unyt as u
 
+from exceptions import SameWavelengthsError
+
 
 class TransitionPair(object):
     """Holds information relating to a single pair of transition lines, in the
@@ -39,9 +41,14 @@ class TransitionPair(object):
             self._lowerEnergyTransition = transition2
             self._higherEnergyTransition = transition1
         else:
-            raise TransitionPairSameWavelengthError
+            msg = 'Tried to make pair with two transitions of same wavelength!'
+            raise SameWavelengthsError(msg)
 
         self._nominalSeparation = self.getNominalSeparation()
+
+    @property
+    def nominalSeparation(self):
+        return self._nominalSeparation
 
     def __iter__(self):
         return iter([self._lowerEnergyTransition,
@@ -56,11 +63,11 @@ class TransitionPair(object):
         return 'Pair: {} {} {:.4f}, '.format(
                 self._higherEnergyTransition.atomicSymbol,
                 self._higherEnergyTransition.ionizationState,
-                self._higherEnergyTransition.wavelength) +\
+                self._higherEnergyTransition.wavelength.to(u.nm)) +\
                 '{} {} {:.4f}'.format(
                 self._lowerEnergyTransition.atomicSymbol,
                 self._lowerEnergyTransition.ionizationState,
-                self._lowerEnergyTransition.wavelength)
+                self._lowerEnergyTransition.wavelength.to(u.nm))
 
     def __eq__(self, other):
         """Return equal if both higher and lower energy transitions are the
@@ -116,17 +123,3 @@ class TransitionPair(object):
 
         return self._lowerEnergyTransition.wavelength -\
             self._higherEnergyTransition.wavelength
-
-
-class TransitionPairError(Exception):
-    """Base class for exceptions in this module."""
-    pass
-
-
-class TransitionPairSameWavelengthError(TransitionPairError):
-    """Exception to raise if TransitionPair is given two transitions with the
-    same wavelength.
-
-    """
-
-    pass
