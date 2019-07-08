@@ -20,19 +20,21 @@ from scipy.optimize import curve_fit, OptimizeWarning
 from tqdm import tqdm
 import unyt as u
 
-from exceptions import PositiveAmplitudeError
+from exceptions import (PositiveAmplitudeError, WavelengthNotFoundInArrayError)
+from obs2d import HARPSFile2D
 import varconlib as vcl
 
 # This line prevents the wavelength formatting from being in the form of
 # scientific notation.
 matplotlib.rcParams['axes.formatter.useoffset'] = False
 
-config_file = Path('/Users/dberke/code/config/variables.cfg')
-config = configparser.ConfigParser(interpolation=configparser.
-                                   ExtendedInterpolation())
-config.read(config_file)
-pixel_geom_files_dir = Path(config['PATHS']['pixel_geom_files_dir'])
-pixel_size_file = pixel_geom_files_dir / 'pixel_geom_size_HARPS_2004_A.fits'
+#config_file = Path('/Users/dberke/code/config/variables.cfg')
+#config = configparser.ConfigParser(interpolation=configparser.
+#                                   ExtendedInterpolation())
+#config.read(config_file)
+#pixel_geom_files_dir = Path(config['PATHS']['pixel_geom_files_dir'])
+#pixel_size_file = pixel_geom_files_dir / 'pixel_geom_size_HARPS_2004_A.fits'
+#pixel_pos_file = pixel_geom_files_dir / 'pixel_geom_pos_HARPS_2004_A.fits'
 
 
 class GaussianFit(object):
@@ -42,8 +44,9 @@ class GaussianFit(object):
 
     def __init__(self, transition, observation, radial_velocity=None,
                  close_up_plot_path=None, context_plot_path=None,
-                 verbose=False):
-        """Construct a fit to an absorption feature using a gaussian.
+                 integrated=True, verbose=False):
+        """Construct a fit to an absorption feature using a Gaussian or
+        integrated Gaussian.
 
         Parameters
         ----------
@@ -62,11 +65,13 @@ class GaussianFit(object):
             In such cases, this parameter can be used to override the given
             radial velocity.
         close_up_plot_path : string or `pathlib.Path`
-            The file name to save a close-up plot of the fit to in case the fit
-            attempt fails.
+            The file name to save a close-up plot of the fit to.
         context_plot_path : string or `pathlib.Path`
             The file name to save a wider context plot (±25 km/s) around the
-            fitted feature to in case the fit attempt fails.
+            fitted feature to.
+        integrated : bool, Default : True
+            Controls whether to attempt to fit a feature with an integrated
+            Gaussian instead of a Gaussian.
         verbose : bool, Default : False
             Whether to print out extra diagnostic information while running
             the function.
@@ -107,25 +112,17 @@ class GaussianFit(object):
                               nominal_wavelength.to(u.nm),
                               self.correctedWavelength.to(u.nm)))
         # Find which order of the echelle spectrum the wavelength falls in.
-        try:
-            self.order = self.observation.findWavelength(
-                    self.correctedWavelength, mid_most=True)
-        except RuntimeError:
-            raise
-        else:
-            if verbose:
-                tqdm.write('Order is {}'.format(self.order))
+        self.order = self.observation.findWavelength(
+                self.correctedWavelength, mid_most=True)
+        if verbose:
+            tqdm.write('Wavelength found in order {}'.format(self.order))
+
         if self.order is None:
-            raise RuntimeError('Wavelength found in no order!')
+            raise WavelengthNotFoundInArrayError('Wavelength not found!')
 
         baryArray = self.observation.barycentricArray[self.order]
         fluxArray = self.observation.photonFluxArray[self.order]
         errorArray = self.observation.errorArray[self.order]
-
-#        pixel_sizes = HARPSFile2D(pixel_size_file)._rawData
-#
-#        for i in range(0, 72):
-#            for j in range(0, 4096):
 
         # Figure out the range in wavelength space to search around the nominal
         # wavelength for the flux minimum, as well as the range to take for
@@ -135,8 +132,7 @@ class GaussianFit(object):
 
         continuum_range = vcl.velocity2wavelength(continuum_range_vel,
                                                   self.correctedWavelength)
-        if verbose:
-            print(baryArray)
+
         low_search_index = vcl.wavelength2index(self.correctedWavelength -
                                                 search_range,
                                                 baryArray)
@@ -183,13 +179,34 @@ class GaussianFit(object):
 
         # Do the fitting:
         try:
-            self.popt, self.pcov = curve_fit(vcl.gaussian,
-                                             self.wavelengths.value,
-                                             self.fluxes,
-                                             sigma=self.errors,
-                                             absolute_sigma=True,
-                                             p0=self.initial_guess,
-                                             method='lm', maxfev=10000)
+            if integrated:
+                wavelengths_lower = self.observation.pixelLowerArray
+                wavelengths_upper = self.observation.pixelUpperArray
+
+                pixel_edges_lower = wavelengths_lower[self.order,
+                                                      self.lowFitIndex:
+                                                          self.highFitIndex]
+                pixel_edges_upper = wavelengths_upper[self.order,
+                                                      self.lowFitIndex:
+                                                          self.highFitIndex]
+                print(pixel_edges_lower)
+                print(pixel_edges_upper)
+                self.popt, self.pcov = curve_fit(vcl.integrated_gaussian,
+                                                 (pixel_edges_lower.value,
+                                                  pixel_edges_upper.value),
+                                                 self.fluxes,
+                                                 sigma=self.errors,
+                                                 absolute_sigma=True,
+                                                 p0=self.initial_guess,
+                                                 method='lm', maxfev=10000)
+            else:
+                self.popt, self.pcov = curve_fit(vcl.gaussian,
+                                                 self.wavelengths.value,
+                                                 self.fluxes,
+                                                 sigma=self.errors,
+                                                 absolute_sigma=True,
+                                                 p0=self.initial_guess,
+                                                 method='lm', maxfev=10000)
         except (OptimizeWarning, RuntimeError):
             print(self.continuumLevel)
             print(self.lineDepth)
@@ -230,6 +247,8 @@ class GaussianFit(object):
         self.chiSquaredNu = self.chiSquared / 3  # ν = 7 (pixels) - 4 (params)
         if (self.chiSquaredNu > 1):
             self.medianErr *= np.sqrt(self.chiSquaredNu)
+        if verbose:
+            tqdm.write('χ^2_ν = {}'.format(self.chiSquaredNu))
 
         # Find the full width at half max.
         # 2.354820 ≈ 2 * sqrt(2 * ln(2)), the relationship of FWHM to the
