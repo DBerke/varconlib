@@ -797,7 +797,8 @@ class HARPSFile2DScience(HARPSFile2D):
         return shift_wavelength(wavelength=wavelength_array,
                                 shift_velocity=shift_velocity)
 
-    def findWavelength(self, wavelength, mid_most=True, verbose=False):
+    def findWavelength(self, wavelength, wavelength_array='barycentric',
+                       mid_most=True, verbose=False):
         """Find which orders contain a given wavelength.
 
         This function will return the indices of the wavelength orders that
@@ -812,6 +813,11 @@ class HARPSFile2DScience(HARPSFile2D):
 
         Optional
         --------
+        wavelength_array : one of 'wavelength', 'vacuum', or 'barycentric'
+                Default : 'barycentric'
+            A string denoting which array to search in. By default it will be
+            the barycentric array, but this can also be used to search the
+            default (air wavelengths) array or the vacuum array.
         mid_most : bool, Default : True
             In a 2D extracted echelle spectrograph like HARPS, a wavelength
             near the ends of an order can appear a second time in an adjacent
@@ -821,7 +827,6 @@ class HARPSFile2DScience(HARPSFile2D):
             ratio is highest. Setting this to *False* will allow for the
             possibility of a length-2 tuble being returned containing the
             numbers of both orders a wavelength is found in.
-
         verbose : bool, Default : False
             If *True*, the function will print out additional information such
             as the minimum and maximum values of the array and for each order.
@@ -831,7 +836,6 @@ class HARPSFile2DScience(HARPSFile2D):
         If mid_most is false: tuple
             A tuple of ints of length 1 or 2, representing the indices of
             the orders in which the input wavelength is found.
-
         If mid_most is true: int
             An int representing the order in which the wavelength found is
             closest to the geometrical center.
@@ -842,9 +846,18 @@ class HARPSFile2DScience(HARPSFile2D):
 
         wavelength_to_find = wavelength.to(u.angstrom)
 
+        if verbose:
+            tqdm.write(wavelength_array)
+        if wavelength_array == 'barycentric':
+            wavelength_array = self.barycentricArray
+        elif wavelength_array == 'wavelength':
+            wavelength_array = self.wavelengthArray
+        elif wavelength_array == 'vacuum':
+            wavelength_array = self.vacuumArray
+
         # Make sure the wavelength to find is in the array in the first place.
-        array_min = self.barycentricArray[0, 0]
-        array_max = self.barycentricArray[-1, -1]
+        array_min = wavelength_array[0, 0]
+        array_max = wavelength_array[-1, -1]
         if verbose:
             tqdm.write(str(array_min), str(array_max))
         if not (array_min <= wavelength_to_find <= array_max):
@@ -857,8 +870,8 @@ class HARPSFile2DScience(HARPSFile2D):
         # is found.
         orders_wavelength_found_in = []
         for order in range(0, 72):
-            order_min = self.barycentricArray[order, 0]
-            order_max = self.barycentricArray[order, -1]
+            order_min = wavelength_array[order, 0]
+            order_max = wavelength_array[order, -1]
             if verbose:
                 tqdm.write(str(order_min), str(order_max))
             if order_min <= wavelength_to_find <= order_max:
@@ -881,17 +894,15 @@ class HARPSFile2DScience(HARPSFile2D):
             elif len(orders_wavelength_found_in) == 2:
                 order1, order2 = orders_wavelength_found_in
                 index1 = wavelength2index(wavelength_to_find,
-                                          self.barycentricArray[order1])
+                                          wavelength_array[order1])
                 index2 = wavelength2index(wavelength_to_find,
-                                          self.barycentricArray[order2])
+                                          wavelength_array[order2])
                 # Check which index is closest to the pixel in the geometric
                 # center of the 4096-length array, given 0-indexing in Python.
                 if abs(index1 - 2047.5) > abs(index2 - 2047.5):
                     return order2
                 else:
                     return order1
-            else:
-                raise RuntimeError("Wavelength found in >2 arrays!")
         else:
             return tuple(orders_wavelength_found_in)
 
