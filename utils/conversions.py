@@ -97,7 +97,6 @@ def air2vacESO(air_wavelengths_array):
         # We need to flatten the array to 1-D, then reshape it afterwards.
         reshape = True
         original_shape = air_wavelengths_array.shape
-        tqdm.write(str(original_shape))
         air_wavelengths_array = air_wavelengths_array.flatten()
 
     air_wavelengths_array.convert_to_units(u.angstrom)
