@@ -15,6 +15,7 @@ class Error(Exception):
     pass
 
 
+# Errors relating to observation files.
 class ObservationError(Error):
     """Errors relating to importing or working with observation files."""
 
@@ -55,6 +56,17 @@ class BlazeFileNotFoundError(ObservationError):
         self.message = message
 
 
+class WavelengthNotFoundInArrayError(ObservationError):
+    """Error to raise when a requested wavelength is not found in the given
+    wavelength array of a observation.
+
+    """
+
+    def __init__(self, message=None):
+        self.message = message
+
+
+# Errors relating to attempting to fit absorption features.
 class FeatureFitError(Error):
     """Errors relating to fitting absorption features."""
 
@@ -74,6 +86,7 @@ class PositiveAmplitudeError(FeatureFitError):
         self.message = message
 
 
+# Errors relating to TransitionPair objects.
 class TransitionPairError(Error):
     """Errors relating to TransitionPair objects."""
 
