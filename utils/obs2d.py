@@ -34,6 +34,8 @@ config.read(config_file)
 blaze_file_dir = Path(config['PATHS']['blaze_file_dir'])
 pixel_geom_files_dir = Path(config['PATHS']['pixel_geom_files_dir'])
 wavelength_cals_dir = Path(config['PATHS']['wavelength_cal_dir'])
+pixel_size_file = pixel_geom_files_dir / 'pixel_geom_size_HARPS_2004_A.fits'
+pixel_pos_file = pixel_geom_files_dir / 'pixel_geom_pos_HARPS_2004_A.fits'
 
 # Define barycenters of each order of fiber A to use with the new calibration
 # coefficients.
@@ -162,10 +164,12 @@ class HARPSFile2DScience(HARPSFile2D):
         self._rawFluxArray = copy(self._rawData)
         self._blazeFile = None
 
-        # Since we may not have the blaze files on hand, only try to find
-        # them if we really need them, i.e. when opening a file for the
-        # first time or when explicitly updating it.
+        # Some files are only needed if updating an observation or creating the
+        # new arrays for the first time, so only open them if we really need
+        # them, i.e. when opening a file for the first time or when explicitly
+        # updating it.
         if (len(hdulist) == 1) or file_open_mode == 'update':
+            # Read the blaze file.
             self._blazeFile = HARPSFile2D(self.getBlazeFile())
 
         # Define an error string for updating a file that hasn't been opened
@@ -191,18 +195,18 @@ class HARPSFile2DScience(HARPSFile2D):
                                     use_new_coefficients=use_new_coefficients,
                                     use_pixel_positions=use_pixel_positions)
 
-        # Try to read the barycentric-vacuum wavelength array, or create it if
-        # if doesn't exist yet.
+        # Try to read the barycentric-vacuum wavelength array (and pixel upper
+        # and lower edge arrays)or create it if if doesn't exist yet.
         try:
             self._barycentricArray = hdulist['BARY'].data * u.angstrom
         except KeyError:
             if ('ALL' in update) or ('BARY' in update):
                 raise RuntimeError(err_str)
-            tqdm.write('Writing new barycentric wavelength HDU.')
-            self.writeBarycentricHDU(hdulist, verify_action='warn')
+            tqdm.write('Writing new barycentric wavelength HDUs.')
+            self.writeBarycentricHDUs(hdulist, verify_action='warn')
         if ('ALL' in update) or ('BARY' in update):
-            tqdm.write('Overwriting barycentric wavelength HDU.')
-            self.writeBarycentricHDU(hdulist, verify_action='warn')
+            tqdm.write('Overwriting barycentric wavelength HDUs.')
+            self.writeBarycentricHDUs(hdulist, verify_action='warn')
 
         # Try to read the flux array, or create it if it doesn't exist.
         try:
@@ -248,23 +252,58 @@ class HARPSFile2DScience(HARPSFile2D):
     def wavelengthArray(self):
         if not hasattr(self, '_wavelengthArray'):
             tqdm.write('No wavelength array, something went wrong!')
-#            print('Creating wavelength array.')
-#            self._wavelengthArray = self.getWavelengthArray()
         return self._wavelengthArray
 
     @property
     def vacuumArray(self):
         if not hasattr(self, '_vacuumArray'):
             tqdm.write('Creating vacuum wavelength array.')
-            self._vacuumArray = self.getVacuumArray()
+            self._vacuumArray = self.getVacuumArray(self.wavelengthArray)
         return self._vacuumArray
 
     @property
     def barycentricArray(self):
         if not hasattr(self, '_barycentricArray'):
             tqdm.write('Creating barycentric vacuum wavelength array.')
-            self._barycentricArray = self.getBarycentricArray()
+            self._barycentricArray = self.getBarycentricArray(self.
+                                                              _vacuumArray)
         return self._barycentricArray
+
+    @property
+    def pixelLowerArray(self):
+        if not hasattr(self, '_pixelLowerArray'):
+            tqdm.write('Creating lower pixel edge barycentric vacuum array.')
+            if (not hasattr(self, 'pixel_pos')) or (not hasattr(self,
+               'pixel_size')):
+                # Get pixel size and position information
+                self.pixel_size = HARPSFile2D(pixel_size_file)._rawData
+                self.pixel_pos = HARPSFile2D(pixel_pos_file)._rawData
+            pixel_lower = self.pixel_pos - self.pixel_size / 2
+            pixel_lower_air = self.getWavelengthArray(
+                    use_new_coefficients=True,
+                    use_pixel_positions=pixel_lower)
+            pixel_lower_vac = self.getVacuumArray(pixel_lower_air)
+            self._pixelLowerArray = self.getBarycentricArray(pixel_lower_vac)
+
+        return self._pixelLowerArray
+
+    @property
+    def pixelUpperArray(self):
+        if not hasattr(self, '_pixelUpperArray'):
+            tqdm.write('Creating upper pixel edge barycentric vacuum array.')
+            if (not hasattr(self, 'pixel_pos')) or (not hasattr(self,
+               'pixel_size')):
+                # Get pixel size and position information
+                self.pixel_size = HARPSFile2D(pixel_size_file)._rawData
+                self.pixel_pos = HARPSFile2D(pixel_pos_file)._rawData
+            pixel_upper = self.pixel_pos + self.pixel_size / 2
+            pixel_upper_air = self.getWavelengthArray(
+                    use_new_coefficients=True,
+                    use_pixel_positions=pixel_upper)
+            pixel_upper_vac = self.getVacuumArray(pixel_upper_air)
+            self._pixelUpperArray = self.getBarycentricArray(pixel_upper_vac)
+
+        return self._pixelUpperArray
 
     @property
     def rvCorrectedArray(self):
@@ -550,8 +589,8 @@ class HARPSFile2DScience(HARPSFile2D):
 
         return wavelength_array * u.angstrom
 
-    def getVacuumArray(self):
-        """Correct the calculated air wavelength array back into vacuum.
+    def getVacuumArray(self, array):
+        """Convert an air wavelength array into vacuum.
 
         Returns
         -------
@@ -562,11 +601,9 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        vacuumArray = air2vacESO(self.wavelengthArray)
+        return air2vacESO(array)
 
-        return vacuumArray
-
-    def getBarycentricArray(self):
+    def getBarycentricArray(self, array):
         """Correct the vacuum wavelength array by the barycentric Earth radial
         velocity (BERV).
 
@@ -577,9 +614,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        barycentricArray = self.shiftWavelengthArray(self.vacuumArray,
-                                                     self.BERV)
-        return barycentricArray
+        return self.shiftWavelengthArray(array, self.BERV)
 
     def getPhotonFluxArray(self):
         """Calibrate the raw flux array using the gain, then correct it using
@@ -671,9 +706,13 @@ class HARPSFile2DScience(HARPSFile2D):
             hdulist.append(wavelength_HDU)
         hdulist.flush(output_verify=verify_action, verbose=True)
 
-    def writeBarycentricHDU(self, hdulist, verify_action='warn'):
-        """Write out an array of barycentric vacuum wavelengths to the
-        currently-opened file.
+    def writeBarycentricHDUs(self, hdulist, verify_action='warn'):
+        """Write out an array of barycentric vacuum wavelengths for pixel
+        centers and upper and lower edges to the currently-opened file.
+
+        This function writes out three arrays (all in vacuum wavelengths,
+        barycentric corrected): one for the middle of pixels, one for the pixel
+        lower edges, and one for the pixel upper edges.
 
         Parameters
         ----------
@@ -692,13 +731,22 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        self._barycentricArray = self.getBarycentricArray()
+#        self._barycentricArray = self.getBarycentricArray(self._vacuumArray)
+
         barycentric_HDU = fits.ImageHDU(data=self.barycentricArray,
                                         name='BARY')
-        try:
-            hdulist['BARY'] = barycentric_HDU
-        except KeyError:
-            hdulist.append(barycentric_HDU)
+        pixel_lower_HDU = fits.ImageHDU(data=self.pixelLowerArray,
+                                        name='PIXLOWER')
+        pixel_upper_HDU = fits.ImageHDU(data=self.pixelUpperArray,
+                                        name='PIXUPPER')
+        for key, HDU in zip(('BARY', 'PIXLOWER', 'PIXUPPER'),
+                            (barycentric_HDU, pixel_lower_HDU,
+                             pixel_upper_HDU)):
+            try:
+                hdulist[key] = HDU
+            except KeyError:
+                hdulist.append(HDU)
+
         hdulist.flush(output_verify=verify_action, verbose=True)
 
     def writePhotonFluxHDU(self, hdulist, verify_action='warn'):
