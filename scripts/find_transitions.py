@@ -38,9 +38,14 @@ parser.add_argument('--end', type=int, action='store', default=-1,
                     help='End position in the list of observations.')
 
 parser.add_argument('--pixel-positions', action='store_true',
+                    default=False,
                     help='Use new pixel positions.')
 parser.add_argument('--new-coefficients', action='store_true',
+                    default=False,
                     help='Use new calibration coefficients.')
+parser.add_argument('--integrated-gaussian', action='store_true',
+                    default=False,
+                    help='Fit using an integrated Gaussian.')
 parser.add_argument('--update', action='store', metavar='HDU-name',
                     nargs='+', default=[],
                     help='Which HDUs to update (WAVE, BARY, FLUX, ERR, BLAZE,'
@@ -135,7 +140,10 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
     elif (not args.pixel_positions) and args.new_coefficients:
         suffix = 'coeffs'
     elif args.pixel_positions and args.new_coefficients:
-        suffix = 'new'
+        if args.integrated_gaussian:
+            suffix = 'int'
+        else:
+            suffix = 'new'
 
     # Define directory for output pickle files:
     output_pickle_dir = object_dir / '_'.join(['pickles', suffix])
@@ -167,7 +175,8 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
                 transition.wavelength.to(u.angstrom).value,
                 transition.atomicSymbol, transition.ionizationState)
         try:
-            fit = GaussianFit(transition, obs, verbose=args.verbose)
+            fit = GaussianFit(transition, obs, verbose=args.verbose,
+                              integrated=args.integrated_gaussian)
             fit.plotFit(plot_closeup, plot_context)
             fits_list.append(fit)
         except (RuntimeError, PositiveAmplitudeError):
