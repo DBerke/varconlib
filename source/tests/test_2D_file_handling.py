@@ -78,6 +78,8 @@ class TestScience2DFile(object):
         # Test for created-on-the-fly arrays:
         assert hasattr(s, 'vacuumArray')
         assert hasattr(s, 'rvCorrectedArray')
+        assert hasattr(s, 'pixelLowerArray')
+        assert hasattr(s, 'pixelUpperArray')
 
     def testArraysShapes(self, s):
         assert np.shape(s._wavelengthArray) == (72, 4096)
@@ -85,6 +87,8 @@ class TestScience2DFile(object):
         assert np.shape(s._photonFluxArray) == (72, 4096)
         assert np.shape(s._errorArray) == (72, 4096)
         assert np.shape(s._blazeArray) == (72, 4096)
+        assert np.shape(s._pixelLowerArray) == (72, 4096)
+        assert np.shape(s._pixelUpperArray) == (72, 4096)
 
     def testFindWavelength(self, s):
         assert s.findWavelength(5039 * u.angstrom, mid_most=True) == 40
