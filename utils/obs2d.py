@@ -461,10 +461,19 @@ class HARPSFile2DScience(HARPSFile2D):
             Whether or not to attempt to use newly-derived wavelength
             calibration coefficients following Coffinet et al. 2019 [1]_.
 
-        use_pixel_positions : bool, Default : True
-            Whether or not to use more accurate positions (in 'pixel space')
-            for the centers of pixels when evaluating the wavelength solution,
-            as detailed in Coffinet et al. 2019 [1]_.
+        use_pixel_positions : bool or `numpy.ndarray`, Default : True
+            This does different things depending on if a boolean or an array is
+            passed.
+
+            If a boolean is passed, a value of *True* will use the more
+            accurate positions (in 'pixel space', as detailed in Coffinet et
+            al. 2019 [1]_) for the centers of pixels when evaluating the
+            wavelength solution. If *False*, it will use nominal values for the
+            pixel centers assuming a nominal pixel size of 1.
+
+            If an array is passed, it will use the values from that array. It
+            must be a (72, 4096) size array of floating point values without
+            units attached.
 
         Returns
         -------
@@ -509,11 +518,17 @@ class HARPSFile2DScience(HARPSFile2D):
         else:
             coeffs_file = self
 
-        if use_pixel_positions:
+        if isinstance(use_pixel_positions, np.ndarray):
+            if use_pixel_positions.shape == (72, 4096):
+                pixel_positions = use_pixel_positions
+                tqdm.write('Using provided pixel positions.')
+            else:
+                raise RuntimeError('Provided pixel positions array wrong size')
+        elif use_pixel_positions is True:
             # Use the new pixel positions file provided.
             pixel_pos_file = HARPSFile2D(self.getPixelPositionGeomFile())
             pixel_positions = pixel_pos_file._rawData
-        else:
+        elif use_pixel_positions is False:
             pixel_positions = np.array([[x for x in range(0, 4096)]
                                        for row in range(0, 72)])
 
@@ -794,8 +809,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        return shift_wavelength(wavelength=wavelength_array,
-                                shift_velocity=shift_velocity)
+        return shift_wavelength(wavelength_array, shift_velocity)
 
     def findWavelength(self, wavelength, wavelength_array='barycentric',
                        mid_most=True, verbose=False):
