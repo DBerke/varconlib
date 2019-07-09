@@ -109,19 +109,15 @@ class TestTransition(object):
         assert a.atomicSpecies == 'Fe I'
         assert a.atomicSymbol == 'Fe'
 
-    def test_wavenumber_conversion(self):
+    def test_wavenumber_assigment(self):
         a = Transition(500 * u.nm, 26, 1)
         assert a.wavenumber.value == pytest.approx(20000)
-        a.wavenumber = 25000
-        assert a.wavelength.value == pytest.approx(4e-5)
         a.wavenumber = 20000 * u.cm ** -1
         assert a.wavelength.value == pytest.approx(5e-5)
 
-    def test_wavenumber_assignment(self):
+    def test_wavenumber_conversion(self):
         a = Transition(500 * u.nm, 26, 1)
-        with pytest.raises(ValueError):
-            a.wavenumber = 25000 * u.nm ** -1
-        a.wavenumber = 25000
+        a.wavenumber = 2500000 * 1 / u.m
         assert a.wavelength.value == pytest.approx(4e-5)
         assert a.wavelength.units == u.cm
         assert a.wavenumber.units == u.cm ** -1
@@ -132,3 +128,7 @@ class TestTransition(object):
         assert a.lowerJ == Fraction(3, 2)
         a.higherJ = 2
         assert a.higherJ == Fraction(2, 1)
+
+    def test_label(self):
+        a = Transition(500 * u.nm, 26, 1)
+        assert a.label == '500.0000Fe1'
