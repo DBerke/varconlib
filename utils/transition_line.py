@@ -166,6 +166,14 @@ class Transition(object):
         else:
             self.wavelength = 1 / (new_wavenumber * u.cm ** -1)
 
+    @property
+    def label(self):
+        if (not hasattr(self, '_label')) or self._label is None:
+            self._label = '{:.4f}{}{}'.format(self.wavelength.to(u.nm).value,
+                                              self.atomicSymbol,
+                                              self.ionizationState)
+        return self._label
+
     def __repr__(self):
         return "{}({:.4f}, {}, {})".format(self.__class__.__name__,
                                            self.wavelength.to(u.nm),
@@ -203,6 +211,8 @@ class Transition(object):
             # equal. Basically this function checks multiple ways they could be
             # NOT equal, and only if none of them trigger does it return that
             # they are.
+            # It's still not perfect, as additional information could be
+            # attached, but it should cover general use cases.
             if not (isclose(self.wavelength, other.wavelength,
                             rel_tol=1e-5) and
                     self.atomicNumber == other.atomicNumber and
