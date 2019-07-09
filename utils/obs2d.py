@@ -482,7 +482,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         if not cal_file_path.exists():
             tqdm.write(str(cal_file_path))
-            raise FileNotFoundError("Calibration file doesn't exist!")
+            raise NewCoefficientsNotFoundError("Calibration file not found.")
 
         return cal_file_path
 
@@ -549,7 +549,7 @@ class HARPSFile2DScience(HARPSFile2D):
             try:
                 coeffs_file = HARPSFile2D(self.getWavelengthCalibrationFile())
                 tqdm.write('Found new calibration file.')
-            except FileNotFoundError:
+            except NewCoefficientsNotFoundError:
                 coeffs_file = self
                 tqdm.write('New calibration file could not be found!')
                 tqdm.write('Falling back on old calibration coefficients.')
