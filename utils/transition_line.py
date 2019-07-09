@@ -156,15 +156,9 @@ class Transition(object):
 
     @wavenumber.setter
     def wavenumber(self, new_wavenumber):
-        if type(new_wavenumber) is u.unyt_quantity:
-            # TODO: Change to a try new_wavenumber.to(u.cm ** -1)...except
-            if new_wavenumber.units == u.cm ** -1:
-                self.wavelength = 1 / new_wavenumber
-            else:
-                raise ValueError('Units for given wavenumber are {}!'.format(
-                        new_wavenumber.units))
-        else:
-            self.wavelength = 1 / (new_wavenumber * u.cm ** -1)
+        if new_wavenumber.units != 1 / u.cm:
+            new_wavenumber.convert_to_units(1 / u.cm)
+        self.wavelength = 1 / new_wavenumber
 
     @property
     def label(self):
