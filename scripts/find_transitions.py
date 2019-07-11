@@ -117,6 +117,11 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
                                        use_pixel_positions=pix_pos,
                                        use_new_coefficients=new_coeffs,
                                        update=args.update)
+        # We need to test if new calibration coefficients are available or not,
+        # but if the wavelenth array isn't updated it won't call the function
+        # that checks for them, so call it manually in that case.
+        if set(['ALL', 'WAVE', 'BARY']).isdisjoint(set(args.update)):
+            obs.getWavelengthCalibrationFile()
     except BlazeFileNotFoundError:
         tqdm.write('Blaze file not found, continuing.')
         continue
