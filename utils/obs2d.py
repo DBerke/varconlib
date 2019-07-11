@@ -11,6 +11,7 @@ files.
 
 import configparser
 from copy import copy
+import datetime as dt
 from math import isnan
 from pathlib import Path
 
@@ -88,6 +89,17 @@ class HARPSFile2D(object):
 
     def __str__(self):
         return '{}, {}'.format(self._header['OBJECT'], self._filename.stem)
+
+    @property
+    def dateObs(self):
+        if not hasattr(self, '_dateObs'):
+            try:
+                date_string = self.getHeaderCard('DATE-OBS')
+            except KeyError:
+                raise KeyError('No DATE-OBS header found for this observation')
+            self._dateObs = dt.datetime.strptime(date_string,
+                                                 '%Y-%m-%dT%H:%M:%S.%f')
+        return self._dateObs
 
     def getHeaderCard(self, flag):
         """
