@@ -1154,7 +1154,8 @@ if args.rate_pairs:
         for write_str in lines_to_write:
             f.write(write_str)
 
-    # This pickle file is the final selection of transitions.
+    # This pickle file is the final selection of transitions from pairs that
+    # are considered "good" (low blending of both features).
     print('Pickling final selection of transitions to file: {}.'.format(
             final_selection_file))
     with open(final_selection_file, 'w+b') as f:
