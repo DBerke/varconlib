@@ -44,15 +44,23 @@ class TransitionPair(object):
             msg = 'Tried to make pair with two transitions of same wavelength!'
             raise SameWavelengthsError(msg)
 
-        self._nominalSeparation = self.getNominalSeparation()
-
     @property
     def nominalSeparation(self):
+        if not hasattr(self, '_nominalSeparation'):
+            self._nominalSeparation = self._lowerEnergyTransition.wavelength -\
+                self._higherEnergyTransition.wavelength
         return self._nominalSeparation
 
+    @property
+    def label(self):
+        if not hasattr(self, '_label'):
+            self._label = ''.join([self._higherEnergyTransition.label,
+                                   self._lowerEnergyTransition.label])
+        return self._label
+
     def __iter__(self):
-        return iter([self._lowerEnergyTransition,
-                     self._higherEnergyTransition])
+        return iter([self._higherEnergyTransition,
+                     self._lowerEnergyTransition])
 
     def __repr__(self):
         return '{}({}, {})'.format(self.__class__.__name__,
@@ -114,12 +122,3 @@ class TransitionPair(object):
                 return False
         else:
             return False
-
-    def getNominalSeparation(self):
-        """Return the nominal separation between the wavelengths of the two
-        transitions in the pair.
-
-        """
-
-        return self._lowerEnergyTransition.wavelength -\
-            self._higherEnergyTransition.wavelength
