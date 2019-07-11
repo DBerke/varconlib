@@ -49,6 +49,7 @@ class TestGeneric2DFile(object):
     def testHasAttributes(self, s):
         assert hasattr(s, '_header')
         assert hasattr(s, '_rawData')
+        assert hasattr(s, 'dateObs')
 
 
 class TestScience2DFile(object):
@@ -68,6 +69,7 @@ class TestScience2DFile(object):
     def testHasSpecificAttributes(self, s):
         assert hasattr(s, 'BERV')
         assert hasattr(s, 'radialVelocity')
+        assert hasattr(s, 'dateObs')
 
     def testArrayProperties(self, s):
         assert hasattr(s, 'wavelengthArray')
