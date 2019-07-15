@@ -54,8 +54,8 @@ class TransitionPair(object):
     @property
     def label(self):
         if not hasattr(self, '_label'):
-            self._label = ''.join([self._higherEnergyTransition.label,
-                                   self._lowerEnergyTransition.label])
+            self._label = '_'.join([self._higherEnergyTransition.label,
+                                    self._lowerEnergyTransition.label])
         return self._label
 
     def __iter__(self):
