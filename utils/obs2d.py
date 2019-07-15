@@ -277,8 +277,7 @@ class HARPSFile2DScience(HARPSFile2D):
     def barycentricArray(self):
         if not hasattr(self, '_barycentricArray'):
             tqdm.write('Creating barycentric vacuum wavelength array.')
-            self._barycentricArray = self.getBarycentricArray(self.
-                                                              _vacuumArray)
+            self._barycentricArray = self.getBarycentricArray(self.vacuumArray)
         return self._barycentricArray
 
     @property
