@@ -9,11 +9,13 @@ This library contains functions used for converting wavelengths between vacuum
 and air.
 """
 
+from numba import njit
 import numpy as np
 import unyt as u
 from tqdm import tqdm, trange
 
 
+@njit
 def air_indexEdlen53(l, t=15., p=760.):
     """Return the index of refraction of air at given temperature, pressure,
     and wavelength in Angstroms.
@@ -74,15 +76,21 @@ def vac2airESO(ll):
     return llair * original_units
 
 
-def air2vacESO(air_wavelengths_array):
+def air2vacESO(air_wavelengths_array, verbose=False):
     """Take an array of air wavelengths and return an array of vacuum
     wavelengths in the same units.
 
     Parameters
     ----------
-    air_arr: `unyt.unyt_array`
+    air_arr : `unyt.unyt_array`
         A list of wavelengths in air, with dimensions length. Will be converted
         to Angstroms internally.
+
+
+    Optional
+    --------
+    verbose : bool, Default : False
+        If *True*, will print out additional information while running.
 
     Returns
     -------
@@ -106,7 +114,8 @@ def air2vacESO(air_wavelengths_array):
 
     vacuum_wavelengths_list = []
 
-    tqdm.write('Converting air wavelengths to vacuum using Edlen 1953.')
+    if verbose:
+        tqdm.write('Converting air wavelengths to vacuum using Edlen 1953.')
     for i in trange(0, len(air_wavelengths_array)):
         new_wavelength = air_wavelengths_array[i].value
         old_wavelength = 0.
@@ -126,13 +135,16 @@ def air2vacESO(air_wavelengths_array):
     vacuum_array = u.unyt_array(vacuum_wavelengths_list, u.angstrom)
 
     if reshape:
-        tqdm.write(f'Converting back to original shape: {original_shape}.')
+        if verbose:
+            tqdm.write('Converting back to original shape: {}.'.format(
+                       original_shape))
         # Reshape the array back to its original shape.
         return vacuum_array.reshape(original_shape).to(original_units)
     else:
         return vacuum_array.to(original_units)
 
 
+@njit
 def vac2airMorton00(wl_vac):
     """Take an input vacuum wavelength in Angstroms and return the air
     wavelength.
@@ -147,6 +159,7 @@ def vac2airMorton00(wl_vac):
     return wl_vac / n
 
 
+@njit
 def air2vacMortonIAU(wl_air):
     """Take an input air wavelength in Angstroms and return the vacuum
     wavelength.
