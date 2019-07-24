@@ -39,7 +39,7 @@ pixel_size_file = pixel_geom_files_dir / 'pixel_geom_size_HARPS_2004_A.fits'
 pixel_pos_file = pixel_geom_files_dir / 'pixel_geom_pos_HARPS_2004_A.fits'
 
 # Define barycenters of each order of fiber A to use with the new calibration
-# coefficients.
+# coefficients. These barycenters come from C. Lovis (private communication)
 order_barycenters = {0: 2058.19619875, 1: 2303.03101155, 2: 1714.78184979,
                      3: 2039.10938787, 4: 2073.83335682, 5: 2113.06660854,
                      6: 1967.40201128, 7: 1955.5199909, 8: 2260.21532786,
@@ -74,8 +74,10 @@ class HARPSFile2D(object):
     def __init__(self, FITSfile):
         if type(FITSfile) is str:
             self._filename = Path(FITSfile)
-        else:
+        elif type(FITSfile is Path):
             self._filename = FITSfile
+        else:
+            raise RuntimeError('File name not str or Path!')
         if not self._filename.exists():
             tqdm.write('Given filename does not exist!')
             tqdm.write(self._filename)
@@ -258,6 +260,8 @@ class HARPSFile2DScience(HARPSFile2D):
         if ('ALL' in update) or ('BLAZE' in update):
             tqdm.write('Overwriting blaze array HDU.')
             self.writeBlazeHDU(hdulist, verify_action='warn')
+
+        # Close the file.
         hdulist.close(output_verify='warn')
 
     @property
@@ -284,12 +288,7 @@ class HARPSFile2DScience(HARPSFile2D):
     def pixelLowerArray(self):
         if not hasattr(self, '_pixelLowerArray'):
             tqdm.write('Creating lower pixel edge barycentric vacuum array.')
-            if (not hasattr(self, 'pixel_pos')) or (not hasattr(self,
-               'pixel_size')):
-                # Get pixel size and position information
-                self.pixel_size = HARPSFile2D(pixel_size_file)._rawData
-                self.pixel_pos = HARPSFile2D(pixel_pos_file)._rawData
-            pixel_lower = self.pixel_pos - self.pixel_size / 2
+            pixel_lower = self.pixelPosArray - self.pixelSizeArray / 2
             pixel_lower_air = self.getWavelengthArray(
                     use_new_coefficients=True,
                     use_pixel_positions=pixel_lower)
@@ -302,12 +301,7 @@ class HARPSFile2DScience(HARPSFile2D):
     def pixelUpperArray(self):
         if not hasattr(self, '_pixelUpperArray'):
             tqdm.write('Creating upper pixel edge barycentric vacuum array.')
-            if (not hasattr(self, 'pixel_pos')) or (not hasattr(self,
-               'pixel_size')):
-                # Get pixel size and position information
-                self.pixel_size = HARPSFile2D(pixel_size_file)._rawData
-                self.pixel_pos = HARPSFile2D(pixel_pos_file)._rawData
-            pixel_upper = self.pixel_pos + self.pixel_size / 2
+            pixel_upper = self.pixelPosArray + self.pixelSizeArray / 2
             pixel_upper_air = self.getWavelengthArray(
                     use_new_coefficients=True,
                     use_pixel_positions=pixel_upper)
@@ -315,6 +309,18 @@ class HARPSFile2DScience(HARPSFile2D):
             self._pixelUpperArray = self.getBarycentricArray(pixel_upper_vac)
 
         return self._pixelUpperArray
+
+    @property
+    def pixelSizeArray(self):
+        if not hasattr(self, '_pixelSizeArray'):
+            self._pixelSizeArray = HARPSFile2D(pixel_size_file)._rawData
+        return self._pixelSizeArray
+
+    @property
+    def pixelPosArray(self):
+        if not hasattr(self, '_pixelPosArray'):
+            self._pixelPosArray = HARPSFile2D(pixel_pos_file)._rawData
+        return self._pixelPosArray
 
     @property
     def rvCorrectedArray(self):
