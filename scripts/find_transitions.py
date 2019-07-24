@@ -173,10 +173,12 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
     fits_list = []
     for transition in tqdm(transitions_list):
         tqdm.write('Attempting fit of {}'.format(transition))
-        plot_closeup = closeup_dir / 'Transition_{:.4f}_{}{}.png'.format(
+        plot_closeup = closeup_dir / '{}_{:.4f}_{}{}_close.png'.format(
+                obs_path.name,
                 transition.wavelength.to(u.angstrom).value,
                 transition.atomicSymbol, transition.ionizationState)
-        plot_context = context_dir / 'Transition_{:.4f}_{}{}.png'.format(
+        plot_context = context_dir / '{}_{:.4f}_{}{}_context.png'.format(
+                obs_path.name,
                 transition.wavelength.to(u.angstrom).value,
                 transition.atomicSymbol, transition.ionizationState)
         try:
