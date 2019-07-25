@@ -302,7 +302,7 @@ def integrated_gaussian(pixel, amplitude, mu, sigma, baseline):
     tuple in `pixel`).
 
     The function is given by
-    .. math::    f(x1, x2) = \sqrt{\frac{\tau}{4}} A\
+    .. math::    f(x_1, x_2) = \sqrt{\frac{\tau}{4}} A\
                  \sigma\left[\erf\left(\frac{x_{2}-\mu}{\sqrt{2}\sigma}\right)\
                  -\erf\left(\frac{x_{1}-\mu}{\sqrt{2}\sigma}\right)\right]\
                  -D x_{1}+D x_{2}
