@@ -9,9 +9,6 @@ Code to define a class for a model fit to an absorption line.
 
 """
 
-import configparser
-from pathlib import Path
-
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -21,21 +18,11 @@ from tqdm import tqdm
 import unyt as u
 
 from exceptions import (PositiveAmplitudeError, WavelengthNotFoundInArrayError)
-from obs2d import HARPSFile2D
 import varconlib as vcl
 
 # This line prevents the wavelength formatting from being in the form of
 # scientific notation.
 matplotlib.rcParams['axes.formatter.useoffset'] = False
-
-#config_file = Path('/Users/dberke/code/config/variables.cfg')
-#config = configparser.ConfigParser(interpolation=configparser.
-#                                   ExtendedInterpolation())
-#config.read(config_file)
-#pixel_geom_files_dir = Path(config['PATHS']['pixel_geom_files_dir'])
-#pixel_size_file = pixel_geom_files_dir / 'pixel_geom_size_HARPS_2004_A.fits'
-#pixel_pos_file = pixel_geom_files_dir / 'pixel_geom_pos_HARPS_2004_A.fits'
-
 
 class GaussianFit(object):
     """A class to fit an absorption line and store information about the fit.
@@ -78,8 +65,10 @@ class GaussianFit(object):
 
         """
 
+        # Store the transition
         self.transition = transition
-        self.observation = observation
+        # Grab the observation date from the observation
+        self.dateObs = observation.dateObs
 
         # Define some useful numbers and variables
 
@@ -98,7 +87,7 @@ class GaussianFit(object):
         # supplied observation. This is mostly for use with things like
         # asteroids that might not have a radial velocity assigned.
         if radial_velocity is None:
-            radial_velocity = self.observation.radialVelocity
+            radial_velocity = observation.radialVelocity
 
         # Shift the wavelength being searched for to correct for the radial
         # velocity of the star.
@@ -112,17 +101,18 @@ class GaussianFit(object):
                               nominal_wavelength.to(u.nm),
                               self.correctedWavelength.to(u.nm)))
         # Find which order of the echelle spectrum the wavelength falls in.
-        self.order = self.observation.findWavelength(
-                self.correctedWavelength, mid_most=True)
+        self.order = observation.findWavelength(self.correctedWavelength,
+                                                observation.barycentricArray,
+                                                mid_most=True)
         if verbose:
             tqdm.write('Wavelength found in order {}'.format(self.order))
 
         if self.order is None:
             raise WavelengthNotFoundInArrayError('Wavelength not found!')
 
-        baryArray = self.observation.barycentricArray[self.order]
-        fluxArray = self.observation.photonFluxArray[self.order]
-        errorArray = self.observation.errorArray[self.order]
+        self.baryArray = observation.barycentricArray[self.order]
+        self.fluxArray = observation.photonFluxArray[self.order]
+        self.errorArray = observation.errorArray[self.order]
 
         # Figure out the range in wavelength space to search around the nominal
         # wavelength for the flux minimum, as well as the range to take for
@@ -135,33 +125,33 @@ class GaussianFit(object):
 
         low_search_index = vcl.wavelength2index(self.correctedWavelength -
                                                 search_range,
-                                                baryArray)
+                                                self.baryArray)
 
         high_search_index = vcl.wavelength2index(self.correctedWavelength +
                                                  search_range,
-                                                 baryArray)
+                                                 self.baryArray)
 
         self.lowContinuumIndex = vcl.wavelength2index(self.correctedWavelength
                                                       - continuum_range,
-                                                      baryArray)
+                                                      self.baryArray)
         self.highContinuumIndex = vcl.wavelength2index(self.correctedWavelength
                                                        + continuum_range,
-                                                       baryArray)
+                                                       self.baryArray)
         self.centralIndex = low_search_index + \
-            fluxArray[low_search_index:high_search_index].argmin()
+            self.fluxArray[low_search_index:high_search_index].argmin()
 
-        self.continuumLevel = fluxArray[self.lowContinuumIndex:
-                                        self.highContinuumIndex].max()
+        self.continuumLevel = self.fluxArray[self.lowContinuumIndex:
+                                             self.highContinuumIndex].max()
 
-        self.fluxMinimum = fluxArray[self.centralIndex]
+        self.fluxMinimum = self.fluxArray[self.centralIndex]
 
         self.lowFitIndex = self.centralIndex - pixel_range
         self.highFitIndex = self.centralIndex + pixel_range + 1
 
         # Grab the wavelengths, fluxes, and errors from the region to be fit.
-        self.wavelengths = baryArray[self.lowFitIndex:self.highFitIndex]
-        self.fluxes = fluxArray[self.lowFitIndex:self.highFitIndex]
-        self.errors = errorArray[self.lowFitIndex:self.highFitIndex]
+        self.wavelengths = self.baryArray[self.lowFitIndex:self.highFitIndex]
+        self.fluxes = self.fluxArray[self.lowFitIndex:self.highFitIndex]
+        self.errors = self.errorArray[self.lowFitIndex:self.highFitIndex]
 
         self.lineDepth = self.continuumLevel - self.fluxMinimum
         self.normalizedLineDepth = self.lineDepth / self.continuumLevel
@@ -180,8 +170,8 @@ class GaussianFit(object):
         # Do the fitting:
         try:
             if integrated:
-                wavelengths_lower = self.observation.pixelLowerArray
-                wavelengths_upper = self.observation.pixelUpperArray
+                wavelengths_lower = observation.pixelLowerArray
+                wavelengths_upper = observation.pixelUpperArray
 
                 pixel_edges_lower = wavelengths_lower[self.order,
                                                       self.lowFitIndex:
@@ -189,8 +179,6 @@ class GaussianFit(object):
                 pixel_edges_upper = wavelengths_upper[self.order,
                                                       self.lowFitIndex:
                                                           self.highFitIndex]
-                print(pixel_edges_lower)
-                print(pixel_edges_upper)
                 self.popt, self.pcov = curve_fit(vcl.integrated_gaussian,
                                                  (pixel_edges_lower.value,
                                                   pixel_edges_upper.value),
@@ -237,6 +225,9 @@ class GaussianFit(object):
 
         self.amplitudeErr = self.perr[0]
         self.medianErr = self.perr[1] * u.angstrom
+        self.medianErrVel = abs(vcl.wavelength2velocity(self.median,
+                                                        self.median +
+                                                        self.medianErr))
         self.sigmaErr = self.perr[2] * u.angstrom
 
         # Compute the χ^2 value:
@@ -268,7 +259,9 @@ class GaussianFit(object):
         self.offsetErr = self.medianErr
         self.velocityOffset = vcl.wavelength2velocity(self.correctedWavelength,
                                                       self.median)
+
         self.velocityOffsetErr = vcl.wavelength2velocity(self.median,
+                                                         self.median +
                                                          self.offsetErr)
 
         if verbose:
@@ -302,21 +295,19 @@ class GaussianFit(object):
         """
 
         # Set up the figure.
-        fig = plt.figure(figsize=(8, 8))
+        fig = plt.figure(figsize=(6.5, 4.5), dpi=80, tight_layout=True)
         ax = fig.add_subplot(1, 1, 1)
 
         ax.set_xlabel(r'Wavelength ($\AA$)')
         ax.set_ylabel('Flux (photo-electrons)')
 #        ax.xaxis.set_major_locator(ticker.FixedLocator(self.wavelengths
 #                                                       .to(u.angstrom).value))
-        ax.xaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.3f}'))
-        ax.set_xlim(left=self.observation.barycentricArray
-                    [self.order, self.lowContinuumIndex - 3],
-                    right=self.observation.barycentricArray
-                    [self.order, self.highContinuumIndex + 3])
+        ax.xaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.2f}'))
+        ax.set_xlim(left=self.baryArray[self.lowContinuumIndex - 3],
+                    right=self.baryArray[self.highContinuumIndex + 3])
         # Set y-limits so a fit doesn't balloon the plot scale out.
-        ax.set_ylim(top=self.continuumLevel * 1.1,
-                    bottom=self.fluxMinimum * 0.9)
+        ax.set_ylim(top=self.continuumLevel * 1.08,
+                    bottom=self.fluxMinimum * 0.95)
 
         # Plot the expected and measured wavelengths.
         ax.axvline(self.correctedWavelength.to(u.angstrom),
@@ -332,17 +323,18 @@ class GaussianFit(object):
                               self.velocityOffset.to(u.m/u.s)),
                        linestyle='-')
         # Plot the actual data.
-        self.observation.plotErrorbar(self.order, ax,
-                                      min_index=self.lowContinuumIndex,
-                                      max_index=self.highContinuumIndex,
-                                      color='SandyBrown', ecolor='Sienna',
-                                      label='Flux', barsabove=True)
+        ax.errorbar(self.baryArray[self.lowContinuumIndex:
+                                   self.highContinuumIndex],
+                    self.fluxArray[self.lowContinuumIndex:
+                                   self.highContinuumIndex],
+                    yerr=self.errorArray[self.lowContinuumIndex:
+                                         self.highContinuumIndex],
+                    color='SandyBrown', ecolor='Sienna',
+                    label='Flux', barsabove=True)
 
         # Generate some x-values across the plot range.
-        x = np.linspace(self.observation.barycentricArray[self.order,
-                        self.lowContinuumIndex].value,
-                        self.observation.barycentricArray[self.order,
-                        self.highContinuumIndex].value, 1000)
+        x = np.linspace(self.baryArray[self.lowContinuumIndex].value,
+                        self.baryArray[self.highContinuumIndex].value, 1000)
         # Plot the initial guess for the gaussian.
         ax.plot(x, vcl.gaussian(x, *self.initial_guess),
                 color='SlateGray', label='Initial guess',
@@ -361,10 +353,8 @@ class GaussianFit(object):
                     context_plot_path))
 
         # Now create a close-in version to focus on the fit.
-        ax.set_xlim(left=self.observation.barycentricArray
-                    [self.order, self.lowFitIndex - 1],
-                    right=self.observation.barycentricArray
-                    [self.order, self.highFitIndex])
+        ax.set_xlim(left=self.baryArray[self.lowFitIndex - 1],
+                    right=self.baryArray[self.highFitIndex])
         ax.set_ylim(top=self.fluxes.max() * 1.08,
                     bottom=self.fluxes.min() * 0.93)
 
