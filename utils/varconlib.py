@@ -9,6 +9,7 @@ Created on Wed Apr 18 16:28:13 2018
 # Module to contain functions potentially useful across multiple programs
 
 
+import datetime as dt
 from math import sqrt, log, tau
 from pathlib import Path
 
@@ -98,9 +99,8 @@ def wavelength2index(wavelength, wavelength_array, reverse=False):
 
     if reverse:
         wavelength_array.reverse()
-    length = len(wavelength_array)
 
-    for i in range(0, length, 1):
+    for i in range(0, len(wavelength_array), 1):
         # First find the index for which the value is greater than the given
         # wavelength:
         try:
@@ -124,6 +124,45 @@ def wavelength2index(wavelength, wavelength_array, reverse=False):
     # error.
     raise RuntimeError("Couldn't find the given wavelength: {}".
                        format(wavelength))
+
+
+def date2index(given_date, date_list):
+    """Find the closest index prior to a given date in a list of dates.
+
+    Note that that works like a "floor" function, finding the closest timestamp
+    that occurs *before* the given date, not necessarily the closest one
+    overall.
+
+    Parameters
+    ----------
+    date : `datetime.date` or `datetime.datetime`
+        The given date to search for.
+    date_date : iterable collection of `datetime.datetime`s
+        A list of timestamps in chronological order.
+
+    Returns
+    -------
+    int
+        The index of the closest timestamp prior to the given date.
+
+    """
+
+    if isinstance(given_date, dt.date):
+        date_to_find = dt.datetime(year=given_date.year,
+                                   month=given_date.month,
+                                   day=given_date.day,
+                                   hour=0, minute=0, second=0)
+    elif isinstance(given_date, dt.datetime):
+        date_to_find = given_date
+    else:
+        raise RuntimeError('given_date not date or datetime!')
+
+    if (date_to_find <= date_list[0]) or (date_to_find >= date_list[-1]):
+        return None
+
+    for i in range(0, len(date_list), 1):
+        if date_to_find < date_list[i]:
+            return i - 1
 
 
 def shift_wavelength(wavelength, shift_velocity):
