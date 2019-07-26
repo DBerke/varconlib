@@ -110,7 +110,7 @@ for star_name in tqdm(star_names) if len(star_names) > 1 else star_names:
             fluxes = []
             blazes = []
 
-            order = data2d.findWavelength(rv_left_lim)
+            order = data2d.findWavelength(rv_left_lim, data2d.barycentricArray)
             for wl, flux, error, blaze in zip(data2d.barycentricArray[order],
                                               data2d.photonFluxArray[order],
                                               data2d.errorArray[order],
