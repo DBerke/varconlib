@@ -25,7 +25,10 @@ from tqdm import tqdm
 import unyt as u
 
 from varconlib import wavelength2velocity as wave2vel
+from varconlib import date2index
 
+
+plt.rc('text', usetex=True)
 
 # Read the config file and set up some paths:
 config_file = Path('/Users/dberke/code/config/variables.cfg')
@@ -179,14 +182,13 @@ for pair in tqdm(good_pairs[:]):
     date_obs = []
     for key, pair_dict in master_star_dict.items():
         try:
+            # Grab the associated pair from each observation.
             fitted_pairs.append(pair_dict[pair.label])
+            # Grab the observation date.
+            date_obs.append(pair_dict[pair_label][0].dateObs)
         except KeyError:
+            # If a particular pair isn't available, just continue.
             continue
-        # TODO: Replace with obs.dateObs
-        date_str = pair_dict[pair_label][0].observation.getHeaderCard(
-                'DATE-OBS')
-        date_obs.append(dt.datetime.strptime(date_str,
-                                             '%Y-%m-%dT%H:%M:%S.%f'))
 
     offsets, errors = [], []
     for fit_pair in fitted_pairs:
@@ -222,6 +224,10 @@ for pair in tqdm(good_pairs[:]):
 
     if args.create_plots:
 
+        date_indices = []
+        for value in dates_of_change.values():
+            date_indices.append(date2index(value['x'], date_obs))
+
         style_params = {'marker': 'o', 'color': 'Chocolate',
                         'markeredgecolor': 'Black', 'ecolor': 'BurlyWood',
                         'linestyle': '', 'alpha': 0.7}
@@ -240,7 +246,7 @@ for pair in tqdm(good_pairs[:]):
         fig.autofmt_xdate()
         (ax1, ax2), (ax3, ax4) = axes
         for ax in (ax1, ax2, ax3, ax4):
-            ax.set_ylabel('$\Delta v_\text{sep}$ (m/s)')
+            ax.set_ylabel(r'$\Delta v_{\textrm{sep}} (\textrm{m/s})$')
             ax.axhline(y=0, **weighted_mean_params)
             ax.axhline(y=weighted_mean_err,
                        **weighted_err_params)
@@ -252,7 +258,12 @@ for pair in tqdm(good_pairs[:]):
         # Set up axis 1.
         ax1.errorbar(x=range(len(offsets)),
                      y=normalized_offsets,
-                     yerr=errors, **style_params)
+                     yerr=errors, markersize=8, **style_params)
+        for index, key in zip(date_indices, dates_of_change.keys()):
+            if index is not None:
+                ax1.axvline(x=index+0.5,
+                            linestyle=dates_of_change[key]['linestyle'],
+                            color=dates_of_change[key]['color'])
 
         # Set up axis 2.
         ax2.set_xlabel('Count')
