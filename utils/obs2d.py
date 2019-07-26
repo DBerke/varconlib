@@ -22,7 +22,7 @@ import unyt as u
 
 from conversions import air2vacESO
 from exceptions import (BadRadialVelocityError, NewCoefficientsNotFoundError,
-                        BlazeFileNotFoundError)
+                        BlazeFileNotFoundError, WavelengthNotFoundInArrayError)
 from varconlib import wavelength2index, shift_wavelength
 
 
@@ -150,11 +150,12 @@ class HARPSFile2DScience(HARPSFile2D):
         update : list of strings
             Whether to force writing of the wavelength, flux, and error arrays.
             `update` may be given as a list of strings containing some or all
-            of 'WAVE', 'BARY', 'FLUX', 'ERR', or 'BLAZE'.
+            of 'WAVE', 'BARY', 'PIXLOWER', 'PIXUPPER', 'FLUX', 'ERR', or
+            'BLAZE'.
 
             Any HDUs listed in the tuple will be updated, while those not
-            listed will be read from the file being opened. Updating the
-            wavelength solution usually takes the most time, so if it doesn't
+            listed will be read from the file being opened. Updating any of the
+            wavelength solutions usually takes the most time, so if it doesn't
             need to be changed passing a tuple of ('FLUX', 'ERR') will update
             the FLUX and ERR HDUs without performing the time-costly updating
             of the wavelength solution.
@@ -192,7 +193,6 @@ class HARPSFile2DScience(HARPSFile2D):
 
         # Try to read the wavelength array, or create it if it doesn't
         # exist.
-        # ??? See if these can be covered with a wrapper.
         try:
             self._wavelengthArray = hdulist['WAVE'].data * u.angstrom
         except KeyError:
@@ -209,18 +209,50 @@ class HARPSFile2DScience(HARPSFile2D):
                                     use_new_coefficients=use_new_coefficients,
                                     use_pixel_positions=use_pixel_positions)
 
-        # Try to read the barycentric-vacuum wavelength array (and pixel upper
-        # and lower edge arrays)or create it if if doesn't exist yet.
+        # Try to read the barycentric-vacuum wavelength array or create it if
+        # if doesn't exist yet.
         try:
             self._barycentricArray = hdulist['BARY'].data * u.angstrom
         except KeyError:
             if ('ALL' in update) or ('BARY' in update):
                 raise RuntimeError(err_str)
-            tqdm.write('Writing new barycentric wavelength HDUs.')
-            self.writeBarycentricHDUs(hdulist, verify_action='warn')
+            tqdm.write('Writing new barycentric wavelength HDU.')
+            self.writeBarycentricHDU(hdulist, self.barycentricArray, 'BARY',
+                                     verify_action='warn')
         if ('ALL' in update) or ('BARY' in update):
-            tqdm.write('Overwriting barycentric wavelength HDUs.')
-            self.writeBarycentricHDUs(hdulist, verify_action='warn')
+            tqdm.write('Overwriting barycentric wavelength HDU.')
+            self.writeBarycentricHDU(hdulist, self.barycentricArray, 'BARY',
+                                     verify_action='warn')
+
+        # Try to read the barycentric lower pixel edge array, or create it if
+        # it doesn't exist yet.
+        try:
+            self._pixelLowerArray = hdulist['PIXLOWER'].data * u.angstrom
+        except KeyError:
+            if ('ALL' in update) or ('PIXLOWER' in update):
+                raise RuntimeError(err_str)
+            tqdm.write('Writing new pixel lower edges HDU.')
+            self.writeBarycentricHDU(hdulist, self.pixelLowerArray, 'PIXLOWER',
+                                     verify_action='warn')
+        if ('ALL' in update) or ('PIXLOWER' in update):
+            tqdm.write('Overwriting lower pixel wavelength HDU.')
+            self.writeBarycentricHDU(hdulist, self.pixelLowerArray, 'PIXLOWER',
+                                     verify_action='warn')
+
+        # Try to read the barycentric upper pixel edge array, or create it if
+        # it doesn't exist yet.
+        try:
+            self._pixelUpperArray = hdulist['PIXUPPER'].data * u.angstrom
+        except KeyError:
+            if ('ALL' in update) or ('PIXUPPER' in update):
+                raise RuntimeError(err_str)
+            tqdm.write('Writing new pixel upper edges HDU.')
+            self.writeBarycentricHDU(hdulist, self.pixelUpperArray, 'PIXUPPER',
+                                     verify_action='warn')
+        if ('ALL' in update) or ('PIXUPPER' in update):
+            tqdm.write('Overwriting lower pixel wavelength HDU.')
+            self.writeBarycentricHDU(hdulist, self.pixelUpperArray, 'PIXUPPER',
+                                     verify_action='warn')
 
         # Try to read the flux array, or create it if it doesn't exist.
         try:
@@ -281,7 +313,7 @@ class HARPSFile2DScience(HARPSFile2D):
     def barycentricArray(self):
         if not hasattr(self, '_barycentricArray'):
             tqdm.write('Creating barycentric vacuum wavelength array.')
-            self._barycentricArray = self.getBarycentricArray(self.vacuumArray)
+            self._barycentricArray = self.barycenterCorrect(self.vacuumArray)
         return self._barycentricArray
 
     @property
@@ -293,7 +325,7 @@ class HARPSFile2DScience(HARPSFile2D):
                     use_new_coefficients=True,
                     use_pixel_positions=pixel_lower)
             pixel_lower_vac = self.getVacuumArray(pixel_lower_air)
-            self._pixelLowerArray = self.getBarycentricArray(pixel_lower_vac)
+            self._pixelLowerArray = self.barycenterCorrect(pixel_lower_vac)
 
         return self._pixelLowerArray
 
@@ -306,7 +338,7 @@ class HARPSFile2DScience(HARPSFile2D):
                     use_new_coefficients=True,
                     use_pixel_positions=pixel_upper)
             pixel_upper_vac = self.getVacuumArray(pixel_upper_air)
-            self._pixelUpperArray = self.getBarycentricArray(pixel_upper_vac)
+            self._pixelUpperArray = self.barycenterCorrect(pixel_upper_vac)
 
         return self._pixelUpperArray
 
@@ -582,8 +614,7 @@ class HARPSFile2DScience(HARPSFile2D):
                 raise RuntimeError('Provided pixel positions array wrong size')
         elif use_pixel_positions is True:
             # Use the new pixel positions file provided.
-            pixel_pos_file = HARPSFile2D(self.getPixelPositionGeomFile())
-            pixel_positions = pixel_pos_file._rawData
+            pixel_positions = self.pixelPosArray
         elif use_pixel_positions is False:
             pixel_positions = np.array([[x for x in range(0, 4096)]
                                        for row in range(0, 72)])
@@ -620,14 +651,20 @@ class HARPSFile2DScience(HARPSFile2D):
 
         return air2vacESO(array)
 
-    def getBarycentricArray(self, array):
-        """Correct the vacuum wavelength array by the barycentric Earth radial
+    def barycenterCorrect(self, array):
+        """Correct the given wavelength array by the barycentric Earth radial
         velocity (BERV).
+
+        Parameters
+        ----------
+        array : `unyt.unyt_array`
+            A wavelength array (prefarably in vacuum wavelengths, though this
+            is not necesary).
 
         Returns
         -------
         `unyt.unyt_array`
-            The vacuum wavelength array in barycentric coordinates.
+            A wavelength array correct for the Earth's barycentric motion.
 
         """
 
@@ -723,18 +760,21 @@ class HARPSFile2DScience(HARPSFile2D):
             hdulist.append(wavelength_HDU)
         hdulist.flush(output_verify=verify_action, verbose=True)
 
-    def writeBarycentricHDUs(self, hdulist, verify_action='warn'):
-        """Write out an array of barycentric vacuum wavelengths for pixel
-        centers and upper and lower edges to the currently-opened file.
-
-        This function writes out three arrays (all in vacuum wavelengths,
-        barycentric corrected): one for the middle of pixels, one for the pixel
-        lower edges, and one for the pixel upper edges.
+    def writeBarycentricHDU(self, hdulist, array, array_name,
+                            verify_action='warn'):
+        """Write out an array of barycentric vacuum wavelengths to the
+        currently-opened file.
 
         Parameters
         ----------
         hdulist : an astropy HDUList object
             The HDU list of the file to modify.
+        array : property
+            The array to be written; should be one of self.barycentricArray,
+            self.pixelLowerArray, self.pixelUpperArray.
+        array_name : str
+            The name corresponding to the array pased. Should be 'BARY',
+            'PIXLOWER', or 'PIXUPPER', respectively.
 
         Optional
         --------
@@ -748,21 +788,11 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-#        self._barycentricArray = self.getBarycentricArray(self._vacuumArray)
-
-        barycentric_HDU = fits.ImageHDU(data=self.barycentricArray,
-                                        name='BARY')
-        pixel_lower_HDU = fits.ImageHDU(data=self.pixelLowerArray,
-                                        name='PIXLOWER')
-        pixel_upper_HDU = fits.ImageHDU(data=self.pixelUpperArray,
-                                        name='PIXUPPER')
-        for key, HDU in zip(('BARY', 'PIXLOWER', 'PIXUPPER'),
-                            (barycentric_HDU, pixel_lower_HDU,
-                             pixel_upper_HDU)):
-            try:
-                hdulist[key] = HDU
-            except KeyError:
-                hdulist.append(HDU)
+        hdu = fits.ImageHDU(data=array, name=array_name)
+        try:
+            hdulist[array_name] = hdu
+        except KeyError:
+            hdulist.append(hdu)
 
         hdulist.flush(output_verify=verify_action, verbose=True)
 
@@ -876,7 +906,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         return shift_wavelength(wavelength_array, shift_velocity)
 
-    def findWavelength(self, wavelength, wavelength_array='barycentric',
+    def findWavelength(self, wavelength, wavelength_array,
                        mid_most=True, verbose=False):
         """Find which orders contain a given wavelength.
 
@@ -889,14 +919,12 @@ class HARPSFile2DScience(HARPSFile2D):
         wavelength : unyt_quantity
             The wavelength to find in the wavelength array. This should be a
             unyt_quantity object of length 1.
+        wavelength_array : `unyt.unyt_array`
+            An array of wavelengths in the shape of a HARPS extracted spectrum
+            (72, 4096) to be searched.
 
         Optional
         --------
-        wavelength_array : one of 'wavelength', 'vacuum', or 'barycentric'
-                Default : 'barycentric'
-            A string denoting which array to search in. By default it will be
-            the barycentric array, but this can also be used to search the
-            default (air wavelengths) array or the vacuum array.
         mid_most : bool, Default : True
             In a 2D extracted echelle spectrograph like HARPS, a wavelength
             near the ends of an order can appear a second time in an adjacent
@@ -926,34 +954,22 @@ class HARPSFile2DScience(HARPSFile2D):
         wavelength_to_find = wavelength.to(u.angstrom)
 
         if verbose:
-            tqdm.write(wavelength_array)
-        if wavelength_array == 'barycentric':
-            wavelength_array = self.barycentricArray
-        elif wavelength_array == 'wavelength':
-            wavelength_array = self.wavelengthArray
-        elif wavelength_array == 'vacuum':
-            wavelength_array = self.vacuumArray
+            tqdm.write(str(wavelength_array))
 
         # Make sure the wavelength to find is in the array in the first place.
-        array_min = wavelength_array[0, 0]
-        array_max = wavelength_array[-1, -1]
-        if verbose:
-            tqdm.write(str(array_min), str(array_max))
-        if not (array_min <= wavelength_to_find <= array_max):
-            tqdm.write("Given wavelength not in array limits!")
-            tqdm.write("Given wavelength: {} ({}, {})".format(
-                    wavelength_to_find, array_min, array_max))
-            raise RuntimeError
+        err_str = "Given wavelength not in array limits: {} ({}, {})".format(
+                  wavelength_to_find, wavelength_array[0, 0],
+                  wavelength_array[-1, -1])
+        if not (wavelength_array[0, 0] <= wavelength_to_find
+                <= wavelength_array[-1, -1]):
+            raise WavelengthNotFoundInArrayError(err_str)
 
         # Set up a list to hold the indices of the orders where the wavelength
         # is found.
         orders_wavelength_found_in = []
         for order in range(0, 72):
-            order_min = wavelength_array[order, 0]
-            order_max = wavelength_array[order, -1]
-            if verbose:
-                tqdm.write(str(order_min), str(order_max))
-            if order_min <= wavelength_to_find <= order_max:
+            if (wavelength_array[order, 0] <= wavelength_to_find
+                    <= wavelength_array[order, -1]):
                 orders_wavelength_found_in.append(order)
                 if len(orders_wavelength_found_in) == 1:
                     continue
@@ -961,9 +977,10 @@ class HARPSFile2DScience(HARPSFile2D):
                     break
 
         if len(orders_wavelength_found_in) == 0:
-            raise RuntimeError('Wavelength not found in array!')
+            raise WavelengthNotFoundInArrayError(err_str)
+
         if mid_most:
-            # Only one array: great, return it.
+            # If only one array: great, return it.
             if len(orders_wavelength_found_in) == 1:
                 return orders_wavelength_found_in[0]
 
