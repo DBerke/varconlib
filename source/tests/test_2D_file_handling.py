@@ -93,8 +93,9 @@ class TestScience2DFile(object):
         assert np.shape(s.pixelUpperArray) == (72, 4096)
 
     def testFindWavelength(self, s):
-        assert s.findWavelength(5039 * u.angstrom, mid_most=True) == 40
-        assert s.findWavelength(5039 * u.angstrom,
+        assert s.findWavelength(5039 * u.angstrom, s.barycentricArray,
+                                mid_most=True) == 40
+        assert s.findWavelength(5039 * u.angstrom, s.barycentricArray,
                                 mid_most=False) == (39, 40)
         index1 = wavelength2index(5039 * u.angstrom, s.barycentricArray[39])
         index2 = wavelength2index(5039 * u.angstrom, s.barycentricArray[40])
