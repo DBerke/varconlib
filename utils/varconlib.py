@@ -416,7 +416,7 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
 
     # Fit a Gaussian to the line center
     linedepth = continuum - linebottom
-    neg_linedepth = -1 * linedepth
+    neg_linedepth = -linedepth
     gauss_params = (neg_linedepth, 0, 1e2)
     try:
         popt_gauss, pcov_gauss = curve_fit(gaussian, xnorm,
@@ -458,7 +458,7 @@ def fitGaussian(xnorm, ynorm, enorm, centralwl, radvel, continuum, linebottom,
     vel_err_gauss = wavelength2velocity(gausscenterwl*1e-9,
                                         (gausscenterwl+wl_err_gauss)*1e-9)
     # Shift line to stellar rest frame
-    gaussrestframeline = shift_wavelength(gausscenterwl, -1*radvel)
+    gaussrestframeline = shift_wavelength(gausscenterwl, -radvel)
 
     # Get the width (sigma) of the Gaussian
     gauss_sigma = abs(popt_gauss[2] / 1000)
@@ -551,7 +551,7 @@ def fitParabola(xnorm, ynorm, enorm, centralwl, radvel, verbose=False):
                                       (parcenterwl + wl_err_par) * 1e-9)
 
     # Shift to stellar rest frame by correcting radial velocity.
-    parrestframeline = shift_wavelength(parcenterwl, -1*radvel)
+    parrestframeline = shift_wavelength(parcenterwl, -radvel)
 
     if verbose:
             print('Covariance matrix for parabola:')
@@ -601,7 +601,7 @@ def fitSimpleParabola(xnorm, ynorm, enorm, centralwl, radvel, verbose=False):
     vel_err_spar = wavelength2velocity(sparcenterwl*1e-9,
                                        (sparcenterwl+wl_err_spar)*1e-9)
     # Convert to restframe of star
-    sparrestframeline = shift_wavelength(sparcenterwl, -1*radvel)
+    sparrestframeline = shift_wavelength(sparcenterwl, -radvel)
 
     if verbose:
         print("Covariance matrix for constrained parabola:")
@@ -1190,7 +1190,7 @@ def injectGaussianNoise(data, nom_wavelength, num_iter=1000, plot=False):
         ax.hist(vel_offsets - np.median(vel_offsets),
                 bins=15, edgecolor='Black', label='std = {}'.format(stddev))
 
-        ax.axvspan(xmin=-1*stddev,
+        ax.axvspan(xmin=-stddev,
                    xmax=stddev,
                    color='Gray', alpha=0.3)
         outfile = Path('/Users/dberke/Pictures/sims/sim_{0}.png'.format(

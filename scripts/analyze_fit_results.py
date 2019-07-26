@@ -246,11 +246,11 @@ for pair in tqdm(good_pairs[:]):
         fig.autofmt_xdate()
         (ax1, ax2), (ax3, ax4) = axes
         for ax in (ax1, ax2, ax3, ax4):
-            ax.set_ylabel(r'$\Delta v_{\textrm{sep}} (\textrm{m/s})$')
+            ax.set_ylabel(r'$\Delta v_{\textrm{sep}}\ (\textrm{m/s})$')
             ax.axhline(y=0, **weighted_mean_params)
             ax.axhline(y=weighted_mean_err,
                        **weighted_err_params)
-            ax.axhline(y=-1 * weighted_mean_err,
+            ax.axhline(y=-weighted_mean_err,
                        **weighted_err_params)
         for key, value in dates_of_change.items():
             ax3.axvline(label=key, **value)

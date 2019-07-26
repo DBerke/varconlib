@@ -359,7 +359,7 @@ class HARPSFile2DScience(HARPSFile2D):
         if not hasattr(self, '_rvCorrectedArray'):
             tqdm.write('Creating RV-corrected array.')
             self._rvCorrectedArray = shift_wavelength(self.barycentricArray,
-                                                      -1 * self.radialVelocity)
+                                                      -self.radialVelocity)
         return self._rvCorrectedArray
 
     @property
