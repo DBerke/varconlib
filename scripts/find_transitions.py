@@ -48,8 +48,8 @@ parser.add_argument('--integrated-gaussian', action='store_true',
                     help='Fit using an integrated Gaussian.')
 parser.add_argument('--update', action='store', metavar='HDU-name',
                     nargs='+', default=[],
-                    help='Which HDUs to update (WAVE, BARY, FLUX, ERR, BLAZE,'
-                    ' or ALL)')
+                    help='Which HDUs to update (WAVE, BARY, PIXLOWER, PIXUPPER'
+                    ' FLUX, ERR, BLAZE, or ALL)')
 parser.add_argument('--verbose', action='store_true', default=False,
                     help='Print out additional information while running.')
 
@@ -174,11 +174,11 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
     for transition in tqdm(transitions_list):
         tqdm.write('Attempting fit of {}'.format(transition))
         plot_closeup = closeup_dir / '{}_{:.4f}_{}{}_close.png'.format(
-                obs_path.name,
+                obs_path.stem,
                 transition.wavelength.to(u.angstrom).value,
                 transition.atomicSymbol, transition.ionizationState)
         plot_context = context_dir / '{}_{:.4f}_{}{}_context.png'.format(
-                obs_path.name,
+                obs_path.stem,
                 transition.wavelength.to(u.angstrom).value,
                 transition.atomicSymbol, transition.ionizationState)
         try:
