@@ -219,7 +219,7 @@ class GaussianFit(object):
                 tqdm.write('Bad fit for {}'.format(
                         self.transition.wavelength))
             self.plotFit(close_up_plot_path, context_plot_path,
-                         plot_fit=True, verbose=False)
+                         plot_fit=True, verbose=True)
             raise PositiveAmplitudeError('Positive amplitude from fit.')
 
         # Find 1-σ errors from the covariance matrix:
@@ -232,12 +232,6 @@ class GaussianFit(object):
                                                         self.medianErr))
         self.sigmaErr = self.perr[2] * u.angstrom
 
-        # Compute the χ^2 value:
-        residuals = self.fluxes - \
-            vcl.gaussian(self.wavelengths.value, *self.popt)
-
-        self.chiSquared = sum((residuals / self.errors) ** 2)
-        self.chiSquaredNu = self.chiSquared / 3  # ν = 7 (pixels) - 4 (params)
         if (self.chiSquaredNu > 1):
             self.medianErr *= np.sqrt(self.chiSquaredNu)
         if verbose:
@@ -271,6 +265,16 @@ class GaussianFit(object):
             print(self.fluxMinimum)
             print(self.wavelengths)
 
+    @property
+    def chiSquared(self):
+        residuals = self.fluxes - vcl.gaussian(self.wavelengths.value,
+                                               *self.popt)
+        return sum((residuals / self.errors) ** 2)
+
+    @property
+    def chiSquaredNu(self):
+        return self.chiSquared / 3  # ν = 7 (pixels) - 4 (params)
+
     def plotFit(self, close_up_plot_path, context_plot_path, plot_fit=True,
                 verbose=False):
         """Plot a graph of this fit.
@@ -300,22 +304,23 @@ class GaussianFit(object):
                        2557, 2558, 3069, 3070, 3581, 3582)
 
         # Set up the figure.
-        fig = plt.figure(figsize=(6.5, 4.5), dpi=100, tight_layout=True)
+        fig = plt.figure(figsize=(7, 5), dpi=100, tight_layout=True)
 #        fig = plt.figure(figsize=(9, 9), dpi=100, tight_layout=True)
         ax = fig.add_subplot(1, 1, 1)
 
         for pixel in edge_pixels:
-            ax.axvline(x=self.baryArray[pixel-1], color='LimeGreen',
+            ax.axvline(x=self.baryArray[pixel-1], ymin=0, ymax=0.2,
+                       color='LimeGreen',
                        linestyle='--')
 
         ax.set_xlabel(r'Wavelength ($\AA$)')
         ax.set_ylabel('Flux (photo-electrons)')
         ax.xaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.2f}'))
-        ax.set_xlim(left=self.baryArray[self.lowContinuumIndex - 3],
-                    right=self.baryArray[self.highContinuumIndex + 3])
+        ax.set_xlim(left=self.baryArray[self.lowContinuumIndex],
+                    right=self.baryArray[self.highContinuumIndex - 1])
         # Set y-limits so a fit doesn't balloon the plot scale out.
-        ax.set_ylim(top=self.continuumLevel * 1.08,
-                    bottom=self.fluxMinimum * 0.95)
+        ax.set_ylim(top=self.continuumLevel * 1.2,
+                    bottom=self.fluxMinimum * 0.93)
 
         # Plot the expected and measured wavelengths.
         ax.axvline(self.correctedWavelength.to(u.angstrom),
@@ -355,7 +360,7 @@ class GaussianFit(object):
                     label=r'Fit ($\chi^2_\nu=${:.3f}, $\sigma=${:.4f})'.format(
                            self.chiSquaredNu, self.sigma))
 
-        ax.legend()
+        ax.legend(loc='upper center', framealpha=0.6, fontsize='medium')
         # Save the resultant plot.
         fig.savefig(str(context_plot_path))
         if verbose:
@@ -365,8 +370,8 @@ class GaussianFit(object):
         # Now create a close-in version to focus on the fit.
         ax.set_xlim(left=self.baryArray[self.lowFitIndex - 1],
                     right=self.baryArray[self.highFitIndex])
-        ax.set_ylim(top=self.fluxes.max() * 1.08,
-                    bottom=self.fluxes.min() * 0.93)
+        ax.set_ylim(top=self.fluxes.max() * 1.15,
+                    bottom=self.fluxes.min() * 0.95)
 
         fig.savefig(str(close_up_plot_path))
         if verbose:
