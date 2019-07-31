@@ -81,6 +81,11 @@ if args.create_plots:
     folded_date_range = {'left': dt.date(year=2000, month=1, day=1),
                          'right': dt.date(year=2000, month=12, day=31)}
 
+    style_params = {'marker': 'o', 'color': 'Chocolate',
+                    'markeredgecolor': 'Black', 'ecolor': 'BurlyWood',
+                    'linestyle': '', 'alpha': 0.7, 'size': 8}
+    weighted_mean_params = {'color': 'RoyalBlue', 'linestyle': '--'}
+    weighted_err_params = {'color': 'SteelBlue', 'linestyle': ':'}
 
 # Define a list of good "blend numbers" for chooosing which blends to look at.
 blends_of_interest = ((0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2))
@@ -171,10 +176,6 @@ for pickle_file in tqdm(pickle_files[:]):
 
     master_star_dict[obs_name] = pairs_dict
 
-#print(len(master_star_dict))
-#for key, value in master_star_dict.items():
-#    print(key, len(value))
-
 for pair in tqdm(good_pairs[:]):
     if args.verbose:
         tqdm.write(f'Creating plot for pair {pair.label}')
@@ -216,37 +217,28 @@ for pair in tqdm(good_pairs[:]):
 
     weighted_mean_err = 1 / np.sqrt(sum(weights))
 
-#    print(offsets)
-#    print(errors)
-#    print(np.median(offsets))
-#    tqdm.write(str(np.mean(normalized_offsets)))
-#    print(np.std(offsets))
-
+    # Create the plots for each pair of transitions
     if args.create_plots:
 
         date_indices = []
         for value in dates_of_change.values():
             date_indices.append(date2index(value['x'], date_obs))
 
-        style_params = {'marker': 'o', 'color': 'Chocolate',
-                        'markeredgecolor': 'Black', 'ecolor': 'BurlyWood',
-                        'linestyle': '', 'alpha': 0.7}
-        weighted_mean_params = {'color': 'RoyalBlue', 'linestyle': '--'}
-        weighted_err_params = {'color': 'SteelBlue', 'linestyle': ':'}
+        chi_squared = sum((normalized_offsets / errors) ** 2)
+        chi_squared_nu = chi_squared / (len(normalized_offsets) - 1)
 
         plot_dir = data_dir / 'offset_plots'
         if not plot_dir.exists():
             mkdir(plot_dir)
         plot_name = plot_dir / '{}.png'.format(pair.label)
-#        print(plot_name)
 
         fig, axes = plt.subplots(ncols=2, nrows=2,
                                  tight_layout=True,
-                                 figsize=(9, 8))
+                                 figsize=(10, 8))
         fig.autofmt_xdate()
         (ax1, ax2), (ax3, ax4) = axes
         for ax in (ax1, ax2, ax3, ax4):
-            ax.set_ylabel(r'$\Delta v_{\textrm{sep}}\ (\textrm{m/s})$')
+            ax.set_ylabel(r'$\Delta v_{\textrm{sep}}\textrm{ (m/s)}$')
             ax.axhline(y=0, **weighted_mean_params)
             ax.axhline(y=weighted_mean_err,
                        **weighted_err_params)
@@ -258,12 +250,15 @@ for pair in tqdm(good_pairs[:]):
         # Set up axis 1.
         ax1.errorbar(x=range(len(offsets)),
                      y=normalized_offsets,
-                     yerr=errors, markersize=8, **style_params)
+                     yerr=errors, markersize=8,
+                     label=r'$\chi^2=${:.3f}'.format(chi_squared_nu.value),
+                     **style_params)
         for index, key in zip(date_indices, dates_of_change.keys()):
             if index is not None:
                 ax1.axvline(x=index+0.5,
                             linestyle=dates_of_change[key]['linestyle'],
                             color=dates_of_change[key]['color'])
+        ax1.legend(loc='upper right')
 
         # Set up axis 2.
         ax2.set_xlabel('Count')
