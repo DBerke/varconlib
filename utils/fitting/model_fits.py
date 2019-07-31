@@ -23,6 +23,8 @@ import varconlib as vcl
 # This line prevents the wavelength formatting from being in the form of
 # scientific notation.
 matplotlib.rcParams['axes.formatter.useoffset'] = False
+#plt.rc('text', usetex=True)
+
 
 class GaussianFit(object):
     """A class to fit an absorption line and store information about the fit.
@@ -294,14 +296,20 @@ class GaussianFit(object):
 
         """
 
+        edge_pixels = (509, 510, 1021, 1022, 1533, 1534, 2045, 2046,
+                       2557, 2558, 3069, 3070, 3581, 3582)
+
         # Set up the figure.
-        fig = plt.figure(figsize=(6.5, 4.5), dpi=80, tight_layout=True)
+        fig = plt.figure(figsize=(6.5, 4.5), dpi=100, tight_layout=True)
+#        fig = plt.figure(figsize=(9, 9), dpi=100, tight_layout=True)
         ax = fig.add_subplot(1, 1, 1)
+
+        for pixel in edge_pixels:
+            ax.axvline(x=self.baryArray[pixel-1], color='LimeGreen',
+                       linestyle='--')
 
         ax.set_xlabel(r'Wavelength ($\AA$)')
         ax.set_ylabel('Flux (photo-electrons)')
-#        ax.xaxis.set_major_locator(ticker.FixedLocator(self.wavelengths
-#                                                       .to(u.angstrom).value))
         ax.xaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.2f}'))
         ax.set_xlim(left=self.baryArray[self.lowContinuumIndex - 3],
                     right=self.baryArray[self.highContinuumIndex + 3])
@@ -312,13 +320,13 @@ class GaussianFit(object):
         # Plot the expected and measured wavelengths.
         ax.axvline(self.correctedWavelength.to(u.angstrom),
                    color='LightSteelBlue', linestyle=':',
-                   label='RV-corrected λ={:.3f}'.format(
+                   label=r'RV-corrected $\lambda=${:.3f}'.format(
                            self.correctedWavelength.to(u.angstrom)))
         # Don't plot the median if this is a failed fit.
         if hasattr(self, 'median') and hasattr(self, 'velocityOffset'):
             ax.axvline(self.median.to(u.angstrom),
                        color='IndianRed',
-                       label='Fit ({:.3f}, {:+.2f})'.
+                       label='Mean ({:.3f}, {:+.2f})'.
                        format(self.median.to(u.angstrom),
                               self.velocityOffset.to(u.m/u.s)),
                        linestyle='-')
@@ -343,7 +351,9 @@ class GaussianFit(object):
         if plot_fit:
             ax.plot(x, vcl.gaussian(x, *self.popt),
                     color='DarkGreen',
-                    linestyle='-', label='Fitted Gaussian')
+                    linestyle='-.',
+                    label=r'Fit ($\chi^2_\nu=${:.3f}, $\sigma=${:.4f})'.format(
+                           self.chiSquaredNu, self.sigma))
 
         ax.legend()
         # Save the resultant plot.
