@@ -179,14 +179,6 @@ class HARPSFile2DScience(HARPSFile2D):
         self._rawFluxArray = copy(self._rawData)
         self._blazeFile = None
 
-        # Some files are only needed if updating an observation or creating the
-        # new arrays for the first time, so only open them if we really need
-        # them, i.e. when opening a file for the first time or when explicitly
-        # updating it.
-        if (len(hdulist) == 1) or file_open_mode == 'update':
-            # Read the blaze file.
-            self._blazeFile = HARPSFile2D(self.getBlazeFile())
-
         # Define an error string for updating a file that hasn't been opened
         # previously
         err_str = "File opened in 'update' mode but no arrays exist!"
@@ -221,6 +213,7 @@ class HARPSFile2DScience(HARPSFile2D):
                                      verify_action='warn')
         if ('ALL' in update) or ('BARY' in update):
             tqdm.write('Overwriting barycentric wavelength HDU.')
+            del self._barycentricArray
             self.writeBarycentricHDU(hdulist, self.barycentricArray, 'BARY',
                                      verify_action='warn')
 
@@ -236,6 +229,7 @@ class HARPSFile2DScience(HARPSFile2D):
                                      verify_action='warn')
         if ('ALL' in update) or ('PIXLOWER' in update):
             tqdm.write('Overwriting lower pixel wavelength HDU.')
+            del self._pixelLowerArray
             self.writeBarycentricHDU(hdulist, self.pixelLowerArray, 'PIXLOWER',
                                      verify_action='warn')
 
@@ -251,6 +245,7 @@ class HARPSFile2DScience(HARPSFile2D):
                                      verify_action='warn')
         if ('ALL' in update) or ('PIXUPPER' in update):
             tqdm.write('Overwriting lower pixel wavelength HDU.')
+            del self._pixelUpperArray
             self.writeBarycentricHDU(hdulist, self.pixelUpperArray, 'PIXUPPER',
                                      verify_action='warn')
 
@@ -685,6 +680,8 @@ class HARPSFile2DScience(HARPSFile2D):
         # Blaze-correct the photon flux array:
         photon_flux_array = self._rawFluxArray / self.blazeArray
 
+#        photon_flux_array *= self.pixelSizeArray
+
         return photon_flux_array
 
     def getErrorArray(self):
@@ -725,11 +722,7 @@ class HARPSFile2DScience(HARPSFile2D):
             point in the CCD.
         """
 
-        if not hasattr(self, '_blazeFile') or self._blazeFile is None:
-            self._blazeFile = HARPSFile2D(self.getBlazeFile())
-        blaze_array = self._blazeFile._rawData
-
-        return blaze_array
+        return HARPSFile2D(self.getBlazeFile())._rawData
 
     def writeWavelengthHDU(self, hdulist, verify_action='warn', **kwargs):
         """Write out a wavelength array HDU to the currently opened file.
