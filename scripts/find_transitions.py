@@ -183,7 +183,9 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
                 transition.atomicSymbol, transition.ionizationState)
         try:
             fit = GaussianFit(transition, obs, verbose=args.verbose,
-                              integrated=args.integrated_gaussian)
+                              integrated=args.integrated_gaussian,
+                              close_up_plot_path=plot_closeup,
+                              context_plot_path=plot_context)
             fit.plotFit(plot_closeup, plot_context)
             fits_list.append(fit)
         except (RuntimeError, PositiveAmplitudeError):
