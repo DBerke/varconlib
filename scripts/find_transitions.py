@@ -17,13 +17,19 @@ import os
 from pathlib import Path
 import pickle
 
+from adjustText import adjust_text
+import matplotlib.pyplot as plt
+import numpy as np
 from tqdm import tqdm
 import unyt as u
 
+import conversions
 from exceptions import (PositiveAmplitudeError, BlazeFileNotFoundError,
                         NewCoefficientsNotFoundError)
 from fitting import GaussianFit
 import obs2d
+from varconlib import (wavelength2index, shift_wavelength, blueCCDpath,
+                       redCCDpath, order_numbers)
 
 desc = 'Fit absorption features in spectra.'
 parser = argparse.ArgumentParser(description=desc)
@@ -70,8 +76,6 @@ else:
         print(observations_dir)
         raise RuntimeError('The directory does not contain "data/reduced".')
 
-# Currently using /Users/dberke/HD146233/data/reduced/ for a specific file.
-
 # Search through subdirectories for e2ds files:
 glob_search_string = str(observations_dir) + '/*/*e2ds_A.fits'
 # Get a list of all the data files in the data directory:
@@ -93,6 +97,15 @@ final_selection_file = pickle_dir / 'final_transitions_selection.pkl'
 
 # output_dir = /Users/dberke/data_output
 output_dir = Path(config['PATHS']['output_dir'])
+
+# Define edges between pixels to plot to see if transitions overlap them.
+edges = (509.5, 1021.5, 1533.5, 2045.5, 2557.5, 3069.5, 3581.5)
+
+# Read the red and blue spectral format files for HARPS.
+blue_spec_format = np.loadtxt(blueCCDpath, skiprows=1, delimiter=',',
+                              usecols=(0, 5, 6))
+red_spec_format = np.loadtxt(redCCDpath, skiprows=1, delimiter=',',
+                             usecols=(0, 5, 6))
 
 # Read the pickled list of transitions
 with open(final_selection_file, 'r+b') as f:
@@ -137,6 +150,11 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
     if not object_dir.exists():
         os.mkdir(object_dir)
 
+    ccd_positions_dir = object_dir.parent / 'ccd_positions'
+
+    if not ccd_positions_dir.exists():
+        os.mkdir(ccd_positions_dir)
+
     # Define directory suffixes based on arguments:
     if (not args.pixel_positions) and (not args.new_coefficients):
         suffix = 'old'
@@ -170,17 +188,16 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
     if not context_dir.exists():
         os.mkdir(context_dir)
 
+    # Create some lists to hold x,y coordinates for the CCD position plot.
+    transitions_x, transitions_y, labels = [], [], []
+
     fits_list = []
     for transition in tqdm(transitions_list):
         tqdm.write('Attempting fit of {}'.format(transition))
-        plot_closeup = closeup_dir / '{}_{:.4f}_{}{}_close.png'.format(
-                obs_path.stem,
-                transition.wavelength.to(u.angstrom).value,
-                transition.atomicSymbol, transition.ionizationState)
-        plot_context = context_dir / '{}_{:.4f}_{}{}_context.png'.format(
-                obs_path.stem,
-                transition.wavelength.to(u.angstrom).value,
-                transition.atomicSymbol, transition.ionizationState)
+        plot_closeup = closeup_dir / '{}_{}_close.png'.format(
+                obs_path.stem, transition.label)
+        plot_context = context_dir / '{}_{}_context.png'.format(
+                obs_path.stem, transition.label)
         try:
             fit = GaussianFit(transition, obs, verbose=args.verbose,
                               integrated=args.integrated_gaussian,
@@ -190,6 +207,13 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
             fits_list.append(fit)
         except (RuntimeError, PositiveAmplitudeError):
             tqdm.write('Warning! Unable to fit {}!'.format(transition))
+            continue
+        y = obs.findWavelength(fit.correctedWavelength, obs.barycentricArray,
+                               mid_most=True, verbose=False)
+        x = wavelength2index(fit.correctedWavelength, obs.barycentricArray[y])
+        transitions_y.append(y + 1)
+        transitions_x.append(x)
+        labels.append(transition.label)
 
     tqdm.write('Fit {}/{} transitions in {}.'.format(len(fits_list),
                len(transitions_list), obs_path.name))
@@ -200,3 +224,53 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
     with open(outfile, 'w+b') as f:
         tqdm.write(f'Pickling list of fits at {outfile}')
         pickle.dump(fits_list, f)
+
+    # Create a plot to show locations of transitions on the CCD for this
+    # observation.
+    tqdm.write('Creating plot of transition CCD locations...')
+    fig = plt.figure(figsize=(15, 10), tight_layout=True)
+    ax = fig.add_subplot(1, 1, 1)
+
+    ax.set_xlim(left=0, right=4097)
+    ax.set_ylim(bottom=16, top=73)
+
+    for i in range(17, 73, 1):
+        ax.axhline(i, linestyle='--', color='Gray', alpha=0.7)
+
+    for j in edges:
+        ax.axvline(j, linestyle='-', color='SlateGray', alpha=0.8)
+
+    ax.axhline(46.5, linestyle='-.', color='Peru', alpha=0.6)
+
+#    for row in blue_spec_format:
+#        order = order_numbers.inverse[row[0]]
+#        wls = [shift_wavelength(conversions.air2vacESO(row[i] * u.nm),
+#                                obs.radialVelocity)
+#               for i in (1, 2)]
+#        for wl in wls:
+#            ax.plot(wavelength2index(wl, obs.wavelengthArray[order-1]),
+#                    order, marker='|', color='Blue')
+#            ax.plot(wavelength2index(wl, obs.barycentricArray[order-1]),
+#                    order, marker='|', color='SlateBlue')
+#    for row in red_spec_format:
+#        order = order_numbers.inverse[row[0]]
+#        wls = (shift_wavelength(conversions.air2vacESO(row[i] * u.nm),
+#                                obs.radialVelocity)
+#               for i in (1, 2))
+#        for wl in wls:
+#            ax.plot(wavelength2index(wl, obs.wavelengthArray[order-1]),
+#                    order, marker='|', color='Red')
+#            ax.plot(wavelength2index(wl, obs.barycentricArray[order-1]),
+#                    order, marker='|', color='FireBrick')
+
+    ax.plot(transitions_x, transitions_y, marker='+', color='Sienna',
+            linestyle='')
+    texts = [plt.text(transitions_x[i], transitions_y[i], labels[i],
+                      ha='center', va='center') for i in range(len(labels))]
+    tqdm.write('Adjusting label text positions...')
+    adjust_text(texts, arrowprops=dict(arrowstyle='-', color='OliveDrab'))
+
+    ccd_position_filename = ccd_positions_dir / '{}_CCD_positions.png'.format(
+            obs_path.stem)
+    fig.savefig(str(ccd_position_filename))
+    plt.close(fig)
