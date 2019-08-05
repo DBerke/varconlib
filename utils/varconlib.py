@@ -9,10 +9,12 @@ Created on Wed Apr 18 16:28:13 2018
 # Module to contain functions potentially useful across multiple programs
 
 
+import configparser
 import datetime as dt
 from math import sqrt, log, tau
 from pathlib import Path
 
+from bidict import bidict
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -24,9 +26,32 @@ import unyt as u
 from conversions import air2vacESO
 from obs1d import readHARPSfile1D
 
+
+config_file = Path('/Users/dberke/code/config/variables.cfg')
+config = configparser.ConfigParser(interpolation=configparser.
+                                   ExtendedInterpolation())
+config.read(config_file)
+data_dir = Path(config['PATHS']['data_dir'])
+
 # Spectral format files for HARPS blue and red CCDs.
-blueCCDpath = Path('/Users/dberke/code/data/HARPS_CCD_blue.csv')
-redCCDpath = Path('/Users/dberke/code/data/HARPS_CCD_red.csv')
+blueCCDpath = data_dir / 'HARPS_CCD_blue.csv'
+redCCDpath = data_dir / 'HARPS_CCD_red.csv'
+
+# A bidict of the HARPS order numbers between the spectral order numbers and
+# a simple numbering system.
+order_numbers = bidict({1: 161, 2: 160, 3: 159, 4: 158, 5: 157, 6: 156,
+                        7: 155, 8: 154, 9: 153, 10: 152, 11: 151, 12: 150,
+                        13: 149, 14: 148, 15: 147, 16: 146, 17: 145, 18: 144,
+                        19: 143, 20: 142, 21: 141, 22: 140, 23: 139, 24: 138,
+                        25: 137, 26: 136, 27: 135, 28: 134, 29: 133, 30: 132,
+                        31: 131, 32: 130, 33: 129, 34: 128, 35: 127, 36: 126,
+                        37: 125, 38: 124, 39: 123, 40: 122, 41: 121, 42: 120,
+                        43: 119, 44: 118, 45: 117, 46: 116,
+                        47: 114, 48: 113, 49: 112, 50: 111, 51: 110, 52: 109,
+                        53: 108, 54: 107, 55: 106, 56: 105, 57: 104, 58: 103,
+                        59: 102, 60: 101, 61: 100, 62: 99, 63: 98, 64: 97,
+                        65: 96, 66: 95, 67: 94, 68: 93, 69: 92, 70: 91,
+                        71: 90, 72: 89})
 
 
 # Functions
