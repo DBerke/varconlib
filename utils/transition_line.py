@@ -80,7 +80,7 @@ class Transition(object):
             except ValueError:
                 cap_string = element.capitalize()
                 try:
-                    self.atomicNumber = elements.inv[cap_string]
+                    self.atomicNumber = elements.inverse[cap_string]
                 except KeyError:
                     print('Given atomic symbol not in elements dictionary!')
                     print('Atomic symbol given was "{}".'.format(element))
@@ -163,9 +163,9 @@ class Transition(object):
     @property
     def label(self):
         if (not hasattr(self, '_label')) or self._label is None:
-            self._label = '{:.4f}{}{}'.format(self.wavelength.to(u.nm).value,
-                                              self.atomicSymbol,
-                                              self.ionizationState)
+            self._label = '{:.4f}{}{}'.format(
+                    self.wavelength.to(u.angstrom).value,
+                    self.atomicSymbol, self.ionizationState)
         return self._label
 
     def __repr__(self):
@@ -178,12 +178,12 @@ class Transition(object):
         if (self.lowerEnergy is not None) and\
           (self.higherEnergy is not None):
             return "{:.4f} {} ({:.4f}, {:.4f})".format(self.wavelength.
-                                                       to(u.nm),
+                                                       to(u.angstrom),
                                                        self.atomicSpecies,
                                                        self.lowerEnergy,
                                                        self.higherEnergy)
         else:
-            return "{:.4f} {}".format(self.wavelength,
+            return "{:.4f} {}".format(self.wavelength.to(u.angstrom),
                                       self.atomicSpecies)
 
     def __lt__(self, other):
