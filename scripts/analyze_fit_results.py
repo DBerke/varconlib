@@ -83,7 +83,7 @@ if args.create_plots:
 
     style_params = {'marker': 'o', 'color': 'Chocolate',
                     'markeredgecolor': 'Black', 'ecolor': 'BurlyWood',
-                    'linestyle': '', 'alpha': 0.7, 'size': 8}
+                    'linestyle': '', 'alpha': 0.7, 'markersize': 8}
     weighted_mean_params = {'color': 'RoyalBlue', 'linestyle': '--'}
     weighted_err_params = {'color': 'SteelBlue', 'linestyle': ':'}
 
@@ -164,12 +164,12 @@ for pickle_file in tqdm(pickle_files[:]):
         pair_label = '_'.join([new_pair[0].transition.label,
                               new_pair[1].transition.label])
 
-        if np.isnan(new_pair[0].medianErrVel) or \
-           np.isnan(new_pair[1].medianErrVel):
+        if np.isnan(new_pair[0].meanErrVel) or \
+           np.isnan(new_pair[1].meanErrVel):
             tqdm.write('{} in {} has a NaN velocity offset!'.format(
                     pair_label, obs_name))
-            tqdm.write(str(new_pair[0].medianErrVel))
-            tqdm.write(str(new_pair[1].medianErrVel))
+            tqdm.write(str(new_pair[0].meanErrVel))
+            tqdm.write(str(new_pair[1].meanErrVel))
             continue
 
         pairs_dict[pair_label] = new_pair
@@ -193,12 +193,12 @@ for pair in tqdm(good_pairs[:]):
 
     offsets, errors = [], []
     for fit_pair in fitted_pairs:
-        offsets.append(wave2vel(fit_pair[0].median, fit_pair[1].median))
-        error = np.sqrt(fit_pair[0].medianErrVel ** 2 +
-                        fit_pair[1].medianErrVel ** 2)
+        offsets.append(wave2vel(fit_pair[0].mean, fit_pair[1].mean))
+        error = np.sqrt(fit_pair[0].meanErrVel ** 2 +
+                        fit_pair[1].meanErrVel ** 2)
         if np.isnan(error):
-            print(fit_pair[0].medianErrVel)
-            print(fit_pair[1].medianErrVel)
+            print(fit_pair[0].meanErrVel)
+            print(fit_pair[1].meanErrVel)
             raise ValueError
         errors.append(error)
 
@@ -250,8 +250,8 @@ for pair in tqdm(good_pairs[:]):
         # Set up axis 1.
         ax1.errorbar(x=range(len(offsets)),
                      y=normalized_offsets,
-                     yerr=errors, markersize=8,
-                     label=r'$\chi^2=${:.3f}'.format(chi_squared_nu.value),
+                     yerr=errors,
+                     label=r'$\chi^2_\nu=${:.3f}'.format(chi_squared_nu.value),
                      **style_params)
         for index, key in zip(date_indices, dates_of_change.keys()):
             if index is not None:
@@ -267,8 +267,8 @@ for pair in tqdm(good_pairs[:]):
                      orientation='horizontal', color='White',
                      edgecolor='Black')
         except ValueError:
-            print(fit_pair[0].medianErrVel)
-            print(fit_pair[1].medianErrVel)
+            print(fit_pair[0].meanErrVel)
+            print(fit_pair[1].meanErrVel)
             print(offsets)
             print(errors)
             print(weights)

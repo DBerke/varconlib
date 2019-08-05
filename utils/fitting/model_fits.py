@@ -211,7 +211,7 @@ class GaussianFit(object):
 
         # Recover the fitted values for the parameters:
         self.amplitude = self.popt[0]
-        self.median = self.popt[1] * u.angstrom
+        self.mean = self.popt[1] * u.angstrom
         self.sigma = self.popt[2] * u.angstrom
 
         if self.amplitude > 0:
@@ -226,14 +226,14 @@ class GaussianFit(object):
         self.perr = np.sqrt(np.diag(self.pcov))
 
         self.amplitudeErr = self.perr[0]
-        self.medianErr = self.perr[1] * u.angstrom
-        self.medianErrVel = abs(vcl.wavelength2velocity(self.median,
-                                                        self.median +
-                                                        self.medianErr))
+        self.meanErr = self.perr[1] * u.angstrom
+        self.meanErrVel = abs(vcl.wavelength2velocity(self.mean,
+                                                        self.mean +
+                                                        self.meanErr))
         self.sigmaErr = self.perr[2] * u.angstrom
 
         if (self.chiSquaredNu > 1):
-            self.medianErr *= np.sqrt(self.chiSquaredNu)
+            self.meanErr *= np.sqrt(self.chiSquaredNu)
         if verbose:
             tqdm.write('χ^2_ν = {}'.format(self.chiSquaredNu))
 
@@ -242,22 +242,22 @@ class GaussianFit(object):
         # standard deviation of a Gaussian.
         self.FWHM = 2.354820 * self.sigma
         self.FWHMErr = 2.354820 * self.sigmaErr
-        self.velocityFWHM = vcl.wavelength2velocity(self.median,
-                                                    self.median +
+        self.velocityFWHM = vcl.wavelength2velocity(self.mean,
+                                                    self.mean +
                                                     self.FWHM)
-        self.velocityFWHMErr = vcl.wavelength2velocity(self.median,
-                                                       self.median +
+        self.velocityFWHMErr = vcl.wavelength2velocity(self.mean,
+                                                       self.mean +
                                                        self.FWHMErr)
 
         # Compute the offset between the input wavelength and the wavelength
         # found in the fit.
-        self.offset = self.correctedWavelength - self.median
-        self.offsetErr = self.medianErr
+        self.offset = self.correctedWavelength - self.mean
+        self.offsetErr = self.meanErr
         self.velocityOffset = vcl.wavelength2velocity(self.correctedWavelength,
-                                                      self.median)
+                                                      self.mean)
 
-        self.velocityOffsetErr = vcl.wavelength2velocity(self.median,
-                                                         self.median +
+        self.velocityOffsetErr = vcl.wavelength2velocity(self.mean,
+                                                         self.mean +
                                                          self.offsetErr)
 
         if verbose:
@@ -291,7 +291,7 @@ class GaussianFit(object):
             The file name to save a wider context plot (±25 km/s) around the
             fitted feature to.
         plot_fit : bool, Default : True
-            If *True*, plot the median of the fit and the fitted Gaussian.
+            If *True*, plot the mean of the fit and the fitted Gaussian.
             Otherwise, don't plot those two things. This allows creating plots
             of failed fits to see the context of the data.
         verbose : bool, Default : False
@@ -327,12 +327,12 @@ class GaussianFit(object):
                    color='LightSteelBlue', linestyle=':',
                    label=r'RV-corrected $\lambda=${:.3f}'.format(
                            self.correctedWavelength.to(u.angstrom)))
-        # Don't plot the median if this is a failed fit.
-        if hasattr(self, 'median') and hasattr(self, 'velocityOffset'):
-            ax.axvline(self.median.to(u.angstrom),
+        # Don't plot the mean if this is a failed fit.
+        if hasattr(self, 'mean') and hasattr(self, 'velocityOffset'):
+            ax.axvline(self.mean.to(u.angstrom),
                        color='IndianRed',
                        label='Mean ({:.3f}, {:+.2f})'.
-                       format(self.median.to(u.angstrom),
+                       format(self.mean.to(u.angstrom),
                               self.velocityOffset.to(u.m/u.s)),
                        linestyle='-')
         # Plot the actual data.
