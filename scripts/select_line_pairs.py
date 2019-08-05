@@ -698,7 +698,7 @@ parser.add_argument('--pair-lines', action='store_true',
 parser.add_argument('--query-nist', action='store_true',
                     default=False,
                     help='Query transitions from NIST.')
-# Upping -dw to 3300 helps match one or two additionaly lines that are right
+# Upping -dw to 3300 helps match one or two additional lines that are right
 # on the edge.
 parser.add_argument('--match-nist', action='store_true',
                     default=False,
