@@ -56,6 +56,9 @@ parser.add_argument('--update', action='store', metavar='HDU-name',
                     nargs='+', default=[],
                     help='Which HDUs to update (WAVE, BARY, PIXLOWER, PIXUPPER'
                     ' FLUX, ERR, BLAZE, or ALL)')
+parser.add_argument('--create-plots', action='store_true', default=False,
+                    help='Create plots for each observation and transition.')
+
 parser.add_argument('--verbose', action='store_true', default=False,
                     help='Print out additional information while running.')
 
@@ -203,17 +206,22 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
                               integrated=args.integrated_gaussian,
                               close_up_plot_path=plot_closeup,
                               context_plot_path=plot_context)
-            fit.plotFit(plot_closeup, plot_context)
-            fits_list.append(fit)
         except (RuntimeError, PositiveAmplitudeError):
             tqdm.write('Warning! Unable to fit {}!'.format(transition))
             continue
-        y = obs.findWavelength(fit.correctedWavelength, obs.barycentricArray,
-                               mid_most=True, verbose=False)
-        x = wavelength2index(fit.correctedWavelength, obs.barycentricArray[y])
-        transitions_y.append(y + 1)
-        transitions_x.append(x)
-        labels.append(transition.label)
+
+        # Assuming the fit didn't fail, continue on:
+        fits_list.append(fit)
+        if args.create_plots:
+            fit.plotFit(plot_closeup, plot_context)
+            y = obs.findWavelength(fit.correctedWavelength,
+                                   obs.barycentricArray,
+                                   mid_most=True, verbose=False)
+            x = wavelength2index(fit.correctedWavelength,
+                                 obs.barycentricArray[y])
+            transitions_y.append(y + 1)
+            transitions_x.append(x)
+            labels.append(transition.label)
 
     tqdm.write('Fit {}/{} transitions in {}.'.format(len(fits_list),
                len(transitions_list), obs_path.name))
@@ -227,50 +235,52 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
 
     # Create a plot to show locations of transitions on the CCD for this
     # observation.
-    tqdm.write('Creating plot of transition CCD locations...')
-    fig = plt.figure(figsize=(15, 10), tight_layout=True)
-    ax = fig.add_subplot(1, 1, 1)
+    if args.create_plots:
+        tqdm.write('Creating plot of transition CCD locations...')
+        fig = plt.figure(figsize=(15, 10), tight_layout=True)
+        ax = fig.add_subplot(1, 1, 1)
 
-    ax.set_xlim(left=0, right=4097)
-    ax.set_ylim(bottom=16, top=73)
+        ax.set_xlim(left=0, right=4097)
+        ax.set_ylim(bottom=16, top=73)
 
-    for i in range(17, 73, 1):
-        ax.axhline(i, linestyle='--', color='Gray', alpha=0.7)
+        for i in range(17, 73, 1):
+            ax.axhline(i, linestyle='--', color='Gray', alpha=0.7)
 
-    for j in edges:
-        ax.axvline(j, linestyle='-', color='SlateGray', alpha=0.8)
+        for j in edges:
+            ax.axvline(j, linestyle='-', color='SlateGray', alpha=0.8)
 
-    ax.axhline(46.5, linestyle='-.', color='Peru', alpha=0.6)
+        ax.axhline(46.5, linestyle='-.', color='Peru', alpha=0.6)
 
-#    for row in blue_spec_format:
-#        order = order_numbers.inverse[row[0]]
-#        wls = [shift_wavelength(conversions.air2vacESO(row[i] * u.nm),
-#                                obs.radialVelocity)
-#               for i in (1, 2)]
-#        for wl in wls:
-#            ax.plot(wavelength2index(wl, obs.wavelengthArray[order-1]),
-#                    order, marker='|', color='Blue')
-#            ax.plot(wavelength2index(wl, obs.barycentricArray[order-1]),
-#                    order, marker='|', color='SlateBlue')
-#    for row in red_spec_format:
-#        order = order_numbers.inverse[row[0]]
-#        wls = (shift_wavelength(conversions.air2vacESO(row[i] * u.nm),
-#                                obs.radialVelocity)
-#               for i in (1, 2))
-#        for wl in wls:
-#            ax.plot(wavelength2index(wl, obs.wavelengthArray[order-1]),
-#                    order, marker='|', color='Red')
-#            ax.plot(wavelength2index(wl, obs.barycentricArray[order-1]),
-#                    order, marker='|', color='FireBrick')
+    #    for row in blue_spec_format:
+    #        order = order_numbers.inverse[row[0]]
+    #        wls = [shift_wavelength(conversions.air2vacESO(row[i] * u.nm),
+    #                                obs.radialVelocity)
+    #               for i in (1, 2)]
+    #        for wl in wls:
+    #            ax.plot(wavelength2index(wl, obs.wavelengthArray[order-1]),
+    #                    order, marker='|', color='Blue')
+    #            ax.plot(wavelength2index(wl, obs.barycentricArray[order-1]),
+    #                    order, marker='|', color='SlateBlue')
+    #    for row in red_spec_format:
+    #        order = order_numbers.inverse[row[0]]
+    #        wls = (shift_wavelength(conversions.air2vacESO(row[i] * u.nm),
+    #                                obs.radialVelocity)
+    #               for i in (1, 2))
+    #        for wl in wls:
+    #            ax.plot(wavelength2index(wl, obs.wavelengthArray[order-1]),
+    #                    order, marker='|', color='Red')
+    #            ax.plot(wavelength2index(wl, obs.barycentricArray[order-1]),
+    #                    order, marker='|', color='FireBrick')
 
-    ax.plot(transitions_x, transitions_y, marker='+', color='Sienna',
-            linestyle='')
-    texts = [plt.text(transitions_x[i], transitions_y[i], labels[i],
-                      ha='center', va='center') for i in range(len(labels))]
-    tqdm.write('Adjusting label text positions...')
-    adjust_text(texts, arrowprops=dict(arrowstyle='-', color='OliveDrab'))
+        ax.plot(transitions_x, transitions_y, marker='+', color='Sienna',
+                linestyle='')
+        texts = [plt.text(transitions_x[i], transitions_y[i], labels[i],
+                          ha='center', va='center')
+                 for i in range(len(labels))]
+        tqdm.write('Adjusting label text positions...')
+        adjust_text(texts, arrowprops=dict(arrowstyle='-', color='OliveDrab'))
 
-    ccd_position_filename = ccd_positions_dir / '{}_CCD_positions.png'.format(
-            obs_path.stem)
-    fig.savefig(str(ccd_position_filename))
-    plt.close(fig)
+        ccd_position_filename = ccd_positions_dir /\
+            '{}_CCD_positions.png'.format(obs_path.stem)
+        fig.savefig(str(ccd_position_filename))
+        plt.close(fig)
