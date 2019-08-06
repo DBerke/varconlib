@@ -23,7 +23,6 @@ import varconlib as vcl
 # This line prevents the wavelength formatting from being in the form of
 # scientific notation.
 matplotlib.rcParams['axes.formatter.useoffset'] = False
-#plt.rc('text', usetex=True)
 
 
 class GaussianFit(object):
@@ -228,8 +227,8 @@ class GaussianFit(object):
         self.amplitudeErr = self.perr[0]
         self.meanErr = self.perr[1] * u.angstrom
         self.meanErrVel = abs(vcl.wavelength2velocity(self.mean,
-                                                        self.mean +
-                                                        self.meanErr))
+                                                      self.mean +
+                                                      self.meanErr))
         self.sigmaErr = self.perr[2] * u.angstrom
 
         if (self.chiSquaredNu > 1):
