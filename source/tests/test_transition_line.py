@@ -131,4 +131,4 @@ class TestTransition(object):
 
     def test_label(self):
         a = Transition(500 * u.nm, 26, 1)
-        assert a.label == '500.0000Fe1'
+        assert a.label == '5000.000Fe1'

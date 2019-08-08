@@ -163,7 +163,7 @@ class Transition(object):
     @property
     def label(self):
         if (not hasattr(self, '_label')) or self._label is None:
-            self._label = '{:.4f}{}{}'.format(
+            self._label = '{:.3f}{}{}'.format(
                     self.wavelength.to(u.angstrom).value,
                     self.atomicSymbol, self.ionizationState)
         return self._label
