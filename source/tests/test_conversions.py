@@ -16,17 +16,17 @@ from conversions import (air_indexEdlen53, vac2airESO, air2vacESO)
 
 @pytest.fixture(scope='module')
 def vacuum_array():
-    return u.unyt_array(range(380, 690, 1), input_units=u.nm)
+    return u.unyt_array(range(380, 690, 1), units=u.nm)
 
 
 @pytest.fixture(scope='module')
 def air_array_2D():
-    return u.unyt_array(range(500, 600, 1), input_units=u.nm).reshape(10, 10)
+    return u.unyt_array(range(500, 600, 1), units=u.nm).reshape(10, 10)
 
 
 @pytest.fixture(scope='module')
 def air_array():
-    return u.unyt_array(range(380, 690, 1), input_units=u.nm)
+    return u.unyt_array(range(380, 690, 1), units=u.nm)
 
 
 class TestEdlen1953(object):
