@@ -57,7 +57,8 @@ class TestScience2DFile(object):
     @pytest.fixture(scope='class')
     def s(self, generic_test_file):
 
-        return HARPSFile2DScience(generic_test_file)
+        return HARPSFile2DScience(generic_test_file, use_new_coefficients=True,
+                                  use_pixel_positions=True)
 
     def testObsFileRead(self, s):
         assert s.getHeaderCard('INSTRUME') == 'HARPS'

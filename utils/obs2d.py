@@ -84,7 +84,11 @@ class HARPSFile2D(object):
             raise FileNotFoundError
         with fits.open(self._filename, mode='readonly') as hdulist:
             self._header = hdulist[0].header
-            self._rawData = hdulist[0].data
+            data = hdulist[0].data
+            if data.shape == (4096, 72):
+                self._rawData = data.transpose()
+            else:
+                self._rawData = data
 
     def __repr__(self):
         return "{}('{}')".format(self.__class__.__name__, self._filename)
@@ -175,8 +179,12 @@ class HARPSFile2DScience(HARPSFile2D):
             file_open_mode = 'append'
         hdulist = fits.open(self._filename, mode=file_open_mode)
         self._header = hdulist[0].header
-        self._rawData = hdulist[0].data
-        self._rawFluxArray = copy(self._rawData)
+        data = hdulist[0].data
+        if data.shape == (4096, 72):
+            self._rawData = data.transpose()
+        else:
+            self._rawData = data
+            self._rawFluxArray = copy(self._rawData)
         self._blazeFile = None
 
         # Define an error string for updating a file that hasn't been opened
@@ -347,6 +355,7 @@ class HARPSFile2DScience(HARPSFile2D):
     def pixelPosArray(self):
         if not hasattr(self, '_pixelPosArray'):
             self._pixelPosArray = HARPSFile2D(pixel_pos_file)._rawData
+            print(self._pixelPosArray.shape)
         return self._pixelPosArray
 
     @property
@@ -606,7 +615,9 @@ class HARPSFile2DScience(HARPSFile2D):
                 pixel_positions = use_pixel_positions
                 tqdm.write('Using provided pixel positions.')
             else:
-                raise RuntimeError('Provided pixel positions array wrong size')
+                raise RuntimeError('Provided pixel positions array wrong'
+                                   ' size: {}'.format(
+                                           use_pixel_positions.shape))
         elif use_pixel_positions is True:
             # Use the new pixel positions file provided.
             pixel_positions = self.pixelPosArray
