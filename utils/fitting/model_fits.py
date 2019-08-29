@@ -350,11 +350,11 @@ class GaussianFit(object):
         # Plot the initial guess for the gaussian.
         ax.plot(x, vcl.gaussian(x, *self.initial_guess),
                 color='SlateGray', label='Initial guess',
-                linestyle='--', alpha=0.8)
+                linestyle='--', alpha=0.7)
         # Plot the fitted gaussian, unless this is a failed fit attempt.
         if plot_fit:
             ax.plot(x, vcl.gaussian(x, *self.popt),
-                    color='DarkGreen',
+                    color='DarkGreen', alpha=0.7,
                     linestyle='-.',
                     label=r'Fit ($\chi^2_\nu=${:.3f}, $\sigma=${:.4f})'.format(
                            self.chiSquaredNu, self.sigma))
