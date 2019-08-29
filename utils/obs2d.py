@@ -230,15 +230,20 @@ class HARPSFile2DScience(HARPSFile2D):
         try:
             self._pixelLowerArray = hdulist['PIXLOWER'].data * u.angstrom
         except KeyError:
-            if ('ALL' in update) or ('PIXLOWER' in update):
-                raise RuntimeError(err_str)
-            tqdm.write('Writing new pixel lower edges HDU.')
-            self.writeBarycentricHDU(hdulist, self.pixelLowerArray, 'PIXLOWER',
-                                     verify_action='warn')
+            try:
+                pixel_array = self.pixelLowerArray
+            except NewCoefficientsNotFoundError:
+                tqdm.write('No new coefficients file, not writing array.')
+            else:
+                if ('ALL' in update) or ('PIXLOWER' in update):
+                    raise RuntimeError(err_str)
+                tqdm.write('Writing new pixel lower edges HDU.')
+                self.writeBarycentricHDU(hdulist, self.pixelLowerArray,
+                                         'PIXLOWER', verify_action='warn')
         if ('ALL' in update) or ('PIXLOWER' in update):
             tqdm.write('Overwriting lower pixel wavelength HDU.')
             del self._pixelLowerArray
-            self.writeBarycentricHDU(hdulist, self.pixelLowerArray, 'PIXLOWER',
+            self.writeBarycentricHDU(hdulist, pixel_array, 'PIXLOWER',
                                      verify_action='warn')
 
         # Try to read the barycentric upper pixel edge array, or create it if
@@ -246,15 +251,20 @@ class HARPSFile2DScience(HARPSFile2D):
         try:
             self._pixelUpperArray = hdulist['PIXUPPER'].data * u.angstrom
         except KeyError:
-            if ('ALL' in update) or ('PIXUPPER' in update):
-                raise RuntimeError(err_str)
-            tqdm.write('Writing new pixel upper edges HDU.')
-            self.writeBarycentricHDU(hdulist, self.pixelUpperArray, 'PIXUPPER',
-                                     verify_action='warn')
+            try:
+                pixel_array = self.pixelUpperArray
+            except NewCoefficientsNotFoundError:
+                tqdm.write('No new coefficients file, not writing array.')
+            else:
+                if ('ALL' in update) or ('PIXUPPER' in update):
+                    raise RuntimeError(err_str)
+                tqdm.write('Writing new pixel upper edges HDU.')
+                self.writeBarycentricHDU(hdulist, self.pixelUpperArray,
+                                         'PIXUPPER', verify_action='warn')
         if ('ALL' in update) or ('PIXUPPER' in update):
             tqdm.write('Overwriting lower pixel wavelength HDU.')
             del self._pixelUpperArray
-            self.writeBarycentricHDU(hdulist, self.pixelUpperArray, 'PIXUPPER',
+            self.writeBarycentricHDU(hdulist, pixel_array, 'PIXUPPER',
                                      verify_action='warn')
 
         # Try to read the flux array, or create it if it doesn't exist.
@@ -324,11 +334,16 @@ class HARPSFile2DScience(HARPSFile2D):
         if not hasattr(self, '_pixelLowerArray'):
             tqdm.write('Creating lower pixel edge barycentric vacuum array.')
             pixel_lower = self.pixelPosArray - self.pixelSizeArray / 2
-            pixel_lower_air = self.getWavelengthArray(
-                    use_new_coefficients=True,
-                    use_pixel_positions=pixel_lower)
-            pixel_lower_vac = self.getVacuumArray(pixel_lower_air)
-            self._pixelLowerArray = self.barycenterCorrect(pixel_lower_vac)
+            try:
+                self.getWavelengthCalibrationFile()
+            except NewCoefficientsNotFoundError:
+                raise
+            else:
+                pixel_lower_air = self.getWavelengthArray(
+                        use_new_coefficients=True,
+                        use_pixel_positions=pixel_lower)
+                pixel_lower_vac = self.getVacuumArray(pixel_lower_air)
+                self._pixelLowerArray = self.barycenterCorrect(pixel_lower_vac)
 
         return self._pixelLowerArray
 
@@ -337,11 +352,16 @@ class HARPSFile2DScience(HARPSFile2D):
         if not hasattr(self, '_pixelUpperArray'):
             tqdm.write('Creating upper pixel edge barycentric vacuum array.')
             pixel_upper = self.pixelPosArray + self.pixelSizeArray / 2
-            pixel_upper_air = self.getWavelengthArray(
-                    use_new_coefficients=True,
-                    use_pixel_positions=pixel_upper)
-            pixel_upper_vac = self.getVacuumArray(pixel_upper_air)
-            self._pixelUpperArray = self.barycenterCorrect(pixel_upper_vac)
+            try:
+                self.getWavelengthCalibrationFile()
+            except NewCoefficientsNotFoundError:
+                raise
+            else:
+                pixel_upper_air = self.getWavelengthArray(
+                        use_new_coefficients=True,
+                        use_pixel_positions=pixel_upper)
+                pixel_upper_vac = self.getVacuumArray(pixel_upper_air)
+                self._pixelUpperArray = self.barycenterCorrect(pixel_upper_vac)
 
         return self._pixelUpperArray
 
@@ -577,10 +597,10 @@ class HARPSFile2DScience(HARPSFile2D):
         -----
         The algorithm used is derived from Dumusque 2018 [2]_:
         .. math::
-            \lambda_{i,j}=P_{4\cdot i}+P_{4\cdot i+1}\times j+\\
-            P_{4\cdot i+2}\times j^2+P_{4\cdot i+3}\times j^3
+            \\lambda_{i,j}=P_{4\\cdot i}+P_{4\\cdot i+1}\\times j+\\
+            P_{4\\cdot i+2}\\times j^2+P_{4\\cdot i+3}\\times j^3
 
-        where :math:`\lambda_{i,j}` is the wavelength at pixel *j* in order
+        where :math:`\\lambda_{i,j}` is the wavelength at pixel *j* in order
         *i*, in ångströms. The `use_pixel_positions` keyword controls whether
         to assume all pixels have the same size (normalized to integer
         positions) or to use the values derived in Coffinet et al. 2019 [1]_
