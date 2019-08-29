@@ -12,7 +12,7 @@ transitions.
 import unyt as u
 
 from exceptions import SameWavelengthsError
-
+from varconlib import wavelength2velocity as wave2vel
 
 class TransitionPair(object):
     """Holds information relating to a single pair of transition lines, in the
@@ -45,11 +45,19 @@ class TransitionPair(object):
             raise SameWavelengthsError(msg)
 
     @property
-    def nominalSeparation(self):
-        if not hasattr(self, '_nominalSeparation'):
-            self._nominalSeparation = self._lowerEnergyTransition.wavelength -\
-                self._higherEnergyTransition.wavelength
-        return self._nominalSeparation
+    def wavelengthSeparation(self):
+        if not hasattr(self, '_wavelengthSeparation'):
+            self._wavelengthSeparation = self._lowerEnergyTransition.\
+                wavelength - self._higherEnergyTransition.wavelength
+        return self._wavelengthSeparation
+
+    @property
+    def velocitySeparation(self):
+        if not hasattr(self, '_velocitySeparation'):
+            self._velocitySeparation = wave2vel(
+                    self._higherEnergyTransition.wavelength,
+                    self._lowerEnergyTransition.wavelength)
+        return self._velocitySeparation
 
     @property
     def label(self):
@@ -68,14 +76,14 @@ class TransitionPair(object):
                                    self._lowerEnergyTransition)
 
     def __str__(self):
-        return 'Pair: {} {} {:.4f}, '.format(
+        return 'Pair: {} {} {:.3f}, '.format(
                 self._higherEnergyTransition.atomicSymbol,
                 self._higherEnergyTransition.ionizationState,
-                self._higherEnergyTransition.wavelength.to(u.nm)) +\
-                '{} {} {:.4f}'.format(
+                self._higherEnergyTransition.wavelength.to(u.angstrom)) +\
+                '{} {} {:.3f}'.format(
                 self._lowerEnergyTransition.atomicSymbol,
                 self._lowerEnergyTransition.ionizationState,
-                self._lowerEnergyTransition.wavelength.to(u.nm))
+                self._lowerEnergyTransition.wavelength.to(u.angstrom))
 
     def __eq__(self, other):
         """Return equal if both higher and lower energy transitions are the

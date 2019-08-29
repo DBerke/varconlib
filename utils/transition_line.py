@@ -169,21 +169,21 @@ class Transition(object):
         return self._label
 
     def __repr__(self):
-        return "{}({:.4f}, {}, {})".format(self.__class__.__name__,
-                                           self.wavelength.to(u.nm),
+        return "{}({:.3f}, {}, {})".format(self.__class__.__name__,
+                                           self.wavelength.to(u.angstrom),
                                            self.atomicNumber,
                                            self.ionizationState)
 
     def __str__(self):
         if (self.lowerEnergy is not None) and\
           (self.higherEnergy is not None):
-            return "{:.4f} {} ({:.4f}, {:.4f})".format(self.wavelength.
+            return "{:.3f} {} ({:.4f}, {:.3f})".format(self.wavelength.
                                                        to(u.angstrom),
                                                        self.atomicSpecies,
                                                        self.lowerEnergy,
                                                        self.higherEnergy)
         else:
-            return "{:.4f} {}".format(self.wavelength.to(u.angstrom),
+            return "{:.3f} {}".format(self.wavelength.to(u.angstrom),
                                       self.atomicSpecies)
 
     def __lt__(self, other):
