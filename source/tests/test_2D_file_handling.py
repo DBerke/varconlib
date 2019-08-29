@@ -57,8 +57,9 @@ class TestScience2DFile(object):
     @pytest.fixture(scope='class')
     def s(self, generic_test_file):
 
-        return HARPSFile2DScience(generic_test_file, use_new_coefficients=True,
-                                  use_pixel_positions=True)
+        return HARPSFile2DScience(generic_test_file,
+                                  use_new_coefficients=False,
+                                  use_pixel_positions=False)
 
     def testObsFileRead(self, s):
         assert s.getHeaderCard('INSTRUME') == 'HARPS'
@@ -81,8 +82,6 @@ class TestScience2DFile(object):
         # Test for created-on-the-fly arrays:
         assert hasattr(s, 'vacuumArray')
         assert hasattr(s, 'rvCorrectedArray')
-        assert hasattr(s, 'pixelLowerArray')
-        assert hasattr(s, 'pixelUpperArray')
 
     def testArraysShapes(self, s):
         assert np.shape(s.wavelengthArray) == (72, 4096)
@@ -90,8 +89,9 @@ class TestScience2DFile(object):
         assert np.shape(s.photonFluxArray) == (72, 4096)
         assert np.shape(s.errorArray) == (72, 4096)
         assert np.shape(s.blazeArray) == (72, 4096)
-        assert np.shape(s.pixelLowerArray) == (72, 4096)
-        assert np.shape(s.pixelUpperArray) == (72, 4096)
+        if hasattr(s, '_pixelLowerArray'):
+            assert np.shape(s.pixelLowerArray) == (72, 4096)
+            assert np.shape(s.pixelUpperArray) == (72, 4096)
 
     def testFindWavelength(self, s):
         assert s.findWavelength(5039 * u.angstrom, s.barycentricArray,
