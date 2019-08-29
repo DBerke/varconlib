@@ -12,6 +12,7 @@ Test script for functions in varconlib
 import datetime as dt
 
 import pytest
+import unyt as u
 
 import varconlib as vcl
 
@@ -49,3 +50,28 @@ class TestDate2Index(object):
         mock_date = dt.datetime(year=2005, month=6, day=1, hour=0, minute=0,
                                 second=0)
         assert vcl.date2index(mock_date, date_list) == 1
+
+
+class TestQCoefficientShifts(object):
+
+    @pytest.fixture(scope='class')
+    def transition(self):
+        return 20000 * u.cm ** -1
+
+    def test_wavenumber(self, transition):
+        assert vcl.q_alpha_shift(transition, 500 * u.cm ** -1, 1.000001) ==\
+            pytest.approx(14.98963 * u.m / u.s)
+
+    def test_wavelength(self, transition):
+        assert vcl.q_alpha_shift(transition.to(u.angstrom,
+                                               equivalence='spectral'),
+                                 500 * u.cm ** -1, 1.000001) ==\
+            pytest.approx(14.98963 * u.m / u.s)
+
+    def test_energy(self, transition):
+        assert vcl.q_alpha_shift(transition.to(u.eV,
+                                               equivalence='spectral'),
+                                 500 * u.cm ** -1, 1.000001) ==\
+            pytest.approx(14.98963 * u.m / u.s)
+
+

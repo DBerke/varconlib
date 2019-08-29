@@ -271,6 +271,43 @@ def wavelength2velocity(wavelength1, wavelength2):
     return result.to(u.m/u.s)
 
 
+def q_alpha_shift(omega, q_coefficient, delta_alpha):
+    """Return the velocity change in a transition with a given q-coefficient
+    for a given fractional change in alpha.
+
+    Parameters
+    ----------
+    omega : unyt_quantity with dimensions length, 1/(length), or energy
+        The wavenumber, wavelength, or energy of the transition to calculate
+        the shift for. Assuming the units are correct this parameter will be
+        converted to a wavenumber if necessary internally.
+    q_coefficient : float
+        The *q*-coefficient for the transition. This is a float, in units of
+        reciprocal centimeters.
+    delta_alpha : float
+        A fractional change in the value of alpha to use for the calculation.
+
+    Returns
+    -------
+    unyt_quantity with dimensions (length)/(time)
+        The velocity separation between the original wavenumber/wavelength/
+        energy and the new value.
+
+    Notes
+    -----
+    The calculation of the shift in a transition's wavenumber is given by the
+    formula:
+    .. math:: \omega = \omega_0 + q \left((\frac{\alpha}{\alpha_0})^2 -1\right)
+
+    """
+
+    original_value = omega.to_equivalent(u.cm ** -1, equivalence='spectral')
+
+    new_value = original_value + q_coefficient * (delta_alpha ** 2 - 1)
+
+    return wavelength2velocity(original_value, new_value)
+
+
 def parse_spectral_mask_file(file):
     """Parses a spectral mask file from maskSpectralRegions.py
 
