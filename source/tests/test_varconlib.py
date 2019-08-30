@@ -59,19 +59,28 @@ class TestQCoefficientShifts(object):
         return 20000 * u.cm ** -1
 
     def test_wavenumber(self, transition):
-        assert vcl.q_alpha_shift(transition, 500 * u.cm ** -1, 1.000001) ==\
+        assert vcl.q_alpha_shift(transition, -500 * u.cm ** -1, 1.000001) ==\
             pytest.approx(14.98963 * u.m / u.s)
+        assert vcl.q_alpha_shift(transition, 500 * u.cm ** -1, 1.000001) ==\
+            pytest.approx(-14.98963 * u.m / u.s)
 
     def test_wavelength(self, transition):
         assert vcl.q_alpha_shift(transition.to(u.angstrom,
                                                equivalence='spectral'),
-                                 500 * u.cm ** -1, 1.000001) ==\
+                                 -500 * u.cm ** -1, 1.000001) ==\
             pytest.approx(14.98963 * u.m / u.s)
+        assert vcl.q_alpha_shift(transition.to(u.angstrom,
+                                               equivalence='spectral'),
+                                 500 * u.cm ** -1, 1.000001) ==\
+            pytest.approx(-14.98963 * u.m / u.s)
 
     def test_energy(self, transition):
         assert vcl.q_alpha_shift(transition.to(u.eV,
                                                equivalence='spectral'),
-                                 500 * u.cm ** -1, 1.000001) ==\
+                                 -500 * u.cm ** -1, 1.000001) ==\
             pytest.approx(14.98963 * u.m / u.s)
-
+        assert vcl.q_alpha_shift(transition.to(u.eV,
+                                               equivalence='spectral'),
+                                 500 * u.cm ** -1, 1.000001) ==\
+            pytest.approx(-14.98963 * u.m / u.s)
 

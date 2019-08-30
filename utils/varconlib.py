@@ -211,6 +211,9 @@ def velocity2wavelength(velocity_offset, wavelength):
 def wavelength2velocity(wavelength1, wavelength2):
     """Return velocity separation of a pair of wavelengths.
 
+    In terms of order, the second wavelength parameter is subtracted from the
+    first.
+
     Parameters
     ----------
     wavelengthl1 & wavelength2 : unyt_quantity or unyt_array
@@ -262,7 +265,10 @@ def q_alpha_shift(omega, q_coefficient, delta_alpha):
 
     new_value = original_value + q_coefficient * (delta_alpha ** 2 - 1)
 
-    return wavelength2velocity(original_value, new_value)
+    return wavelength2velocity(original_value.to(u.angstrom,
+                                                 equivalence='spectral'),
+                               new_value.to(u.angstrom,
+                                            equivalence='spectral'))
 
 
 def parse_spectral_mask_file(file):
