@@ -14,6 +14,7 @@ import unyt as u
 from exceptions import SameWavelengthsError
 from varconlib import wavelength2velocity as wave2vel
 
+
 class TransitionPair(object):
     """Holds information relating to a single pair of transition lines, in the
     form of two Transition objects.
@@ -65,6 +66,18 @@ class TransitionPair(object):
             self._label = '_'.join([self._higherEnergyTransition.label,
                                     self._lowerEnergyTransition.label])
         return self._label
+
+    @property
+    def blendTuple(self):
+        if not hasattr(self, '_blendTuple'):
+            try:
+                self._blendTuple = tuple(sorted([self._lowerEnergyTransition.
+                                         blendedness,
+                                         self._higherEnergyTransition.
+                                         blendedness]))
+            except AttributeError:
+                raise AttributeError
+        return self._blendTuple
 
     def __iter__(self):
         return iter([self._higherEnergyTransition,

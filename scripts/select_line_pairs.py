@@ -437,9 +437,9 @@ def find_line_pairs(transition_list, min_norm_depth=0.3, max_norm_depth=0.7,
     transition_pair_list = []
 
     if args.verbose:
-        tqdm.write('Running with depth limits = ({}, {})'.format(
+        tqdm.write('Running with depth limits = ({}, {}), '.format(
                    min_norm_depth, max_norm_depth) +
-                   ', velocity separation = {}, depth diff = {}'.format(
+                   'velocity separation = {}, depth diff = {}'.format(
                            velocity_separation, line_depth_difference))
 
     for transition1 in tqdm(transition_list, unit='transitions'):
@@ -1045,6 +1045,8 @@ if args.incorporate_blendedness:
         blend_lines = f.readlines()
 
     blend_transitions = []
+    tqdm.write('Incorporating blendedness information from {}'.format(
+            infile.name))
     for line in tqdm(blend_lines):
         if '#' in line:
             continue
@@ -1072,12 +1074,14 @@ if args.incorporate_blendedness:
         new_transition.normalizedDepth = float(norm_depth)
         blend_transitions.append(new_transition)
 
-#    print(blend_transitions[0].__dict__)
-
+    tqdm.write('Writing out pairs with blendedness included to {}'.format(
+            pickle_pairs_file))
     pairs = find_line_pairs(blend_transitions, min_norm_depth=0.15,
                             max_norm_depth=0.9,
                             velocity_separation=800*u.km/u.s,
                             line_depth_difference=0.2)
+
+    print(pairs[0]._lowerEnergyTransition.blendedness)
 
     print(f'Found {len(pairs)} pairs.')
     print('Pickling pairs to file.')
@@ -1087,7 +1091,7 @@ if args.incorporate_blendedness:
 
 if args.rate_pairs:
 
-    tqdm.write('Reading list of pairs...')
+    tqdm.write('Reading list of pairs from {}...'.format(pickle_pairs_file))
     with open(pickle_pairs_file, 'r+b') as g:
         pairs = pickle.load(g)
     tqdm.write('Done! {} pairs found.'.format(len(pairs)))
@@ -1095,15 +1099,8 @@ if args.rate_pairs:
     blend_dict = {}
 
     for pair in tqdm(pairs):
-        lower_blend = pair._lowerEnergyTransition.blendedness
-        higher_blend = pair._higherEnergyTransition.blendedness
 
-        if lower_blend < higher_blend:
-            blend_tuple = (lower_blend, higher_blend)
-        else:
-            blend_tuple = (higher_blend, lower_blend)
-
-        pair.blendTuple = blend_tuple
+        blend_tuple = pair.blendTuple
         if blend_tuple in blend_dict.keys():
             blend_dict[blend_tuple].append(pair)
         else:
