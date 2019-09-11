@@ -13,6 +13,7 @@ attempts to fit each of the transitions listed in the dictionary.
 import argparse
 import configparser
 from glob import glob
+import lzma
 import os
 from pathlib import Path
 import pickle
@@ -21,15 +22,13 @@ from adjustText import adjust_text
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
-import unyt as u
 
-import conversions
 from exceptions import (PositiveAmplitudeError, BlazeFileNotFoundError,
                         NewCoefficientsNotFoundError)
 from fitting import GaussianFit
 import obs2d
-from varconlib import (wavelength2index, shift_wavelength, blueCCDpath,
-                       redCCDpath, order_numbers)
+from varconlib import (wavelength2index, blueCCDpath,
+                       redCCDpath)
 
 desc = 'Fit absorption features in spectra.'
 parser = argparse.ArgumentParser(description=desc)
@@ -111,7 +110,7 @@ red_spec_format = np.loadtxt(redCCDpath, skiprows=1, delimiter=',',
                              usecols=(0, 5, 6))
 
 # Read the pickled list of transitions
-with open(final_selection_file, 'r+b') as f:
+with open(final_selection_file, 'rb') as f:
     tqdm.write('Unpickling list of transitions...')
     transitions_list = pickle.load(f)
 
@@ -223,15 +222,17 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
             transitions_x.append(x)
             labels.append(transition.label)
 
+    # Pickle the list of fits, then compress them to save space before writing
+    # them out.
     tqdm.write('Fit {}/{} transitions in {}.'.format(len(fits_list),
                len(transitions_list), obs_path.name))
-    outfile = output_pickle_dir / '{}_gaussian_fits.pkl'.format(
+    outfile = output_pickle_dir / '{}_gaussian_fits.lzma'.format(
             obs._filename.stem)
     if not outfile.parent.exists():
         os.mkdir(outfile.parent)
-    with open(outfile, 'w+b') as f:
-        tqdm.write(f'Pickling list of fits at {outfile}')
-        pickle.dump(fits_list, f)
+    with lzma.open(outfile, 'wb') as f:
+        tqdm.write(f'Pickling and compressing list of fits at {outfile}')
+        f.write(pickle.dumps(fits_list))
 
     # Create a plot to show locations of transitions on the CCD for this
     # observation.

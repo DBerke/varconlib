@@ -870,9 +870,9 @@ if args.match_lines:
     pickle_file_backup = pickle_dir / 'transitions_{}.pkl'.format(
             datetime.date.today().isoformat())
     tqdm.write('Saving transitions to {}'.format(pickle_file))
-    with open(pickle_file, 'w+b') as f:
+    with open(pickle_file, 'wb') as f:
         pickle.dump(transitions, f)
-    with open(pickle_file_backup, 'w+b') as f:
+    with open(pickle_file_backup, 'wb') as f:
         pickle.dump(transitions, f)
 
 if args.pair_lines:
@@ -883,7 +883,7 @@ if args.pair_lines:
     # maximum velocity separation: 800 km/s
 
     print('Unpickling transition lines...')
-    with open(pickle_file, 'r+b') as f:
+    with open(pickle_file, 'rb') as f:
         transitions_list = pickle.load(f)
     print('Found {} transitions.'.format(len(transitions_list)))
 
@@ -894,7 +894,7 @@ if args.pair_lines:
 
     print(f'Found {len(pairs)} pairs.')
     print('Pickling pairs to file.')
-    with open(pickle_pairs_file, 'w+b') as f:
+    with open(pickle_pairs_file, 'wb') as f:
         pickle.dump(pairs, f)
 
     transition_list = []
@@ -907,13 +907,13 @@ if args.pair_lines:
 
     # Pickle the list of unique transitions in the returned pairs.
     print('Pickling unique transitions to file.')
-    with open(pickle_pairs_transitions_file, 'w+b') as f:
+    with open(pickle_pairs_transitions_file, 'wb') as f:
         pickle.dump(transition_list, f)
 
 
 if args.query_nist:
 
-    with open(pickle_pairs_transitions_file, 'r+b') as f:
+    with open(pickle_pairs_transitions_file, 'rb') as f:
         transitions = pickle.load(f)
     tqdm.write(f'{len(transitions)} transitions found.')
     species_set = set()
@@ -923,7 +923,7 @@ if args.query_nist:
     # Pickle the transitions returned from NIST
     nist_transition_dict = query_nist(transitions, species_set)
     tqdm.write('Pickling NIST query...')
-    with open(nist_pickle_file, 'w+b') as f:
+    with open(nist_pickle_file, 'wb') as f:
         pickle.dump(nist_transition_dict, f)
 
     print(sorted(nist_transition_dict.keys()))
@@ -931,17 +931,17 @@ if args.query_nist:
 if args.match_nist:
     total = 0
     try:
-        with open(nist_pickle_file, 'r+b') as f:
+        with open(nist_pickle_file, 'rb') as f:
             tqdm.write('Unpickling NIST results...')
             nist_transition_dict = pickle.load(f)
     except FileNotFoundError:
         nist_transition_dict = query_nist(transition_list, species_set)
         tqdm.write('Pickling NIST query...')
-        with open(nist_pickle_file, 'w+b') as f:
+        with open(nist_pickle_file, 'wb') as f:
             pickle.dump(nist_transition_dict, f)
 
     tqdm.write('Unpickling transition lines...')
-    with open(pickle_pairs_transitions_file, 'r+b') as f:
+    with open(pickle_pairs_transitions_file, 'rb') as f:
         transitions_list = pickle.load(f)
     tqdm.write('Found {} unique transitions.'.format(len(transitions_list)))
 
@@ -989,11 +989,11 @@ if args.match_nist:
     print(f'{total} transitions matched total out of {len(transitions_list)}.')
 
     tqdm.write('Pickling NIST matches...')
-    with open(nist_matched_pickle_file, 'w+b') as f:
+    with open(nist_matched_pickle_file, 'wb') as f:
         pickle.dump(master_match_dict, f)
 
 if args.format_lines:
-    with open(nist_matched_pickle_file, 'r+b') as f:
+    with open(nist_matched_pickle_file, 'rb') as f:
         print('Unpickling NIST-matched transitions...')
         nist_dict = pickle.load(f)
 
@@ -1024,7 +1024,7 @@ if args.format_lines:
     tqdm.write('NIST-matched transitions written out to {}'.format(
             nist_formatted_file))
 
-    with open(pickle_pairs_transitions_file, 'r+b') as f:
+    with open(pickle_pairs_transitions_file, 'rb') as f:
         all_transitions = pickle.load(f)
     tqdm.write(f'{len(all_transitions)} unique transitions found.')
 
@@ -1085,14 +1085,14 @@ if args.incorporate_blendedness:
 
     print(f'Found {len(pairs)} pairs.')
     print('Pickling pairs to file.')
-    with open(pickle_pairs_file, 'w+b') as f:
+    with open(pickle_pairs_file, 'wb') as f:
         pickle.dump(pairs, f)
 
 
 if args.rate_pairs:
 
     tqdm.write('Reading list of pairs from {}...'.format(pickle_pairs_file))
-    with open(pickle_pairs_file, 'r+b') as g:
+    with open(pickle_pairs_file, 'rb') as g:
         pairs = pickle.load(g)
     tqdm.write('Done! {} pairs found.'.format(len(pairs)))
 
@@ -1114,7 +1114,7 @@ if args.rate_pairs:
     # This is the final list of pairs, though it contains all pairs including
     # ones with bad blending.
     print('Pickling pairs with blend information to file.')
-    with open(pickle_pairs_file, 'w+b') as f:
+    with open(pickle_pairs_file, 'wb') as f:
         pickle.dump(pairs, f)
 
     good_transitions = []
@@ -1155,5 +1155,5 @@ if args.rate_pairs:
     # are considered "good" (low blending of both features).
     print('Pickling final selection of transitions to file: {}.'.format(
             final_selection_file))
-    with open(final_selection_file, 'w+b') as f:
+    with open(final_selection_file, 'wb') as f:
         pickle.dump(good_transitions, f)
