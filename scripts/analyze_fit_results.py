@@ -11,8 +11,10 @@ information about them (via plots or otherwise).
 
 import argparse
 import configparser
+import csv
 import datetime as dt
 from glob import glob
+import lzma
 from os import mkdir
 from pathlib import Path
 import pickle
@@ -48,7 +50,9 @@ output_dir = Path(config['PATHS']['output_dir'])
 
 
 # Set up CL arguments.
-desc = 'Analyze fitted absorption features.'
+desc = """A script to analyze fitted absorption features.
+          Requires a directory where results for an object are stored to be
+          given, and the suffix to use."""
 parser = argparse.ArgumentParser(description=desc)
 
 parser.add_argument('object_dir', action='store', type=str,
@@ -57,6 +61,8 @@ parser.add_argument('suffix', action='store', type=str,
                     help='Suffix to add to directory names to search for.')
 parser.add_argument('--create-plots', action='store_true', default=False,
                     help='Create plots of the offsets for each pair.')
+parser.add_argument('--write-csv', action='store_true', default=False,
+                    help='Create a CSV file of offsets for each pair.')
 parser.add_argument('--verbose', action='store_true', default=False,
                     help='Print more information about the process.')
 
@@ -90,6 +96,12 @@ if args.create_plots:
 # Define a list of good "blend numbers" for chooosing which blends to look at.
 blends_of_interest = ((0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2))
 
+# Find the data in the given directory.
+data_dir = Path(args.object_dir)
+if not data_dir.exists():
+    print(data_dir)
+    raise RuntimeError('The given directory does not exist.')
+
 # Read the list of chosen transitions.
 with open(final_selection_file, 'r+b') as f:
     transitions_list = pickle.load(f)
@@ -121,14 +133,9 @@ for pair in pairs_list:
 tqdm.write('Found {} "good pairs"'.format(len(good_pairs)))
 tqdm.write('and {} "good transitions" in those pairs.'.format(
            len(good_transitions_set)))
-# Find the data in the given directory.
-data_dir = Path(args.object_dir)
-if not data_dir.exists():
-    print(data_dir)
-    raise RuntimeError('The given directory does not exist.')
 
 # Search for pickle files in the given directory.
-search_str = str(data_dir) + '/*/pickles_{}/*fits.pkl'.format(args.suffix)
+search_str = str(data_dir) + '/*/pickles_{}/*fits.lzma'.format(args.suffix)
 tqdm.write(search_str)
 pickle_files = [Path(path) for path in glob(search_str)]
 
@@ -141,13 +148,17 @@ master_star_dict = {}
 
 obs_name_re = re.compile('HARPS.*_e2ds_A')
 
+# Create a list to hold all the results for saving out as a csv file:
+master_star_list = []
+observation_names = []
 for pickle_file in tqdm(pickle_files[:]):
 
+    # Match the part of the pickle filename that is the observation name.
     obs_name = obs_name_re.match(pickle_file.stem).group()
 
     tqdm.write('Analyzing results from {}'.format(obs_name))
-    with open(pickle_file, 'r+b') as f:
-        fits_list = pickle.load(f)
+    with lzma.open(pickle_file, 'rb') as f:
+        fits_list = pickle.loads(f.read())
 
     # Set up a dictionary to map fits in this observation to transitions:
     fits_dict = {}
@@ -155,70 +166,105 @@ for pickle_file in tqdm(pickle_files[:]):
         fits_dict[fit.transition.label] = fit
 
     pairs_dict = {}
+    observation_names.append(obs_name)
+    pairs_list = [obs_name, dt.datetime.strftime(fits_list[0].dateObs,
+                                                 '%Y-%m-%dT%H:%M:%S.%f')]
+    column_names = ['Observation', 'Time']
     for pair in good_pairs:
+        column_names.extend([pair.label, pair.label + '_err'])
         try:
-            new_pair = [fits_dict[pair._higherEnergyTransition.label],
-                        fits_dict[pair._lowerEnergyTransition.label]]
+            fits_pair = [fits_dict[pair._higherEnergyTransition.label],
+                         fits_dict[pair._lowerEnergyTransition.label]]
         except KeyError:
+            # Measurement of one or the other transition doesn't exist, so
+            # skip it (but fill in the list to prevent getting out of sync).
+            pairs_list.extend(['N/A', ' N/A'])
             continue
-        pair_label = '_'.join([new_pair[0].transition.label,
-                              new_pair[1].transition.label])
 
-        if np.isnan(new_pair[0].meanErrVel) or \
-           np.isnan(new_pair[1].meanErrVel):
+        if np.isnan(fits_pair[0].meanErrVel) or \
+           np.isnan(fits_pair[1].meanErrVel):
+            # Similar to above, fill in list with placeholder value.
             tqdm.write('{} in {} has a NaN velocity offset!'.format(
-                    pair_label, obs_name))
-            tqdm.write(str(new_pair[0].meanErrVel))
-            tqdm.write(str(new_pair[1].meanErrVel))
+                    fits_pair.label, obs_name))
+            tqdm.write(str(fits_pair[0].meanErrVel))
+            tqdm.write(str(fits_pair[1].meanErrVel))
+            pairs_list.extend(['NaN', ' NaN'])
             continue
 
-        pairs_dict[pair_label] = new_pair
+        pairs_dict[pair.label] = fits_pair
+        error = np.sqrt(fits_pair[0].meanErrVel ** 2 +
+                        fits_pair[1].meanErrVel ** 2)
+        velocity_separation = wave2vel(fits_pair[0].mean, fits_pair[1].mean)
+        pairs_list.extend([velocity_separation.value, error.value])
 
+    # This is for the script to use.
     master_star_dict[obs_name] = pairs_dict
+    # This is to be written out.
+    master_star_list.append(pairs_list)
 
-for pair in tqdm(good_pairs[:]):
+if args.write_csv:
+    # Write out a CSV file containing the pair separation values for all
+    # observations of this star.
+    csv_filename = data_dir / 'pair_separations_{}.csv'.format(data_dir.stem)
     if args.verbose:
-        tqdm.write(f'Creating plot for pair {pair.label}')
-    fitted_pairs = []
-    date_obs = []
-    for key, pair_dict in master_star_dict.items():
-        try:
-            # Grab the associated pair from each observation.
-            fitted_pairs.append(pair_dict[pair.label])
-            # Grab the observation date.
-            date_obs.append(pair_dict[pair_label][0].dateObs)
-        except KeyError:
-            # If a particular pair isn't available, just continue.
-            continue
+        tqdm.write(f'Creating CSV file of separations for {data_dir.stem} '
+                   f'at {csv_filename}')
 
-    offsets, errors = [], []
-    for fit_pair in fitted_pairs:
-        offsets.append(wave2vel(fit_pair[0].mean, fit_pair[1].mean))
-        error = np.sqrt(fit_pair[0].meanErrVel ** 2 +
-                        fit_pair[1].meanErrVel ** 2)
-        if np.isnan(error):
-            print(fit_pair[0].meanErrVel)
-            print(fit_pair[1].meanErrVel)
-            raise ValueError
-        errors.append(error)
+    assert len(master_star_list[0]) == len(column_names)
 
-    offsets = np.array(offsets) * u.m / u.s
-    errors = np.array(errors) * u.m / u.s
-    folded_dates = [obs_date.replace(year=2000) for obs_date in date_obs]
+    with open(csv_filename, 'w', newline='') as csvfile:
+        csv_writer = csv.writer(csvfile, delimiter=',')
+        csv_writer.writerow(column_names)
+        for row in tqdm(master_star_list):
+            csv_writer.writerow(row)
 
-    weights = 1 / errors ** 2
-    weighted_mean = np.average(offsets, weights=weights)
+#    data = pd.DataFrame(data=master_star_list, columns=column_names)
+#    data.to_csv(path_or_buf=csv_filename,
+#                header=column_names,
+#                index=False)
 
-    tqdm.write('Weighted mean for {} is {:.2f}'.format(pair.label,
-               weighted_mean))
+# Create the plots for each pair of transitions
+if args.create_plots:
+    for pair in tqdm(good_pairs[:]):
+        if args.verbose:
+            tqdm.write(f'Creating plot for pair {pair.label}')
+        fitted_pairs = []
+        date_obs = []
+        for key, pair_dict in master_star_dict.items():
+            try:
+                # Grab the associated pair from each observation.
+                fitted_pairs.append(pair_dict[pair.label])
+                # Grab the observation date.
+                date_obs.append(pair_dict[pair.label][0].dateObs)
+            except KeyError:
+                # If a particular pair isn't available, just continue.
+                continue
 
-    normalized_offsets = offsets - weighted_mean
-    chi_squared = sum((normalized_offsets / errors) ** 2)
+        offsets, errors = [], []
+        for fit_pair in fitted_pairs:
+            offsets.append(wave2vel(fit_pair[0].mean, fit_pair[1].mean))
+            error = np.sqrt(fit_pair[0].meanErrVel ** 2 +
+                            fit_pair[1].meanErrVel ** 2)
+            if np.isnan(error):
+                print(fit_pair[0].meanErrVel)
+                print(fit_pair[1].meanErrVel)
+                raise ValueError
+            errors.append(error)
 
-    weighted_mean_err = 1 / np.sqrt(sum(weights))
+        offsets = np.array(offsets) * u.m / u.s
+        errors = np.array(errors) * u.m / u.s
+        folded_dates = [obs_date.replace(year=2000) for obs_date in date_obs]
 
-    # Create the plots for each pair of transitions
-    if args.create_plots:
+        weights = 1 / errors ** 2
+        weighted_mean = np.average(offsets, weights=weights)
+
+        tqdm.write('Weighted mean for {} is {:.2f}'.format(pair.label,
+                   weighted_mean))
+
+        normalized_offsets = offsets - weighted_mean
+        chi_squared = sum((normalized_offsets / errors) ** 2)
+
+        weighted_mean_err = 1 / np.sqrt(sum(weights))
 
         date_indices = []
         for value in dates_of_change.values():
