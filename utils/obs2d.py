@@ -155,7 +155,8 @@ class HARPSFile2DScience(HARPSFile2D):
             Whether to force writing of the wavelength, flux, and error arrays.
             `update` may be given as a list of strings containing some or all
             of 'WAVE', 'BARY', 'PIXLOWER', 'PIXUPPER', 'FLUX', 'ERR', or
-            'BLAZE'.
+            'BLAZE'. The value 'ALL' may also be given as a shortcut for
+            updating all values.
 
             Any HDUs listed in the tuple will be updated, while those not
             listed will be read from the file being opened. Updating any of the
@@ -163,6 +164,17 @@ class HARPSFile2DScience(HARPSFile2D):
             need to be changed passing a tuple of ('FLUX', 'ERR') will update
             the FLUX and ERR HDUs without performing the time-costly updating
             of the wavelength solution.
+        use_new_coefficients : bool, Default : True
+            Whether to use new coefficients from the HARPS recalibration per-
+            formed in Coffinet et al. 2019[1]_.
+        use_pixel_positions : bool, Default : True
+            Whether to use pixel positions derived from the HARPS recalibation
+            performed in Coffinet et al. 2019[1]_.
+
+        References
+        ----------
+        [1] A. Coffinet, C. Lovis, X. Dumusque, F. Pepe, "New wavelength
+        calibration of the HARPS spectrograph", Astronomy & Astrophysics, 2019
 
         """
 
