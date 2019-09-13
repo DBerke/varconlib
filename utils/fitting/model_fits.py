@@ -92,15 +92,14 @@ class GaussianFit(object):
 
         # Shift the wavelength being searched for to correct for the radial
         # velocity of the star.
-        nominal_wavelength = self.transition.wavelength
+        nominal_wavelength = self.transition.wavelength.to(u.angstrom)
         self.correctedWavelength = vcl.shift_wavelength(nominal_wavelength,
                                                         radial_velocity)
-        self.correctedWavelength.convert_to_units(u.nm)
         if verbose:
-            tqdm.write('Given RV {:.2f}: line {:.4f} should be at {:.4f}'.
+            tqdm.write('Given RV {:.2f}: line {:.3f} should be at {:.3f}'.
                        format(radial_velocity,
-                              nominal_wavelength.to(u.nm),
-                              self.correctedWavelength.to(u.nm)))
+                              nominal_wavelength.to(u.angstrom),
+                              self.correctedWavelength.to(u.angstrom)))
         # Find which order of the echelle spectrum the wavelength falls in.
         self.order = observation.findWavelength(self.correctedWavelength,
                                                 observation.barycentricArray,
