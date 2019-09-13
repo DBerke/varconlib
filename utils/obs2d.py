@@ -85,10 +85,7 @@ class HARPSFile2D(object):
         with fits.open(self._filename, mode='readonly') as hdulist:
             self._header = hdulist[0].header
             data = hdulist[0].data
-            if data.shape == (4096, 72):
-                self._rawData = data.transpose()
-            else:
-                self._rawData = data
+            self._rawData = self._reshape_if_necessary(data)
 
     def __repr__(self):
         return "{}('{}')".format(self.__class__.__name__, self._filename)
@@ -124,6 +121,32 @@ class HARPSFile2D(object):
         """
 
         return self._header[flag]
+
+    def _reshape_if_necessary(self, array):
+        """Reshape the main data array if necessary.
+
+        The pixel geometry files from Lovis give a table in the shape
+        (4096, 72) instead of the (72, 4096) that HARPS normally uses. Thus
+        data from these files needs to be reshaped to be used. This function
+        checks the shape of the array given, and reshapes it if necessary.
+
+        Parameters
+        ----------
+        array : array-like
+            The array to have its shape checked, and reshaped if necessary.
+
+        Returns
+        -------
+        np.array
+            The array, in the shape (72, 4096) (whether originally or
+            reshaped).
+
+        """
+
+        if array.shape == (4096, 72):
+            array = array.reshape((72, 4096))
+            tqdm.write('Data array reshaped from (4096, 72) to (72, 4096).')
+        return array
 
     def plotSelf(self):
         """
@@ -183,7 +206,7 @@ class HARPSFile2DScience(HARPSFile2D):
         else:
             self._filename = FITSfile
         if not self._filename.exists():
-            tqdm.write(self._filename)
+            tqdm.write(str(self._filename))
             raise FileNotFoundError('The given path does not exist!')
         if update:
             file_open_mode = 'update'
@@ -192,11 +215,8 @@ class HARPSFile2DScience(HARPSFile2D):
         hdulist = fits.open(self._filename, mode=file_open_mode)
         self._header = hdulist[0].header
         data = hdulist[0].data
-        if data.shape == (4096, 72):
-            self._rawData = data.transpose()
-        else:
-            self._rawData = data
-            self._rawFluxArray = copy(self._rawData)
+        self._rawData = self._reshape_if_necessary(data)
+        self._rawFluxArray = copy(self._rawData)
         self._blazeFile = None
 
         # Define an error string for updating a file that hasn't been opened
@@ -255,6 +275,7 @@ class HARPSFile2DScience(HARPSFile2D):
         if ('ALL' in update) or ('PIXLOWER' in update):
             tqdm.write('Overwriting lower pixel wavelength HDU.')
             del self._pixelLowerArray
+            pixel_array = self.pixelLowerArray
             self.writeBarycentricHDU(hdulist, pixel_array, 'PIXLOWER',
                                      verify_action='warn')
 
@@ -276,6 +297,7 @@ class HARPSFile2DScience(HARPSFile2D):
         if ('ALL' in update) or ('PIXUPPER' in update):
             tqdm.write('Overwriting lower pixel wavelength HDU.')
             del self._pixelUpperArray
+            pixel_array = self.pixelUpperArray
             self.writeBarycentricHDU(hdulist, pixel_array, 'PIXUPPER',
                                      verify_action='warn')
 
@@ -665,7 +687,7 @@ class HARPSFile2DScience(HARPSFile2D):
                 order_barycenter = order_barycenters[order]
             else:
                 order_barycenter = 0
-            # Iterate through the third-order fit coefficients
+            # Iterate through the third-order polynomial fit coefficients
             for i in range(0, 4, 1):
                 coeff = 'ESO DRS CAL TH COEFF LL{0}'.format((4 * order) + i)
                 coeff_val = coeffs_file.getHeaderCard(coeff)
