@@ -138,8 +138,8 @@ class HARPSFile2D(object):
         Returns
         -------
         np.array
-            The array, in the shape (72, 4096) (whether originally or
-            reshaped).
+            The array, in the shape (72, 4096) (whether originally or after
+            having been reshaped).
 
         """
 
@@ -745,8 +745,6 @@ class HARPSFile2DScience(HARPSFile2D):
         # Blaze-correct the photon flux array:
         photon_flux_array = self._rawFluxArray / self.blazeArray
 
-#        photon_flux_array *= self.pixelSizeArray
-
         return photon_flux_array
 
     def getErrorArray(self):
@@ -1010,9 +1008,6 @@ class HARPSFile2DScience(HARPSFile2D):
         """
 
         wavelength_to_find = wavelength.to(u.angstrom)
-
-        if verbose:
-            tqdm.write(str(wavelength_array))
 
         # Make sure the wavelength to find is in the array in the first place.
         err_str = "Given wavelength not in array limits: {} ({}, {})".format(
