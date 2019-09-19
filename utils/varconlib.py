@@ -18,6 +18,7 @@ from pathlib import Path
 from bidict import bidict
 import numpy as np
 from scipy.special import erf
+import unyt
 import unyt as u
 
 
@@ -79,33 +80,33 @@ def wavelength2index(wavelength, wavelength_array, reverse=False):
 
     """
 
+    assert isinstance(wavelength, unyt.array.unyt_quantity),\
+        f'Given wavelength "{wavelength}" is not a unyt_quantity.'
+
+    # For cases where the wavelength is given in descending wavelength order,
+    # we can flip it.
     if reverse:
         wavelength_array.reverse()
+
+    # If the given wavelength is not within the limits of the array, raise an
+    # error.
+    if not wavelength_array[0] < wavelength < wavelength_array[-1]:
+        raise RuntimeError("Couldn't find the given wavelength: {}".
+                           format(wavelength))
 
     for i in range(0, len(wavelength_array), 1):
         # First find the index for which the value is greater than the given
         # wavelength:
-        try:
-            if wavelength_array[i] >= wavelength:
-                # Then check if it's closest to this index or the previous one.
-                # The way it's set up it should always be
-                # wl_arr[i-1] <= wl <= wl_arr[i] assuming monotonic increase of
-                # wavelengths.
-                if abs(wavelength_array[i] - wavelength) >\
-                   abs(wavelength - wavelength_array[i - 1]):
-                    return i - 1
-                else:
-                    return i
-        except ValueError:
-            print(wavelength_array)
-            print(wavelength_array[i])
-            print(wavelength)
-            raise
-
-    # If it reaches the end without finding a matching wavelength, raise an
-    # error.
-    raise RuntimeError("Couldn't find the given wavelength: {}".
-                       format(wavelength))
+        if wavelength_array[i] >= wavelength:
+            # Then check if it's closest to this index or the previous one.
+            # The way it's set up it should always be
+            # wl_arr[i-1] <= wl <= wl_arr[i] assuming monotonic increase of
+            # wavelengths.
+            if abs(wavelength_array[i] - wavelength) >\
+               abs(wavelength - wavelength_array[i - 1]):
+                return i - 1
+            else:
+                return i
 
 
 def date2index(given_date, date_list):
@@ -129,13 +130,14 @@ def date2index(given_date, date_list):
 
     """
 
-    if isinstance(given_date, dt.date):
+    if isinstance(given_date, dt.datetime):
+        date_to_find = given_date
+
+    elif isinstance(given_date, dt.date):
         date_to_find = dt.datetime(year=given_date.year,
                                    month=given_date.month,
                                    day=given_date.day,
                                    hour=0, minute=0, second=0)
-    elif isinstance(given_date, dt.datetime):
-        date_to_find = given_date
     else:
         raise RuntimeError('given_date not date or datetime!')
 
@@ -174,7 +176,7 @@ def shift_wavelength(wavelength, shift_velocity):
     shift_velocity.convert_to_units(u.m/u.s)
 
     # Make sure we're not using unphysical velocities!
-    assert abs(shift_velocity < u.c), 'Given velocity exceeds speed of light!'
+    assert abs(shift_velocity) < u.c, 'Given velocity exceeds speed of light!'
 
     result = ((shift_velocity / u.c) * wavelength) + wavelength
 
@@ -257,7 +259,8 @@ def q_alpha_shift(omega, q_coefficient, delta_alpha):
     -----
     The calculation of the shift in a transition's wavenumber is given by the
     formula:
-    .. math:: \omega = \omega_0 + q \left((\frac{\alpha}{\alpha_0})^2 -1\right)
+    .. math:: \\omega = \\omega_0 + q \\left((\\frac{\\alpha}{\\alpha_0})^2 -1
+    \\right)
 
     """
 
@@ -344,9 +347,11 @@ def integrated_gaussian(pixel, amplitude, mu, sigma, baseline):
     tuple in `pixel`).
 
     The function is given by
-    .. math::    f(x_1, x_2) = \sqrt{\frac{\tau}{4}} A\
-                 \sigma\left[\erf\left(\frac{x_{2}-\mu}{\sqrt{2}\sigma}\right)\
-                 -\erf\left(\frac{x_{1}-\mu}{\sqrt{2}\sigma}\right)\right]\
+    .. math::    f(x_1, x_2) = \\sqrt{\\frac{\\tau}{4}} A
+                 \\sigma\\left[\\erf\\left(\\frac{x_{2}-
+                 \\mu}{\\sqrt{2}\\sigma}\\right)
+                 -\\erf\\left(\\frac{x_{1}-
+                 \\mu}{\\sqrt{2}\\sigma}\\right)\\right]
                  -D x_{1}+D x_{2}
 
 

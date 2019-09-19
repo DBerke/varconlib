@@ -17,6 +17,11 @@ import unyt as u
 import varconlib as vcl
 
 
+@pytest.fixture(scope='class')
+def wavelength_array():
+    return [4000, 4500, 5000, 5500, 6000, 6500] * u.angstrom
+
+
 class TestDate2Index(object):
 
     @pytest.fixture(scope='class')
@@ -38,17 +43,31 @@ class TestDate2Index(object):
 
         return dt_list
 
+    def test_non_date_input_value(self, date_list):
+        mock_date = 'Non-date value'
+        with pytest.raises(RuntimeError):
+            vcl.date2index(mock_date, date_list)
+
+    def test_datetime_value(self, date_list):
+        mock_date = dt.datetime(year=2003, month=2, day=15,
+                                hour=0, minute=0, second=0)
+        assert vcl.date2index(mock_date, date_list) == 0
+
+    def test_date_value(self, date_list):
+        mock_date = dt.datetime(year=2003, month=2, day=15)
+        assert vcl.date2index(mock_date, date_list) == 0
+
     def test_out_of_range_dates(self, date_list):
-        mock_date = dt.datetime(year=2001, month=1, day=1, hour=0, minute=0,
-                                second=0)
+        mock_date = dt.datetime(year=2001, month=1, day=1,
+                                hour=0, minute=0, second=0)
         assert vcl.date2index(mock_date, date_list) is None
-        mock_date = dt.datetime(year=2021, month=1, day=1, hour=0, minute=0,
-                                second=0)
+        mock_date = dt.datetime(year=2021, month=1, day=1,
+                                hour=0, minute=0, second=0)
         assert vcl.date2index(mock_date, date_list) is None
 
     def test_indexing(self, date_list):
-        mock_date = dt.datetime(year=2005, month=6, day=1, hour=0, minute=0,
-                                second=0)
+        mock_date = dt.datetime(year=2005, month=6, day=1,
+                                hour=0, minute=0, second=0)
         assert vcl.date2index(mock_date, date_list) == 1
 
 
@@ -84,3 +103,62 @@ class TestQCoefficientShifts(object):
                                  500 * u.cm ** -1, 1.000001) ==\
             pytest.approx(-14.98963 * u.m / u.s)
 
+
+class TestShiftWavelength(object):
+
+    @pytest.fixture(scope='class')
+    def wavelength(self):
+        return 5000 * u.angstrom
+
+    @pytest.mark.parametrize(
+            'shift_velocity',
+            [1e8, -1e8] * u.km / u.s)
+    def test_unphysical_velocity(self, wavelength, shift_velocity):
+        with pytest.raises(AssertionError):
+            vcl.shift_wavelength(wavelength, shift_velocity)
+        with pytest.raises(AssertionError):
+            vcl.shift_wavelength(wavelength, shift_velocity)
+
+    def test_shift_single_wavelength(self, wavelength):
+        assert pytest.approx(vcl.shift_wavelength(wavelength,
+                                                  500 * u.km / u.s),
+                             5008.3991 * u.angstrom)
+
+    def test_shift_multiple_wavelengths(self, wavelength_array):
+        assert pytest.approx(vcl.shift_wavelength(wavelength_array[:2],
+                                                  100 * u.km / u.s),
+                             [4001.33425638, 4501.50103843] * u.angstrom)
+
+
+class TestWavelength2Index(object):
+
+    def test_bad_wavelength_value(self, wavelength_array):
+        with pytest.raises(AssertionError):
+            vcl.wavelength2index('6521', wavelength_array,
+                                 reverse=False)
+        with pytest.raises(AssertionError):
+            vcl.wavelength2index(6521, wavelength_array,
+                                 reverse=False)
+        with pytest.raises(AssertionError):
+            vcl.wavelength2index(6521.0, wavelength_array,
+                                 reverse=False)
+
+    def test_wavelength_out_of_range(self, wavelength_array):
+        with pytest.raises(RuntimeError):
+            vcl.wavelength2index(3000 * u.angstrom, wavelength_array,
+                                 reverse=False)
+            vcl.wavelength2index(8000 * u.angstrom, wavelength_array,
+                                 reverse=False)
+
+    def test_wavelength_unyt(self, wavelength_array):
+        assert vcl.wavelength2index(4001 * u.angstrom, wavelength_array,
+                                    reverse=False) == 0
+        assert vcl.wavelength2index(4499 * u.angstrom, wavelength_array,
+                                    reverse=False) == 1
+        assert vcl.wavelength2index(6400 * u.angstrom, wavelength_array,
+                                    reverse=False) == 5
+
+    def test_reversed_wavelength_array(self, wavelength_array):
+        reversed_wavelengths = [x for x in reversed(wavelength_array)]
+        assert vcl.wavelength2index(4001 * u.angstrom, reversed_wavelengths,
+                                    reverse=True) == 0
