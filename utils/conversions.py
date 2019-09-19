@@ -9,13 +9,11 @@ This library contains functions used for converting wavelengths between vacuum
 and air.
 """
 
-from numba import njit
 import numpy as np
 import unyt as u
 from tqdm import tqdm, trange
 
 
-@njit
 def air_indexEdlen53(l, t=15., p=760.):
     """Return the index of refraction of air at given temperature, pressure,
     and wavelength in Angstroms.
@@ -144,7 +142,6 @@ def air2vacESO(air_wavelengths_array, verbose=False):
         return vacuum_array.to(original_units)
 
 
-@njit
 def vac2airMorton00(wl_vac):
     """Take an input vacuum wavelength in Angstroms and return the air
     wavelength.
@@ -159,7 +156,6 @@ def vac2airMorton00(wl_vac):
     return wl_vac / n
 
 
-@njit
 def air2vacMortonIAU(wl_air):
     """Take an input air wavelength in Angstroms and return the vacuum
     wavelength.
