@@ -13,7 +13,7 @@ from fractions import Fraction
 import pytest
 import unyt as u
 
-from transition_line import Transition
+from varconlib.transition_line import Transition
 
 # TODO: possibly add a fixture for test cases?
 

@@ -14,7 +14,7 @@ import datetime as dt
 import pytest
 import unyt as u
 
-import varconlib as vcl
+import varconlib.miscellaneous as vcl
 
 
 @pytest.fixture(scope='class')

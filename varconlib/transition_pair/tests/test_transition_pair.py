@@ -12,9 +12,9 @@ import pytest
 
 import unyt as u
 
-from exceptions import SameWavelengthsError
-from transition_line import Transition
-from transition_pair import TransitionPair
+from varconlib.exceptions import SameWavelengthsError
+from varconlib.transition_line import Transition
+from varconlib.transition_pair import TransitionPair
 
 
 class TestTransitionPair(object):

@@ -8,10 +8,12 @@ Created on Thu Feb 28 15:05:15 2019
 Test script for conversions.py and the associated functions.
 """
 
-import pytest
 import numpy as np
+import pytest
+
 import unyt as u
-from conversions import (air_indexEdlen53, vac2airESO, air2vacESO)
+
+from varconlib.conversions import (air_indexEdlen53, vac2airESO, air2vacESO)
 
 
 @pytest.fixture(scope='module')
