@@ -109,10 +109,10 @@ spectra/
 data/
 
 # FITS files definitely shouldn't be added by default
-.fits
+*.fits
 
 # Ignore .DS_store files
-.DS_Store
+*.DS_Store
 
 # lprof files come from line profiler
 *.lprof
