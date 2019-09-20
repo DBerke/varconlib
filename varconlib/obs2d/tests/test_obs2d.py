@@ -20,12 +20,16 @@ import varconlib
 from varconlib.miscellaneous import wavelength2index
 from varconlib.obs2d import HARPSFile2D, HARPSFile2DScience
 
+base_test_file = varconlib.data_dir /\
+                 'HARPS.2012-02-26T04:02:48.797_e2ds_A.fits'
+
+if not base_test_file.exists():
+    pytest.skip('Test file not available.', allow_module_level=True)
+
 
 @pytest.fixture(scope='module')
 def generic_test_file(tmpdir_factory):
     # Find the pristine test file to clone for use in the tests.
-    base_test_file = varconlib.data_dir /\
-                     'HARPS.2012-02-26T04:02:48.797_e2ds_A.fits'
 
     tmp_dir = Path(tmpdir_factory.mktemp('test2d').strpath)
 
