@@ -20,6 +20,7 @@ import numpy as np
 from tqdm import tqdm, trange
 import unyt as u
 
+import varconlib as vcl
 from varconlib.conversions import air2vacESO
 from varconlib.exceptions import (BadRadialVelocityError,
                                   NewCoefficientsNotFoundError,
@@ -35,9 +36,11 @@ config = configparser.ConfigParser(interpolation=configparser.
 config.read(config_file)
 
 # Read some path variables from the config file.
+# These are for directories outside the package parent directory.
 blaze_file_dir = Path(config['PATHS']['blaze_file_dir'])
-pixel_geom_files_dir = Path(config['PATHS']['pixel_geom_files_dir'])
 wavelength_cals_dir = Path(config['PATHS']['wavelength_cal_dir'])
+
+pixel_geom_files_dir = vcl.data_dir / 'pixel_geom_files'
 pixel_size_file = pixel_geom_files_dir / 'pixel_geom_size_HARPS_2004_A.fits'
 pixel_pos_file = pixel_geom_files_dir / 'pixel_geom_pos_HARPS_2004_A.fits'
 
@@ -82,9 +85,8 @@ class HARPSFile2D(object):
         else:
             raise RuntimeError('File name not str or Path!')
         if not self._filename.exists():
-            tqdm.write('Given filename does not exist!')
-            tqdm.write(self._filename)
-            raise FileNotFoundError
+            raise FileNotFoundError('Filename {} does not exist!'.format(
+                    self._filename))
         with fits.open(self._filename, mode='readonly') as hdulist:
             self._header = hdulist[0].header
             data = hdulist[0].data

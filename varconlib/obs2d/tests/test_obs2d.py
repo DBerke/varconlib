@@ -8,24 +8,24 @@ Created on Mon Dec  3 18:40:58 2018
 Test script for the HARPSFile2D class and subclasses
 """
 
-import pytest
 import configparser
-import numpy as np
-import shutil
 from pathlib import Path
+import shutil
+
+import numpy as np
+import pytest
 import unyt as u
-from varconlib import wavelength2index
-from obs2d import HARPSFile2D, HARPSFile2DScience
+
+import varconlib
+from varconlib.miscellaneous import wavelength2index
+from varconlib.obs2d import HARPSFile2D, HARPSFile2DScience
 
 
 @pytest.fixture(scope='module')
 def generic_test_file(tmpdir_factory):
-    config = configparser.ConfigParser(interpolation=configparser.
-                                       ExtendedInterpolation())
-    config.read('/Users/dberke/code/config/variables.cfg')
-
-    data_dir = Path(config['PATHS']['data_dir'])
-    base_test_file = data_dir / 'HARPS.2012-02-26T04:02:48.797_e2ds_A.fits'
+    # Find the pristine test file to clone for use in the tests.
+    base_test_file = varconlib.data_dir /\
+                     'HARPS.2012-02-26T04:02:48.797_e2ds_A.fits'
 
     tmp_dir = Path(tmpdir_factory.mktemp('test2d').strpath)
 
