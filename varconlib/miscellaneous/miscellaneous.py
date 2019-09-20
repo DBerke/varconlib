@@ -6,7 +6,7 @@ Created on Wed Apr 18 16:28:13 2018
 @author: dberke
 
 A module meant as a catch-all for certain functions and data potentially useful
-acrossm ultiple scripts, but which don't really have any commonality.
+across ultiple scripts, but which don't really have any commonality.
 """
 
 
@@ -22,7 +22,9 @@ import unyt
 import unyt as u
 
 
-config_file = Path('/Users/dberke/code/config/variables.cfg')
+base_path = Path(__file__).parent
+config_file = base_path / '../config/variables.cfg'
+print(config_file)
 config = configparser.ConfigParser(interpolation=configparser.
                                    ExtendedInterpolation())
 config.read(config_file)
