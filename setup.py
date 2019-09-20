@@ -10,4 +10,8 @@ setup.py file.
 
 from setuptools import setup, find_packages
 
-setup(name="varconlib", packages=find_packages())
+setup(name='varconlib',
+      author='Daniel Berke',
+      maintainer='DBerke',
+      packages=find_packages(),
+      package_dir={'varconlib': "varconlib"})
