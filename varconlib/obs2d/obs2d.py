@@ -20,13 +20,16 @@ import numpy as np
 from tqdm import tqdm, trange
 import unyt as u
 
-from conversions import air2vacESO
-from exceptions import (BadRadialVelocityError, NewCoefficientsNotFoundError,
-                        BlazeFileNotFoundError, WavelengthNotFoundInArrayError)
-from varconlib import wavelength2index, shift_wavelength
+from varconlib.conversions import air2vacESO
+from varconlib.exceptions import (BadRadialVelocityError,
+                                  NewCoefficientsNotFoundError,
+                                  BlazeFileNotFoundError,
+                                  WavelengthNotFoundInArrayError)
+from varconlib.miscellaneous import wavelength2index, shift_wavelength
 
 
-config_file = Path('/Users/dberke/code/config/variables.cfg')
+base_path = Path(__file__).parent
+config_file = base_path / '../config/variables.cfg'
 config = configparser.ConfigParser(interpolation=configparser.
                                    ExtendedInterpolation())
 config.read(config_file)

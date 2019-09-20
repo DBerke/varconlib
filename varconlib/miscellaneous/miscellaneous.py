@@ -24,7 +24,6 @@ import unyt as u
 
 base_path = Path(__file__).parent
 config_file = base_path / '../config/variables.cfg'
-print(config_file)
 config = configparser.ConfigParser(interpolation=configparser.
                                    ExtendedInterpolation())
 config.read(config_file)
