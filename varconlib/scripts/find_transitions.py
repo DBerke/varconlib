@@ -23,12 +23,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 
-from exceptions import (PositiveAmplitudeError, BlazeFileNotFoundError,
-                        NewCoefficientsNotFoundError)
-from fitting import GaussianFit
-import obs2d
-from varconlib import (wavelength2index, blueCCDpath,
-                       redCCDpath)
+from varconlib.exceptions import (PositiveAmplitudeError,
+                                  BlazeFileNotFoundError,
+                                  NewCoefficientsNotFoundError)
+from varconlib.fitting import GaussianFit
+import varconlib.obs2d as obs2d
+from varconlib.miscellaneous import (wavelength2index, blueCCDpath,
+                                     redCCDpath)
 
 desc = 'Fit absorption features in spectra.'
 parser = argparse.ArgumentParser(description=desc)

@@ -11,8 +11,8 @@ transitions.
 
 import unyt as u
 
-from exceptions import SameWavelengthsError
-from varconlib import wavelength2velocity as wave2vel
+from varconlib.exceptions import SameWavelengthsError
+from varconlib.miscellaneous import wavelength2velocity as wave2vel
 
 
 class TransitionPair(object):

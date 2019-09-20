@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 
 from tqdm import trange
 
-from obs2d import HARPSFile2D
+from varconlib.obs2d import HARPSFile2D
 
 flat_file = HARPSFile2D('/Users/dberke/HARPS/Calibration/2012-02-25/data/'
                         'reduced/2012-02-25/'

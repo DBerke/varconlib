@@ -26,14 +26,16 @@ import numpy as np
 from tqdm import tqdm
 import unyt as u
 
-from varconlib import wavelength2velocity as wave2vel
-from varconlib import date2index
+from varconlib.miscellaneous import wavelength2velocity as wave2vel
+from varconlib.miscellaneous import date2index
 
 
 plt.rc('text', usetex=True)
 
 # Read the config file and set up some paths:
-config_file = Path('/Users/dberke/code/config/variables.cfg')
+base_path = Path(__file__).parent
+config_file = base_path / '../config/variables.cfg'
+
 config = configparser.ConfigParser(interpolation=configparser.
                                    ExtendedInterpolation())
 config.read(config_file)

@@ -24,10 +24,9 @@ from astroquery.nist import Nist
 from tqdm import tqdm
 import unyt as u
 
-
-import varconlib as vcl
-from transition_line import Transition
-from transition_pair import TransitionPair
+import varconlib.miscellaneous as vcl
+from varconlib.transition_line import Transition
+from varconlib.transition_pair import TransitionPair
 
 elements = {"H": 1, "He": 2, "Li": 3, "Be": 4, "B": 5, "C": 6, "N": 7,
             "O": 8, "F": 9, "Ne": 10, "Na": 11, "Mg": 12, "Al": 13,
@@ -728,9 +727,11 @@ args = parser.parse_args()
 global line_offsets
 line_offsets = []
 
+base_path = Path(__file__).parent
+config_file = base_path / '../config/variables.cfg'
 config = configparser.ConfigParser(interpolation=configparser.
                                    ExtendedInterpolation())
-config.read('/Users/dberke/code/config/variables.cfg')
+config.read(config_file)
 data_dir = Path(config['PATHS']['data_dir'])
 masks_dir = Path(config['PATHS']['masks_dir'])
 pickle_dir = Path(config['PATHS']['pickle_dir'])
