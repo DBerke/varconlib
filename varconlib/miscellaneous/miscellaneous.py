@@ -21,17 +21,19 @@ from scipy.special import erf
 import unyt
 import unyt as u
 
+import varconlib as vcl
 
+# Need to find the base directory path dynamically on import so it works when
+# testing with Travis.
 base_path = Path(__file__).parent
 config_file = base_path / '../config/variables.cfg'
 config = configparser.ConfigParser(interpolation=configparser.
                                    ExtendedInterpolation())
 config.read(config_file)
-data_dir = Path(config['PATHS']['data_dir'])
 
 # Spectral format files for HARPS blue and red CCDs.
-blueCCDpath = data_dir / 'HARPS_CCD_blue.csv'
-redCCDpath = data_dir / 'HARPS_CCD_red.csv'
+blueCCDpath = vcl.data_dir / 'HARPS_CCD_blue.csv'
+redCCDpath = vcl.data_dir / 'HARPS_CCD_red.csv'
 
 # A bidict of the HARPS order numbers between the spectral order numbers and
 # an ordinal numbering system.

@@ -17,7 +17,8 @@ from scipy.optimize import curve_fit, OptimizeWarning
 from tqdm import tqdm
 import unyt as u
 
-from exceptions import (PositiveAmplitudeError, WavelengthNotFoundInArrayError)
+from varconlib.exceptions import (PositiveAmplitudeError,
+                                  WavelengthNotFoundInArrayError)
 import varconlib as vcl
 
 # This line prevents the wavelength formatting from being in the form of
@@ -66,12 +67,16 @@ class GaussianFit(object):
 
         """
 
-        # Store the transition
+        # Store the transition.
         self.transition = transition
-        # Grab the observation date from the observation
+        # Grab the observation date from the observation.
         self.dateObs = observation.dateObs
 
-        # Define some useful numbers and variables
+        # Store the plot paths.
+        self.close_up_plot_path = close_up_plot_path
+        self.context_plot_path = context_plot_path
+
+        # Define some useful numbers and variables.
 
         # The ranges in velocity space to search around to find the minimum of
         # an absorption line.
@@ -273,7 +278,9 @@ class GaussianFit(object):
     def chiSquaredNu(self):
         return self.chiSquared / 3  # ν = 7 (pixels) - 4 (params)
 
-    def plotFit(self, close_up_plot_path, context_plot_path, plot_fit=True,
+    def plotFit(self, close_up_plot_path=None,
+                context_plot_path=None,
+                plot_fit=True,
                 verbose=False):
         """Plot a graph of this fit.
 
@@ -284,10 +291,13 @@ class GaussianFit(object):
         Optional
         --------
         close_up_plot_path : string or `pathlib.Path`
-            The file name to save a close-up plot of the fit to.
+            The file name to save a close-up plot of the fit to. If not given,
+            will default to using the value providing when initializing the
+            fit.
         context_plot_path : string or `pathlib.Path`
             The file name to save a wider context plot (±25 km/s) around the
-            fitted feature to.
+            fitted feature to. If not given, will default to using the value
+            provided when initializing the fit.
         plot_fit : bool, Default : True
             If *True*, plot the mean of the fit and the fitted Gaussian.
             Otherwise, don't plot those two things. This allows creating plots
@@ -300,6 +310,13 @@ class GaussianFit(object):
 
         edge_pixels = (509, 510, 1021, 1022, 1533, 1534, 2045, 2046,
                        2557, 2558, 3069, 3070, 3581, 3582)
+
+        # If no plot paths are given, assume we want to use the ones given
+        # when initializing the fit.
+        if close_up_plot_path is None:
+            close_up_plot_path = self.close_up_plot_path
+        if context_plot_path is None:
+            context_plot_path = self.context_plot_path
 
         # Set up the figure.
         fig = plt.figure(figsize=(7, 5), dpi=100, tight_layout=True)
