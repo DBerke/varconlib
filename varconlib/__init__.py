@@ -13,7 +13,7 @@ import configparser
 from pathlib import Path
 
 
-__all__ = ['base_dir', 'data_dir', 'masks_dir', 'pickles_dir',
+__all__ = ['base_dir', 'data_dir', 'masks_dir', 'pickle_dir',
            'pixel_geom_files_dir']
 
 
@@ -26,7 +26,7 @@ data_dir = base_dir / 'data'
 
 masks_dir = data_dir / 'masks'
 
-pickles_dir = data_dir / 'pickles'
+pickle_dir = data_dir / 'pickles'
 
 pixel_geom_files_dir = data_dir / 'pixel_geom_files'
 

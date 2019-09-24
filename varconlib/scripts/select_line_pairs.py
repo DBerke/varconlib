@@ -720,7 +720,7 @@ if __name__ == '__main__':
 #    config.read(config_file)
     data_dir = varconlib.data_dir
     masks_dir = varconlib.masks_dir
-    pickle_dir = varconlib.pickles_dir
+    pickle_dir = varconlib.pickle_dir
 
     # These two files produces wavelengths in air, in Angstroms.
     redFile = data_dir / "BRASS2018_Sun_PrelimGraded_Lobel.csv"
