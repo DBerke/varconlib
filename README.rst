@@ -1,4 +1,4 @@
-|Travis||Codecov|
+|Travis| |Codecov|
 
 *****************************************
 VarConLib - The Varying Constants Library
