@@ -24,6 +24,7 @@ from astroquery.nist import Nist
 from tqdm import tqdm
 import unyt as u
 
+import varconlib
 import varconlib.miscellaneous as vcl
 from varconlib.transition_line import Transition
 from varconlib.transition_pair import TransitionPair
@@ -44,35 +45,6 @@ elements = {"H": 1, "He": 2, "Li": 3, "Be": 4, "B": 5, "C": 6, "N": 7,
             "Hg": 80, "Tl": 81, "Pb": 82, "Bi": 83, "Po": 84, "At": 85,
             "Rn": 86, "Fr": 87, "Ra": 88, "Ac": 89, "Th": 90, "Pa": 91,
             "U": 92}
-
-
-def wn2eV(percm):
-    """Return the energy given in cm^-1 in eV.
-
-    Invert cm^-1, divide by 100, divide into c, multiply by h, divide by e.
-
-    """
-    if percm == 0.:
-        result = 0.
-    else:
-        percm = percm * u.cm**-1
-        E = percm.to(u.m**-1) * u.hmks * u.c
-        result = E.to(u.eV)
-    return result
-
-
-def eV2wn(eV):
-    """Return energy given in eV in cm^-1.
-
-    """
-
-    if eV == 0.:
-        result = 0.
-    else:
-        eV = eV * u.eV
-        nu = eV.to(u.J) / (u.hmks * u.c)
-        result = nu.to(u.cm**-1)
-    return result
 
 
 def parse_spectral_mask_file(file):
@@ -501,7 +473,7 @@ def query_nist(transition_list, species_set):
 
     Since querying NIST for multiple species at once using astroquery doesn't
     seem to work, this function queries on a per-species basis, using a
-    wavelength range encompassing all the transitions of the that species. A
+    wavelength range encompassing all the transitions of that species. A
     list is created of Transition objects parsed from the returned results,
     which is then stored in a dictionary under the species name (e.g., "Fe II")
 
@@ -676,485 +648,505 @@ def format_transitions(transition_list, blendedness=False):
     return str_list
 
 
-# ----- Main routine of code -----
+if __name__ == '__main__':
+    # ----- Main routine of code -----
 
-desc = 'Select line pairs to analyze from the Kurucz and BRASS line lists.'
-parser = argparse.ArgumentParser(description=desc)
-parser.add_argument('--match-lines', action='store_true',
-                    default=False,
-                    help='Flag to match transitions between lists.')
-parser.add_argument('-dw', '--delta-wavelength', action='store',
-                    default=3000, type=int,
-                    help='The wavelength tolerance in m/s.')
-parser.add_argument('-de', '--delta-energy', action='store',
-                    default=100000, type=int,
-                    help='The energy tolerance in m/s.')
+    desc = """Create a selection of transitions and transition pairs to use.
 
-parser.add_argument('--pair-lines', action='store_true',
-                    default=False,
-                    help='Find pairs of transition lines from list.')
+    To generate:\n
+    1. select_line_pairs.py --match-lines -dw 3000 -de 100000\n
+    2. select_line_pairs.py --pair-lines\n
+    3. select_line_pairs.py --query-nist\n
+    4. select_line_pairs.py --match-nist -dw 3300 -de 100000\n
+    5. select_line_pairs.py --format-lines\n
+    5.5 manually edit 'NIST_formatted_transitions.txt' to
+        'NIST_formatted_transtions_with_blends.txt'
+    6. select_line_pairs.py --incorporate-blendedness\n
+    7. select_line_pairs.py --rate-pairs\n
+    """
 
-parser.add_argument('--query-nist', action='store_true',
-                    default=False,
-                    help='Query transitions from NIST.')
-# Upping -dw to 3300 helps match one or two additional lines that are right
-# on the edge.
-parser.add_argument('--match-nist', action='store_true',
-                    default=False,
-                    help='Match previous transition list with NIST.')
-parser.add_argument('--format-lines', action='store_true',
-                    default=False,
-                    help='Format output from matching NIST list.')
+    parser = argparse.ArgumentParser(description=desc)
+    parser.add_argument('--match-lines', action='store_true',
+                        default=False,
+                        help='Flag to match transitions between lists.')
+    parser.add_argument('-dw', '--delta-wavelength', action='store',
+                        default=3000, type=int,
+                        help='The wavelength tolerance in m/s.')
+    parser.add_argument('-de', '--delta-energy', action='store',
+                        default=100000, type=int,
+                        help='The energy tolerance in m/s.')
 
-parser.add_argument('--incorporate-blendedness', action='store_true',
-                    default=False,
-                    help='Incorporate blend information from a file.')
-parser.add_argument('--blend-file', action='store',
-                    default=Path('/Users/dberke/code/data/'
-                                 'NIST_formatted_transitions_with_blends.txt'),
-                    help='The file to get blend information from.')
+    parser.add_argument('--pair-lines', action='store_true',
+                        default=False,
+                        help='Find pairs of transition lines from list.')
 
-parser.add_argument('--rate-pairs', action='store_true',
-                    default=False,
-                    help='List pairs based on blend status.')
+    parser.add_argument('--query-nist', action='store_true',
+                        default=False,
+                        help='Query transitions from NIST.')
+    # Upping -dw to 3300 helps match one or two additional lines that are right
+    # on the edge when matching NIST transitions.
+    parser.add_argument('--match-nist', action='store_true',
+                        default=False,
+                        help='Match previous transition list with NIST.')
+    parser.add_argument('--format-lines', action='store_true',
+                        default=False,
+                        help='Format output from matching NIST list.')
 
-parser.add_argument('--verbose', action='store_true',
-                    default=False,
-                    help='Print out more information during the process.')
+    parser.add_argument('--incorporate-blendedness', action='store_true',
+                        default=False,
+                        help='Incorporate blend information from a file.')
+    parser.add_argument('--blend-file', action='store',
+                        default=Path(varconlib.data_dir /
+                        'NIST_formatted_transitions_with_blends.txt'),
+                        help='The file to get blend information from.')
 
-args = parser.parse_args()
+    parser.add_argument('--rate-pairs', action='store_true',
+                        default=False,
+                        help='List pairs based on blend status.')
 
-global line_offsets
-line_offsets = []
+    parser.add_argument('--verbose', action='store_true',
+                        default=False,
+                        help='Print out more information during the process.')
 
-base_path = Path(__file__).parent
-config_file = base_path / '../config/variables.cfg'
-config = configparser.ConfigParser(interpolation=configparser.
-                                   ExtendedInterpolation())
-config.read(config_file)
-data_dir = Path(config['PATHS']['data_dir'])
-masks_dir = Path(config['PATHS']['masks_dir'])
-pickle_dir = Path(config['PATHS']['pickle_dir'])
+    args = parser.parse_args()
 
-# These two files produces wavelengths in air, in Angstroms.
-redFile = data_dir / "BRASS2018_Sun_PrelimGraded_Lobel.csv"
-blueFile = data_dir / "BRASS2018_Sun_PrelimSpectroWeblines_Lobel.csv"
+    global line_offsets
+    line_offsets = []
 
-# This file produces wavelengths in vacuum, in nm.
-purpleFile = data_dir / 'BRASS_Vac_Line_Depths_All.csv'
+#    base_path = Path(__file__).parent
+#    config_file = base_path / '../config/variables.cfg'
+#    config = configparser.ConfigParser(interpolation=configparser.
+#                                       ExtendedInterpolation())
+#    config.read(config_file)
+    data_dir = varconlib.data_dir
+    masks_dir = varconlib.masks_dir
+    pickle_dir = varconlib.pickles_dir
 
-# Define useful values relating to the Kurucz line list.
-KuruczFile = data_dir / "gfallvac08oct17.dat"
+    # These two files produces wavelengths in air, in Angstroms.
+    redFile = data_dir / "BRASS2018_Sun_PrelimGraded_Lobel.csv"
+    blueFile = data_dir / "BRASS2018_Sun_PrelimSpectroWeblines_Lobel.csv"
 
-colWidths = (11, 7, 6, 12, 5, 11, 12, 5, 11, 6, 6, 6, 4, 2, 2, 3, 6, 3, 6,
-             5, 5, 3, 3, 4, 5, 5, 6)
-colNames = ("wavelength", "log gf", "elem", "energy1", "J1", "label1",
-            "energy2", "J2", "label2", "gammaRad", "gammaStark", "vanderWaals",
-            "ref", "nlte1",  "nlte2", "isotope1", "hyperf1", "isotope2",
-            "logIsotope", "hyperfshift1", "hyperfshift2", "hyperF1", "hyperF2",
-            "code", "landeGeven", "landeGodd", "isotopeShift")
-colDtypes = (float, float, "U6", float, float, "U11", float, float, "U11",
-             float, float, float, "U4", int, int, int, float, int, float,
-             int, int, "U3", "U3", "U4", int, int, float)
+    # This file produces wavelengths in vacuum, in nm.
+    purpleFile = data_dir / 'BRASS_Vac_Line_Depths_All.csv'
 
+    # Define useful values relating to the Kurucz line list.
+    KuruczFile = data_dir / "gfallvac08oct17.dat"
 
-# Define various pickle files.
+    colWidths = (11, 7, 6, 12, 5, 11, 12, 5, 11, 6, 6, 6, 4, 2, 2, 3, 6, 3, 6,
+                 5, 5, 3, 3, 4, 5, 5, 6)
+    colNames = ("wavelength", "log gf", "elem", "energy1", "J1", "label1",
+                "energy2", "J2", "label2", "gammaRad", "gammaStark",
+                "vanderWaals", "ref", "nlte1",  "nlte2", "isotope1", "hyperf1",
+                "isotope2", "logIsotope", "hyperfshift1", "hyperfshift2",
+                "hyperF1", "hyperF2", "code", "landeGeven", "landeGodd",
+                "isotopeShift")
+    colDtypes = (float, float, "U6", float, float, "U11", float, float, "U11",
+                 float, float, float, "U4", int, int, int, float, int, float,
+                 int, int, "U3", "U3", "U4", int, int, float)
 
-# All transitions matched between BRASS and Kurucz lists:
-pickle_file = pickle_dir / 'transitions.pkl'
-# All pairs found from those transitions: (also final pair list)
-pickle_pairs_file = pickle_dir / 'transition_pairs.pkl'
-# All unique transitions found within those pairs:
-pickle_pairs_transitions_file = pickle_dir / 'pair_transitions.pkl'
-# All transitions returned by querying NiST:
-nist_pickle_file = pickle_dir / 'transitions_NIST_returned.pkl'
-# All transitions from NIST matched with ours:
-nist_matched_pickle_file = pickle_dir / 'transitions_NIST_matched.pkl'
+    # Define various pickle files.
+    # ----------------------------
 
-# ! The pickle file containing final selection of transitions to use.
-final_selection_file = pickle_dir / 'final_transitions_selection.pkl'
+    # All transitions matched between BRASS and Kurucz lists:
+    pickle_file = pickle_dir / 'transitions.pkl'
+    # All pairs found from those transitions: (also final pair list)
+    pickle_pairs_file = pickle_dir / 'transition_pairs.pkl'
+    # All unique transitions found within those pairs:
+    pickle_pairs_transitions_file = pickle_dir / 'pair_transitions.pkl'
+    # All transitions returned by querying NiST:
+    nist_pickle_file = pickle_dir / 'transitions_NIST_returned.pkl'
+    # All transitions from NIST matched with ours:
+    nist_matched_pickle_file = pickle_dir / 'transitions_NIST_matched.pkl'
 
-# File to write out formatted NIST-matched transitions into.
-nist_formatted_file = data_dir / 'NIST_formatted_transitions.txt'
-# File to write out all transitions in NIST format.
-nist_formatted_all_file = data_dir / 'NIST_formatted_transitions_all.txt'
-# File to contain all the least-blended transitions.
-nist_best_formatted_file = data_dir / 'NIST_formatted_best_transitions.txt'
+    # ! The pickle file containing final selection of transitions to use.
+    final_selection_file = pickle_dir / 'final_transitions_selection.pkl'
 
+    # File to write out formatted NIST-matched transitions into.
+    nist_formatted_file = data_dir / 'NIST_formatted_transitions.txt'
+    # File to write out all transitions in NIST format.
+    nist_formatted_all_file = data_dir / 'NIST_formatted_transitions_all.txt'
+    # File to contain all the least-blended transitions.
+    nist_best_formatted_file = data_dir / 'NIST_formatted_best_transitions.txt'
 
-CCD_bounds_file = masks_dir / 'unusable_spectrum_CCDbounds.txt'
-# Path('/Users/dberke/code/data/unusable_spectrum_CCDbounds.txt')
-no_CCD_bounds_file = masks_dir / 'unusable_spectrum_noCCDbounds.txt'
-# Path('data/unusable_spectrum_noCCDbounds.txt')
+    CCD_bounds_file = masks_dir / 'unusable_spectrum_CCDbounds.txt'
+    # Path('/Users/dberke/code/data/unusable_spectrum_CCDbounds.txt')
+    no_CCD_bounds_file = masks_dir / 'unusable_spectrum_noCCDbounds.txt'
+    # Path('data/unusable_spectrum_noCCDbounds.txt')
 
-mask_CCD_bounds = vcl.parse_spectral_mask_file(CCD_bounds_file)
-mask_no_CCD_bounds = vcl.parse_spectral_mask_file(no_CCD_bounds_file)
+    mask_CCD_bounds = vcl.parse_spectral_mask_file(CCD_bounds_file)
+    mask_no_CCD_bounds = vcl.parse_spectral_mask_file(no_CCD_bounds_file)
 
-if args.match_lines:
-    tqdm.write('Reading BRASS line list...')
-    purpleData = np.genfromtxt(purpleFile, delimiter=",", skip_header=1,
-                               dtype=(float, "U2", int, float, float, float))
-    tqdm.write("Read purple line list.")
+    if args.match_lines:
+        tqdm.write('Reading BRASS line list...')
+        purpleData = np.genfromtxt(purpleFile, delimiter=",", skip_header=1,
+                                   dtype=(float, "U2", int, float,
+                                          float, float))
+        tqdm.write("Read purple line list.")
 
-    tqdm.write('Reading Kurucz line list...')
-    KuruczData = np.genfromtxt(KuruczFile, delimiter=colWidths, autostrip=True,
-                               skip_header=842959, skip_footer=987892,
-                               names=colNames, dtype=colDtypes,
-                               usecols=(0, 2, 3, 4, 5, 6, 7, 8, 18))
-    tqdm.write("Read Kurucz line list.")
+        tqdm.write('Reading Kurucz line list...')
+        KuruczData = np.genfromtxt(KuruczFile, delimiter=colWidths,
+                                   autostrip=True,
+                                   skip_header=842959, skip_footer=987892,
+                                   names=colNames, dtype=colDtypes,
+                                   usecols=(0, 2, 3, 4, 5, 6, 7, 8, 18))
+        tqdm.write("Read Kurucz line list.")
 
-    # Create lists of transitions from the BRASS and Kurucz line lists.
-    b_transition_lines = []
-    tqdm.write('Parsing BRASS line list...')
-    for b_transition in tqdm(purpleData, unit='transitions'):
-        wl = b_transition[0] * u.nm
-        elem = elements[b_transition[1]]
-        ion = b_transition[2]
-        eLow = b_transition[3] * u.eV
-        depth = b_transition[5]
+        # Create lists of transitions from the BRASS and Kurucz line lists.
+        b_transition_lines = []
+        tqdm.write('Parsing BRASS line list...')
+        for b_transition in tqdm(purpleData, unit='transitions'):
+            wl = b_transition[0] * u.nm
+            elem = elements[b_transition[1]]
+            ion = b_transition[2]
+            eLow = b_transition[3] * u.eV
+            depth = b_transition[5]
 
-        transition = Transition(wl, elem, ion)
-        transition.lowerEnergy = 1/(eLow.to(u.cm, equivalence='spectral'))
-        transition.normalizedDepth = depth
+            transition = Transition(wl, elem, ion)
+            transition.lowerEnergy = 1/(eLow.to(u.cm, equivalence='spectral'))
+            transition.normalizedDepth = depth
 
-        b_transition_lines.append(transition)
+            b_transition_lines.append(transition)
 
-    k_transition_lines = []
-    tqdm.write('Parsing Kurucz line list...')
-    for k_transition in tqdm(KuruczData, unit='transitions'):
-        wl = k_transition['wavelength'] * u.nm
-        # The element and ionionzation state from the Kurucz list is given as a
-        # floating point number, e.g., 58.01, where the integer part is the
-        # atomic number and the charge is the hundredths part (which is off by
-        # one from astronomical usage, e.g. HI would have a hundredths part of
-        # '00', while FeII would be '01').
-        elem_str = k_transition['elem'].split('.')
-        elem_num = int(elem_str[0])
-        elem_ion = int(elem_str[1]) + 1
-        energy1 = k_transition['energy1']
-        energy2 = k_transition['energy2']
-        if energy1 < energy2:
-            lowE = k_transition['energy1'] * u.cm**-1
-            lowOrb = k_transition['label1']
-            lowJ = k_transition['J1']
-            highE = k_transition['energy2'] * u.cm**-1
-            highOrb = k_transition['label2']
-            highJ = k_transition['J2']
-        else:
-            lowE = k_transition['energy2'] * u.cm**-1
-            lowOrb = k_transition['label2']
-            lowJ = k_transition['J2']
-            highE = k_transition['energy1'] * u.cm**-1
-            highOrb = k_transition['label1']
-            highJ = k_transition['J1']
-        isotope_frac = k_transition['logIsotope']
+        k_transition_lines = []
+        tqdm.write('Parsing Kurucz line list...')
+        for k_transition in tqdm(KuruczData, unit='transitions'):
+            wl = k_transition['wavelength'] * u.nm
+            # The element and ionionzation state from the Kurucz list is given
+            # as a floating point number, e.g., 58.01, where the integer part
+            # is the atomic number and the charge is the hundredths part (which
+            # is off by one from astronomical usage, e.g. HI would have a
+            # hundredths part of '00', while FeII would be '01').
+            elem_str = k_transition['elem'].split('.')
+            elem_num = int(elem_str[0])
+            elem_ion = int(elem_str[1]) + 1
+            energy1 = k_transition['energy1']
+            energy2 = k_transition['energy2']
+            if energy1 < energy2:
+                lowE = k_transition['energy1'] * u.cm**-1
+                lowOrb = k_transition['label1']
+                lowJ = k_transition['J1']
+                highE = k_transition['energy2'] * u.cm**-1
+                highOrb = k_transition['label2']
+                highJ = k_transition['J2']
+            else:
+                lowE = k_transition['energy2'] * u.cm**-1
+                lowOrb = k_transition['label2']
+                lowJ = k_transition['J2']
+                highE = k_transition['energy1'] * u.cm**-1
+                highOrb = k_transition['label1']
+                highJ = k_transition['J1']
+            isotope_frac = k_transition['logIsotope']
 
-        transition = Transition(wl, elem_num, elem_ion)
-        transition.lowerEnergy = lowE
-        transition.lowerJ = lowJ
-        transition.lowerOrbital = lowOrb
-        transition.higherEnergy = highE
-        transition.higherJ = highJ
-        transition.higherOrbital = highOrb
-        transition.isotopeFraction = isotope_frac
+            transition = Transition(wl, elem_num, elem_ion)
+            transition.lowerEnergy = lowE
+            transition.lowerJ = lowJ
+            transition.lowerOrbital = lowOrb
+            transition.higherEnergy = highE
+            transition.higherJ = highJ
+            transition.higherOrbital = highOrb
+            transition.isotopeFraction = isotope_frac
 
-        k_transition_lines.append(transition)
+            k_transition_lines.append(transition)
 
-    # Now, match between the BRASS list and Kurucz list as best we can.
+        # Now, match between the BRASS list and Kurucz list as best we can.
 
-    transitions = harmonize_lists(b_transition_lines, k_transition_lines,
-                                  mask_no_CCD_bounds,  # TODO: add units here
-                                  wl_tolerance=args.delta_wavelength,
-                                  energy_tolerance=args.delta_energy)
+        transitions = harmonize_lists(b_transition_lines, k_transition_lines,
+                                      mask_no_CCD_bounds,  # TODO: add units
+                                      wl_tolerance=args.delta_wavelength,
+                                      energy_tolerance=args.delta_energy)
 
-    # Create a pickled file of the transitions that have been found.
-    pickle_file_backup = pickle_dir / 'transitions_{}.pkl'.format(
-            datetime.date.today().isoformat())
-    tqdm.write('Saving transitions to {}'.format(pickle_file))
-    with open(pickle_file, 'wb') as f:
-        pickle.dump(transitions, f)
-    with open(pickle_file_backup, 'wb') as f:
-        pickle.dump(transitions, f)
+        # Create a pickled file of the transitions that have been found.
+        pickle_file_backup = pickle_dir / 'backups/transitions_{}.pkl'.format(
+                datetime.date.today().isoformat())
+        tqdm.write('Saving transitions to {}'.format(pickle_file))
+        with open(pickle_file, 'wb') as f:
+            pickle.dump(transitions, f)
+        with open(pickle_file_backup, 'wb') as f:
+            pickle.dump(transitions, f)
 
-if args.pair_lines:
-    # Parameters for widest selection of line pairs:
-    # minimum depth: 0.15
-    # maximum depth: 0.90
-    # maximum depth difference: 0.2
-    # maximum velocity separation: 800 km/s
+    if args.pair_lines:
+        # Parameters for widest selection of line pairs:
+        # minimum depth: 0.15
+        # maximum depth: 0.90
+        # maximum depth difference: 0.2
+        # maximum velocity separation: 800 km/s
 
-    print('Unpickling transition lines...')
-    with open(pickle_file, 'rb') as f:
-        transitions_list = pickle.load(f)
-    print('Found {} transitions.'.format(len(transitions_list)))
+        print('Unpickling transition lines...')
+        with open(pickle_file, 'rb') as f:
+            transitions_list = pickle.load(f)
+        print('Found {} transitions.'.format(len(transitions_list)))
 
-    pairs = find_line_pairs(transitions_list, min_norm_depth=0.15,
-                            max_norm_depth=0.9,
-                            velocity_separation=800*u.km/u.s,
-                            line_depth_difference=0.2)
+        pairs = find_line_pairs(transitions_list, min_norm_depth=0.15,
+                                max_norm_depth=0.9,
+                                velocity_separation=800*u.km/u.s,
+                                line_depth_difference=0.2)
 
-    print(f'Found {len(pairs)} pairs.')
-    print('Pickling pairs to file.')
-    with open(pickle_pairs_file, 'wb') as f:
-        pickle.dump(pairs, f)
+        print(f'Found {len(pairs)} pairs.')
+        print('Pickling pairs to file.')
+        with open(pickle_pairs_file, 'wb') as f:
+            pickle.dump(pairs, f)
 
-    transition_list = []
-    for pair in pairs:
-        for transition in pair:
-            if transition not in transition_list:
-                transition_list.append(transition)
-    tqdm.write('Total of {} unique transitions.'.format(len(transition_list)))
-    transition_list.sort()
+        transition_list = []
+        for pair in pairs:
+            for transition in pair:
+                if transition not in transition_list:
+                    transition_list.append(transition)
+        tqdm.write('Total of {} unique transitions.'.format(
+                len(transition_list)))
+        transition_list.sort()
 
-    # Pickle the list of unique transitions in the returned pairs.
-    print('Pickling unique transitions to file.')
-    with open(pickle_pairs_transitions_file, 'wb') as f:
-        pickle.dump(transition_list, f)
+        # Pickle the list of unique transitions in the returned pairs.
+        print('Pickling unique transitions to file.')
+        with open(pickle_pairs_transitions_file, 'wb') as f:
+            pickle.dump(transition_list, f)
 
+    if args.query_nist:
 
-if args.query_nist:
+        with open(pickle_pairs_transitions_file, 'rb') as f:
+            transitions = pickle.load(f)
+        tqdm.write(f'{len(transitions)} transitions found.')
+        species_set = set()
+        for transition in transitions:
+            species_set.add(transition.atomicSpecies)
 
-    with open(pickle_pairs_transitions_file, 'rb') as f:
-        transitions = pickle.load(f)
-    tqdm.write(f'{len(transitions)} transitions found.')
-    species_set = set()
-    for transition in transitions:
-        species_set.add(transition.atomicSpecies)
-
-    # Pickle the transitions returned from NIST
-    nist_transition_dict = query_nist(transitions, species_set)
-    tqdm.write('Pickling NIST query...')
-    with open(nist_pickle_file, 'wb') as f:
-        pickle.dump(nist_transition_dict, f)
-
-    print(sorted(nist_transition_dict.keys()))
-
-if args.match_nist:
-    total = 0
-    try:
-        with open(nist_pickle_file, 'rb') as f:
-            tqdm.write('Unpickling NIST results...')
-            nist_transition_dict = pickle.load(f)
-    except FileNotFoundError:
-        nist_transition_dict = query_nist(transition_list, species_set)
+        # Pickle the transitions returned from NIST
+        nist_transition_dict = query_nist(transitions, species_set)
         tqdm.write('Pickling NIST query...')
         with open(nist_pickle_file, 'wb') as f:
             pickle.dump(nist_transition_dict, f)
 
-    tqdm.write('Unpickling transition lines...')
-    with open(pickle_pairs_transitions_file, 'rb') as f:
-        transitions_list = pickle.load(f)
-    tqdm.write('Found {} unique transitions.'.format(len(transitions_list)))
+        print(sorted(nist_transition_dict.keys()))
 
-    species_set = set()
-    transitions_dict = {}
-    for transition in tqdm(transitions_list, unit='transitions'):
-        species_set.add(transition.atomicSpecies)
+    if args.match_nist:
+        total = 0
         try:
-            transitions_dict[transition.atomicSpecies].append(transition)
-        except KeyError:
-            transitions_dict[transition.atomicSpecies] = [transition]
+            with open(nist_pickle_file, 'rb') as f:
+                tqdm.write('Unpickling NIST results...')
+                nist_transition_dict = pickle.load(f)
+        except FileNotFoundError:
+            nist_transition_dict = query_nist(transition_list, species_set)
+            tqdm.write('Pickling NIST query...')
+            with open(nist_pickle_file, 'wb') as f:
+                pickle.dump(nist_transition_dict, f)
 
-    tqdm.write(str(transitions_dict.keys()))
-    master_match_dict = {}
-    for species in tqdm(transitions_dict.keys()):
-        if species in nist_transition_dict.keys():
-            tqdm.write('-----------------------')
-            tqdm.write('Matching {} {} transitions with NIST list...'.format(
-                  len(transitions_dict[species]), species))
-            species_list, unmatched_list = harmonize_lists(
-                    transitions_dict[species],
-                    nist_transition_dict[species],
-                    mask_no_CCD_bounds,
-                    wl_tolerance=args.delta_wavelength,
-                    energy_tolerance=args.delta_energy,
-                    return_unmatched=True)
-            # Merge in the unmatched entries as well
-            total += len(species_list)
-            for entry in unmatched_list:
-                species_list.append(entry[0])  # Just get the transition
-            species_list.sort()
-            master_match_dict[species] = species_list
-        else:
-            tqdm.write('-----------------------')
-            tqdm.write(f'Checking for {species}...')
-            species_list = []
-            for transition in transitions_dict[species]:
-                species_list.append(transition)
-                tqdm.write('{} unmatched'.format(str(transition)))
-            tqdm.write(f'No results for {species} in NIST results!')
-            master_match_dict[species] = species_list
+        tqdm.write('Unpickling transition lines...')
+        with open(pickle_pairs_transitions_file, 'rb') as f:
+            transitions_list = pickle.load(f)
+        tqdm.write('Found {} unique transitions.'.format(
+                len(transitions_list)))
 
-    tqdm.write(str(master_match_dict.keys()))
+        species_set = set()
+        transitions_dict = {}
+        for transition in tqdm(transitions_list, unit='transitions'):
+            species_set.add(transition.atomicSpecies)
+            try:
+                transitions_dict[transition.atomicSpecies].append(transition)
+            except KeyError:
+                transitions_dict[transition.atomicSpecies] = [transition]
 
-    print(f'{total} transitions matched total out of {len(transitions_list)}.')
+        tqdm.write(str(transitions_dict.keys()))
+        master_match_dict = {}
+        for species in tqdm(transitions_dict.keys()):
+            if species in nist_transition_dict.keys():
+                tqdm.write('-----------------------')
+                tqdm.write('Matching {} {} transitions with NIST list...'.
+                           format(len(transitions_dict[species]), species))
+                species_list, unmatched_list = harmonize_lists(
+                        transitions_dict[species],
+                        nist_transition_dict[species],
+                        mask_no_CCD_bounds,
+                        wl_tolerance=args.delta_wavelength,
+                        energy_tolerance=args.delta_energy,
+                        return_unmatched=True)
+                # Merge in the unmatched entries as well -- we still want them,
+                # even if we have to come up with the orbital configuration
+                # some other way.
+                total += len(species_list)
+                for entry in unmatched_list:
+                    species_list.append(entry[0])  # Just get the transition
+                species_list.sort()
+                master_match_dict[species] = species_list
+            else:
+                tqdm.write('-----------------------')
+                tqdm.write(f'Checking for {species}...')
+                species_list = []
+                for transition in transitions_dict[species]:
+                    species_list.append(transition)
+                    tqdm.write('{} unmatched'.format(str(transition)))
+                tqdm.write(f'No results for {species} in NIST results!')
+                master_match_dict[species] = species_list
 
-    tqdm.write('Pickling NIST matches...')
-    with open(nist_matched_pickle_file, 'wb') as f:
-        pickle.dump(master_match_dict, f)
+        tqdm.write(str(master_match_dict.keys()))
 
-if args.format_lines:
-    with open(nist_matched_pickle_file, 'rb') as f:
-        print('Unpickling NIST-matched transitions...')
-        nist_dict = pickle.load(f)
+        tqdm.write('{} transitions matched total out of {}.'.
+                   format(total, len(transitions_list)))
 
-    all_nist_transitions = []
-    print(nist_dict.keys())
-    for key in nist_dict.keys():
-        for transition in nist_dict[key]:
-            all_nist_transitions.append(transition)
-    print(f'{len(all_nist_transitions)} transitions found matched.')
+        tqdm.write('Pickling NIST matches...')
+        with open(nist_matched_pickle_file, 'wb') as f:
+            pickle.dump(master_match_dict, f)
 
-    header1 = '#lambda(nm,vac) | wavenumber (cm^-1) | species | '
-    header2 = 'lower energy - upper energy | '
-    header3 = 'lower orbital configuration | lower J | '
-    header4 = 'upper orbital configuration | upper J | '
-    header5 = 'normalized depth | blendedness\n'
+    if args.format_lines:
+        with open(nist_matched_pickle_file, 'rb') as f:
+            print('Unpickling NIST-matched transitions...')
+            nist_dict = pickle.load(f)
 
-    header = header1 + header2 + header3 + header4 + header5
+        all_nist_transitions = []
+        print(nist_dict.keys())
+        for key in nist_dict.keys():
+            for transition in nist_dict[key]:
+                all_nist_transitions.append(transition)
+        print(f'{len(all_nist_transitions)} transitions found matched.')
 
-    all_nist_transitions.sort()
-    lines_to_write = format_transitions(all_nist_transitions,
-                                        blendedness=False)
-    with open(nist_formatted_file, 'w') as f:
-        f.write(header)
-        for write_str in tqdm(lines_to_write):
-            write_str = write_str.replace('<', '[')
-            write_str = write_str.replace('>', ']')
-            f.write(write_str)
-    tqdm.write('NIST-matched transitions written out to {}'.format(
-            nist_formatted_file))
+        header1 = '#lambda(nm,vac) | wavenumber (cm^-1) | species | '
+        header2 = 'lower energy - upper energy | '
+        header3 = 'lower orbital configuration | lower J | '
+        header4 = 'upper orbital configuration | upper J | '
+        header5 = 'normalized depth | blendedness\n'
 
-    with open(pickle_pairs_transitions_file, 'rb') as f:
-        all_transitions = pickle.load(f)
-    tqdm.write(f'{len(all_transitions)} unique transitions found.')
+        header = header1 + header2 + header3 + header4 + header5
 
-    lines_to_write = format_transitions(all_transitions, blendedness=False)
-    with open(nist_formatted_all_file, 'w') as f:
-        f.write(header)
-        for write_str in tqdm(lines_to_write):
-            write_str = write_str.replace('<', '[')
-            write_str = write_str.replace('>', ']')
-            f.write(write_str)
+        all_nist_transitions.sort()
+        lines_to_write = format_transitions(all_nist_transitions,
+                                            blendedness=False)
+        with open(nist_formatted_file, 'w') as f:
+            f.write(header)
+            for write_str in tqdm(lines_to_write):
+                write_str = write_str.replace('<', '[')
+                write_str = write_str.replace('>', ']')
+                f.write(write_str)
+        tqdm.write('NIST-matched transitions written out to {}'.format(
+                nist_formatted_file))
 
-    tqdm.write('All transitions written out in NIST format to {}'.format(
-            nist_formatted_all_file))
+        with open(pickle_pairs_transitions_file, 'rb') as f:
+            all_transitions = pickle.load(f)
+        tqdm.write(f'{len(all_transitions)} unique transitions found.')
 
-if args.incorporate_blendedness:
-    infile = Path(args.blend_file)
-    with open(infile, 'r') as f:
-        blend_lines = f.readlines()
+        lines_to_write = format_transitions(all_transitions, blendedness=False)
+        with open(nist_formatted_all_file, 'w') as f:
+            f.write(header)
+            for write_str in tqdm(lines_to_write):
+                write_str = write_str.replace('<', '[')
+                write_str = write_str.replace('>', ']')
+                f.write(write_str)
 
-    blend_transitions = []
-    tqdm.write('Incorporating blendedness information from {}'.format(
-            infile.name))
-    for line in tqdm(blend_lines):
-        if '#' in line:
-            continue
-        line = line.rstrip().split('|')
-        wavelength = float(line[0]) * u.nm
-        element, ion = line[2].rstrip().lstrip().split(' ')
-        lower_energy, upper_energy = line[3].split('-')
-        lower_energy = float(lower_energy) * u.cm ** -1
-        upper_energy = float(upper_energy) * u.cm ** -1
-        lower_orbital = line[4].rstrip().lstrip()
-        lower_J = line[5]
-        upper_orbital = line[6].rstrip().lstrip()
-        upper_J = line[7]
-        norm_depth = line[8]
-        blendedness = line[9]
+        tqdm.write('All transitions written out in NIST format to {}'.format(
+                nist_formatted_all_file))
 
-        new_transition = Transition(wavelength, element, ion)
-        new_transition.lowerEnergy = lower_energy
-        new_transition.higherEnergy = upper_energy
-        new_transition.lowerOrbital = lower_orbital
-        new_transition.higherOrbital = upper_orbital
-        new_transition.lowerJ = lower_J
-        new_transition.higherJ = upper_J
-        new_transition.blendedness = int(blendedness)
-        new_transition.normalizedDepth = float(norm_depth)
-        blend_transitions.append(new_transition)
+    if args.incorporate_blendedness:
+        infile = Path(args.blend_file)
+        with open(infile, 'r') as f:
+            blend_lines = f.readlines()
 
-    tqdm.write('Writing out pairs with blendedness included to {}'.format(
-            pickle_pairs_file))
-    pairs = find_line_pairs(blend_transitions, min_norm_depth=0.15,
-                            max_norm_depth=0.9,
-                            velocity_separation=800*u.km/u.s,
-                            line_depth_difference=0.2)
+        blend_transitions = []
+        tqdm.write('Incorporating blendedness information from {}'.format(
+                infile.name))
+        for line in tqdm(blend_lines):
+            if '#' in line:
+                continue
+            line = line.rstrip().split('|')
+            wavelength = float(line[0]) * u.nm
+            element, ion = line[2].rstrip().lstrip().split(' ')
+            lower_energy, upper_energy = line[3].split('-')
+            lower_energy = float(lower_energy) * u.cm ** -1
+            upper_energy = float(upper_energy) * u.cm ** -1
+            lower_orbital = line[4].rstrip().lstrip()
+            lower_J = line[5]
+            upper_orbital = line[6].rstrip().lstrip()
+            upper_J = line[7]
+            norm_depth = line[8]
+            blendedness = line[9]
 
-    print(pairs[0]._lowerEnergyTransition.blendedness)
+            new_transition = Transition(wavelength, element, ion)
+            new_transition.lowerEnergy = lower_energy
+            new_transition.higherEnergy = upper_energy
+            new_transition.lowerOrbital = lower_orbital
+            new_transition.higherOrbital = upper_orbital
+            new_transition.lowerJ = lower_J
+            new_transition.higherJ = upper_J
+            new_transition.blendedness = int(blendedness)
+            new_transition.normalizedDepth = float(norm_depth)
+            blend_transitions.append(new_transition)
 
-    print(f'Found {len(pairs)} pairs.')
-    print('Pickling pairs to file.')
-    with open(pickle_pairs_file, 'wb') as f:
-        pickle.dump(pairs, f)
+        tqdm.write('Writing out pairs with blendedness included to {}'.format(
+                pickle_pairs_file))
+        pairs = find_line_pairs(blend_transitions, min_norm_depth=0.15,
+                                max_norm_depth=0.9,
+                                velocity_separation=800*u.km/u.s,
+                                line_depth_difference=0.2)
 
+        print(pairs[0]._lowerEnergyTransition.blendedness)
 
-if args.rate_pairs:
+        print(f'Found {len(pairs)} pairs.')
+        print('Pickling pairs to file.')
+        with open(pickle_pairs_file, 'wb') as f:
+            pickle.dump(pairs, f)
 
-    tqdm.write('Reading list of pairs from {}...'.format(pickle_pairs_file))
-    with open(pickle_pairs_file, 'rb') as g:
-        pairs = pickle.load(g)
-    tqdm.write('Done! {} pairs found.'.format(len(pairs)))
+    if args.rate_pairs:
 
-    blend_dict = {}
+        tqdm.write('Reading list of pairs from {}...'.format(
+                pickle_pairs_file))
+        with open(pickle_pairs_file, 'rb') as g:
+            pairs = pickle.load(g)
+        tqdm.write('Done! {} pairs found.'.format(len(pairs)))
 
-    for pair in tqdm(pairs):
+        blend_dict = {}
 
-        blend_tuple = pair.blendTuple
-        if blend_tuple in blend_dict.keys():
-            blend_dict[blend_tuple].append(pair)
-        else:
-            blend_dict[blend_tuple] = [pair]
+        for pair in tqdm(pairs):
 
-    tqdm.write('Pairs, sorted by blend number:')
-    for key in sorted(blend_dict.keys()):
-        tqdm.write(str(key), end='')
-        tqdm.write(': ' + str(len(blend_dict[key])))
+            blend_tuple = pair.blendTuple
+            if blend_tuple in blend_dict.keys():
+                blend_dict[blend_tuple].append(pair)
+            else:
+                blend_dict[blend_tuple] = [pair]
 
-    # This is the final list of pairs, though it contains all pairs including
-    # ones with bad blending.
-    print('Pickling pairs with blend information to file.')
-    with open(pickle_pairs_file, 'wb') as f:
-        pickle.dump(pairs, f)
+        tqdm.write('Pairs, sorted by blend number:')
+        for key in sorted(blend_dict.keys()):
+            tqdm.write(str(key), end='')
+            tqdm.write(': ' + str(len(blend_dict[key])))
 
-    good_transitions = []
-    blends_of_interest = ((0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2))
-    for pair in tqdm(pairs):
-        if pair.blendTuple in blends_of_interest:
-            for transition in pair:
-                if transition not in good_transitions:
-                    good_transitions.append(transition)
+        # This is the final list of pairs, though it contains all pairs
+        # including ones with bad blending.
+        print('Pickling pairs with blend information to file.')
+        with open(pickle_pairs_file, 'wb') as f:
+            pickle.dump(pairs, f)
 
-    high_energy_pairs = 0
-    for transition in sorted(good_transitions):
-        if (transition.higherEnergy > 50000 * u.cm ** -1) or\
-           (transition.lowerEnergy > 50000 * u.cm ** -1):
-            print(transition)
-            high_energy_pairs += 1
-        else:
-            print(transition)
-    print('{} "high energy" transitions found, out of {}.'.format(
-            high_energy_pairs, len(good_transitions)))
+        good_transitions = []
+        blends_of_interest = ((0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2))
+        for pair in tqdm(pairs):
+            if pair.blendTuple in blends_of_interest:
+                for transition in pair:
+                    if transition not in good_transitions:
+                        good_transitions.append(transition)
 
-    header1 = '#lambda(nm,vac) | wavenumber (cm^-1) | species | '
-    header2 = 'lower energy - upper energy | '
-    header3 = 'lower orbital configuration | lower J | '
-    header4 = 'upper orbital configuration | upper J | '
-    header5 = 'normalized depth | blendedness\n'
+        high_energy_pairs = 0
+        for transition in sorted(good_transitions):
+            if (transition.higherEnergy > 50000 * u.cm ** -1) or\
+               (transition.lowerEnergy > 50000 * u.cm ** -1):
+                print(transition)
+                high_energy_pairs += 1
+            else:
+                print(transition)
+        print('{} "high energy" transitions found, out of {}.'.format(
+                high_energy_pairs, len(good_transitions)))
 
-    header = header1 + header2 + header3 + header4 + header5
+        header1 = '#lambda(nm,vac) | wavenumber (cm^-1) | species | '
+        header2 = 'lower energy - upper energy | '
+        header3 = 'lower orbital configuration | lower J | '
+        header4 = 'upper orbital configuration | upper J | '
+        header5 = 'normalized depth | blendedness\n'
 
-    lines_to_write = format_transitions(good_transitions, blendedness=True)
+        header = header1 + header2 + header3 + header4 + header5
 
-    with open(nist_best_formatted_file, 'w') as f:
-        f.write(header)
-        for write_str in lines_to_write:
-            f.write(write_str)
+        lines_to_write = format_transitions(good_transitions, blendedness=True)
 
-    # This pickle file is the final selection of transitions from pairs that
-    # are considered "good" (low blending of both features).
-    print('Pickling final selection of transitions to file: {}.'.format(
-            final_selection_file))
-    with open(final_selection_file, 'wb') as f:
-        pickle.dump(good_transitions, f)
+        with open(nist_best_formatted_file, 'w') as f:
+            f.write(header)
+            for write_str in lines_to_write:
+                f.write(write_str)
+
+        # This pickle file is the final selection of transitions from pairs
+        # that are considered "good" (low blending of both features).
+        print('Pickling final selection of transitions to file: {}.'.format(
+                final_selection_file))
+        with open(final_selection_file, 'wb') as f:
+            pickle.dump(good_transitions, f)
