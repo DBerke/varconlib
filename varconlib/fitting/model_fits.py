@@ -19,6 +19,9 @@ import unyt as u
 
 from varconlib.exceptions import (PositiveAmplitudeError,
                                   WavelengthNotFoundInArrayError)
+from varconlib.miscellaneous import (shift_wavelength, velocity2wavelength,
+                                     wavelength2index, gaussian,
+                                     integrated_gaussian, wavelength2velocity)
 import varconlib as vcl
 
 # This line prevents the wavelength formatting from being in the form of
@@ -98,8 +101,8 @@ class GaussianFit(object):
         # Shift the wavelength being searched for to correct for the radial
         # velocity of the star.
         nominal_wavelength = self.transition.wavelength.to(u.angstrom)
-        self.correctedWavelength = vcl.shift_wavelength(nominal_wavelength,
-                                                        radial_velocity)
+        self.correctedWavelength = shift_wavelength(nominal_wavelength,
+                                                    radial_velocity)
         if verbose:
             tqdm.write('Given RV {:.2f}: line {:.3f} should be at {:.3f}'.
                        format(radial_velocity,
@@ -122,26 +125,26 @@ class GaussianFit(object):
         # Figure out the range in wavelength space to search around the nominal
         # wavelength for the flux minimum, as well as the range to take for
         # measuring the continuum.
-        search_range = vcl.velocity2wavelength(search_range_vel,
-                                               self.correctedWavelength)
+        search_range = velocity2wavelength(search_range_vel,
+                                           self.correctedWavelength)
 
-        continuum_range = vcl.velocity2wavelength(continuum_range_vel,
-                                                  self.correctedWavelength)
+        continuum_range = velocity2wavelength(continuum_range_vel,
+                                              self.correctedWavelength)
 
-        low_search_index = vcl.wavelength2index(self.correctedWavelength -
-                                                search_range,
-                                                self.baryArray)
+        low_search_index = wavelength2index(self.correctedWavelength -
+                                            search_range,
+                                            self.baryArray)
 
-        high_search_index = vcl.wavelength2index(self.correctedWavelength +
-                                                 search_range,
-                                                 self.baryArray)
+        high_search_index = wavelength2index(self.correctedWavelength +
+                                             search_range,
+                                             self.baryArray)
 
-        self.lowContinuumIndex = vcl.wavelength2index(self.correctedWavelength
-                                                      - continuum_range,
-                                                      self.baryArray)
-        self.highContinuumIndex = vcl.wavelength2index(self.correctedWavelength
-                                                       + continuum_range,
-                                                       self.baryArray)
+        self.lowContinuumIndex = wavelength2index(self.correctedWavelength
+                                                  - continuum_range,
+                                                  self.baryArray)
+        self.highContinuumIndex = wavelength2index(self.correctedWavelength
+                                                   + continuum_range,
+                                                   self.baryArray)
         self.centralIndex = low_search_index + \
             self.fluxArray[low_search_index:high_search_index].argmin()
 
@@ -184,7 +187,7 @@ class GaussianFit(object):
                 pixel_edges_upper = wavelengths_upper[self.order,
                                                       self.lowFitIndex:
                                                           self.highFitIndex]
-                self.popt, self.pcov = curve_fit(vcl.integrated_gaussian,
+                self.popt, self.pcov = curve_fit(integrated_gaussian,
                                                  (pixel_edges_lower.value,
                                                   pixel_edges_upper.value),
                                                  self.fluxes,
@@ -193,7 +196,7 @@ class GaussianFit(object):
                                                  p0=self.initial_guess,
                                                  method='lm', maxfev=10000)
             else:
-                self.popt, self.pcov = curve_fit(vcl.gaussian,
+                self.popt, self.pcov = curve_fit(gaussian,
                                                  self.wavelengths.value,
                                                  self.fluxes,
                                                  sigma=self.errors,
@@ -230,9 +233,9 @@ class GaussianFit(object):
 
         self.amplitudeErr = self.perr[0]
         self.meanErr = self.perr[1] * u.angstrom
-        self.meanErrVel = abs(vcl.wavelength2velocity(self.mean,
-                                                      self.mean +
-                                                      self.meanErr))
+        self.meanErrVel = abs(wavelength2velocity(self.mean,
+                                                  self.mean +
+                                                  self.meanErr))
         self.sigmaErr = self.perr[2] * u.angstrom
 
         if (self.chiSquaredNu > 1):
@@ -245,23 +248,23 @@ class GaussianFit(object):
         # standard deviation of a Gaussian.
         self.FWHM = 2.354820 * self.sigma
         self.FWHMErr = 2.354820 * self.sigmaErr
-        self.velocityFWHM = vcl.wavelength2velocity(self.mean,
-                                                    self.mean +
-                                                    self.FWHM)
-        self.velocityFWHMErr = vcl.wavelength2velocity(self.mean,
-                                                       self.mean +
-                                                       self.FWHMErr)
+        self.velocityFWHM = wavelength2velocity(self.mean,
+                                                self.mean +
+                                                self.FWHM)
+        self.velocityFWHMErr = wavelength2velocity(self.mean,
+                                                   self.mean +
+                                                   self.FWHMErr)
 
         # Compute the offset between the input wavelength and the wavelength
         # found in the fit.
         self.offset = self.correctedWavelength - self.mean
         self.offsetErr = self.meanErr
-        self.velocityOffset = vcl.wavelength2velocity(self.correctedWavelength,
-                                                      self.mean)
+        self.velocityOffset = wavelength2velocity(self.correctedWavelength,
+                                                  self.mean)
 
-        self.velocityOffsetErr = vcl.wavelength2velocity(self.mean,
-                                                         self.mean +
-                                                         self.offsetErr)
+        self.velocityOffsetErr = wavelength2velocity(self.mean,
+                                                     self.mean +
+                                                     self.offsetErr)
 
         if verbose:
             print(self.continuumLevel)
@@ -270,8 +273,8 @@ class GaussianFit(object):
 
     @property
     def chiSquared(self):
-        residuals = self.fluxes - vcl.gaussian(self.wavelengths.value,
-                                               *self.popt)
+        residuals = self.fluxes - gaussian(self.wavelengths.value,
+                                           *self.popt)
         return sum((residuals / self.errors) ** 2)
 
     @property
@@ -364,12 +367,12 @@ class GaussianFit(object):
         x = np.linspace(self.baryArray[self.lowContinuumIndex].value,
                         self.baryArray[self.highContinuumIndex].value, 1000)
         # Plot the initial guess for the gaussian.
-        ax.plot(x, vcl.gaussian(x, *self.initial_guess),
+        ax.plot(x, gaussian(x, *self.initial_guess),
                 color='SlateGray', label='Initial guess',
                 linestyle='--', alpha=0.7)
         # Plot the fitted gaussian, unless this is a failed fit attempt.
         if plot_fit:
-            ax.plot(x, vcl.gaussian(x, *self.popt),
+            ax.plot(x, gaussian(x, *self.popt),
                     color='DarkGreen', alpha=0.7,
                     linestyle='-.',
                     label=r'Fit ($\chi^2_\nu=${:.3f}, $\sigma=${:.4f})'.format(
