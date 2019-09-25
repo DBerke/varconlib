@@ -179,6 +179,12 @@ class Transition(object):
         The NIST web query of atomic transitions returns them in a particular
         style, which this is intended to emulate (though not perfectly
         reproduce).
+
+        Returns
+        -------
+        str
+            A string formatted in a style reminiscent of NIST.
+
         """
 
         str1 = '{:.4f} | {:.3f} | '.format(self.wavelength.

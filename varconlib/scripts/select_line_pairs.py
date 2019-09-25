@@ -10,7 +10,6 @@ Created on Wed Mar 21 15:57:52 2018
 # various constraints.
 
 import argparse
-import configparser
 import pickle
 import datetime
 from math import sqrt, isclose
@@ -760,13 +759,17 @@ if __name__ == '__main__':
 
     # ! The pickle file containing final selection of transitions to use.
     final_selection_file = pickle_dir / 'final_transitions_selection.pkl'
+    # ! The pickle file containing final selection of pairs to use.
+    final_pair_selection_file = pickle_dir / 'final_pairs_selection.pkl'
 
     # File to write out formatted NIST-matched transitions into.
     nist_formatted_file = data_dir / 'NIST_formatted_transitions.txt'
     # File to write out all transitions in NIST format.
     nist_formatted_all_file = data_dir / 'NIST_formatted_transitions_all.txt'
-    # File to contain all the least-blended transitions.
+    # File to contain all the least-blended transitions in text format.
     nist_best_formatted_file = data_dir / 'NIST_formatted_best_transitions.txt'
+    # File to contain all the best pairs in text format.
+    nist_formatted_pairs_file = data_dir / 'NIST_formatted_best_pairs.txt'
 
     CCD_bounds_file = masks_dir / 'unusable_spectrum_CCDbounds.txt'
     # Path('/Users/dberke/code/data/unusable_spectrum_CCDbounds.txt')
@@ -1006,8 +1009,8 @@ if __name__ == '__main__':
         header = header1 + header2 + header3 + header4 + header5
 
         all_nist_transitions.sort()
-        lines_to_write = format_transitions(all_nist_transitions,
-                                            blendedness=False)
+        lines_to_write = [transition.formatInNistStyle() for transition in
+                          all_nist_transitions]
         with open(nist_formatted_file, 'w') as f:
             f.write(header)
             for write_str in tqdm(lines_to_write):
@@ -1021,7 +1024,8 @@ if __name__ == '__main__':
             all_transitions = pickle.load(f)
         tqdm.write(f'{len(all_transitions)} unique transitions found.')
 
-        lines_to_write = format_transitions(all_transitions, blendedness=False)
+        lines_to_write = [transition.formatInNistStyle() for transition in
+                          all_transitions]
         with open(nist_formatted_all_file, 'w') as f:
             f.write(header)
             for write_str in tqdm(lines_to_write):
@@ -1111,23 +1115,50 @@ if __name__ == '__main__':
             pickle.dump(pairs, f)
 
         good_transitions = []
+        good_pairs = []
         blends_of_interest = ((0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2))
         for pair in tqdm(pairs):
             if pair.blendTuple in blends_of_interest:
+                good_pairs.append(pair)
                 for transition in pair:
                     if transition not in good_transitions:
                         good_transitions.append(transition)
 
-        high_energy_pairs = 0
+        # This pickle file has the final selection of pairs with acceptable
+        # levels of blending.
+        print('Pickling collection of best pairs to {}'.format(
+                final_pair_selection_file))
+        with open(final_pair_selection_file, 'wb') as f:
+            pickle.dump(good_pairs, f)
+
+        # This pickle file is the final selection of transitions from pairs
+        # that are considered "good" (low blending of both features).
+        print('Pickling final selection of transitions to file: {}.'.format(
+                final_selection_file))
+        with open(final_selection_file, 'wb') as f:
+            pickle.dump(good_transitions, f)
+
+        # Check for "high-energy" pairs which are more difficult to calculate
+        # q-coefficients for.
+        high_energy_transitions = 0
         for transition in sorted(good_transitions):
             if (transition.higherEnergy > 50000 * u.cm ** -1) or\
                (transition.lowerEnergy > 50000 * u.cm ** -1):
-                print(transition)
-                high_energy_pairs += 1
-            else:
-                print(transition)
+                high_energy_transitions += 1
+
         print('{} "high energy" transitions found, out of {}.'.format(
-                high_energy_pairs, len(good_transitions)))
+                high_energy_transitions, len(good_transitions)))
+
+        high_energy_pairs = 0
+        for pair in tqdm(good_pairs):
+            for transition in pair:
+                if (transition.higherEnergy > 50000 * u.cm ** -1) or\
+                   (transition.lowerEnergy > 50000 * u.cm ** -1):
+                    high_energy_pairs += 1
+                    break
+
+        print('{} "high energy" pairs found, out of {}.'.format(
+                high_energy_pairs, len(good_pairs)))
 
         header1 = '#lambda(nm,vac) | wavenumber (cm^-1) | species | '
         header2 = 'lower energy - upper energy | '
@@ -1137,16 +1168,23 @@ if __name__ == '__main__':
 
         header = header1 + header2 + header3 + header4 + header5
 
-        lines_to_write = format_transitions(good_transitions, blendedness=True)
+        # Write out a list of the final selection of transitions in human-
+        # readable format.
+        lines_to_write = [transition.formatInNistStyle() for transition in
+                          good_transitions]
 
+        print(f'Writing out list of transition at {nist_best_formatted_file}')
         with open(nist_best_formatted_file, 'w') as f:
             f.write(header)
             for write_str in lines_to_write:
                 f.write(write_str)
 
-        # This pickle file is the final selection of transitions from pairs
-        # that are considered "good" (low blending of both features).
-        print('Pickling final selection of transitions to file: {}.'.format(
-                final_selection_file))
-        with open(final_selection_file, 'wb') as f:
-            pickle.dump(good_transitions, f)
+        # Write out a list of the final selection of pairs in a human-readable
+        # format.
+        print(f'Writing out list of pairs at {nist_formatted_pairs_file}')
+        with open(nist_formatted_pairs_file, 'w') as f:
+            f.write(header)
+            for pair in good_pairs:
+                f.write('\n')
+                for transition in pair:
+                    f.write(transition.formatInNistStyle())
