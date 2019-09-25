@@ -14,6 +14,10 @@ from math import isclose
 from bidict import bidict
 import unyt as u
 
+from varconlib.exceptions import (AtomicNumberError,
+                                  IonizationStateError,
+                                  BadElementInputError)
+
 elements = bidict({1: "H", 2: "He", 3: "Li", 4: "Be", 5: "B", 6: "C", 7: "N",
                    8: "O", 9: "F", 10: "Ne", 11: "Na", 12: "Mg",  13: "Al",
                    14: "Si", 15: "P", 16: "S", 17: "Cl", 18: "Ar", 19: "K",
@@ -46,7 +50,7 @@ class Transition(object):
         ----------
         wavelength : unyt quantity with dimensions length
             The wavelength of the transition. Should be a unyt quantity, though
-            it can be any unit of length and will be converted to nm
+            it can be any unit of length and will be converted to angstroms
             internally. Should be in a vacuum wavelength scale.
         element : int or str
             The atomic number of the element the transition arises from, or the
@@ -66,53 +70,54 @@ class Transition(object):
 
         # See if the wavelength has units already:
         try:
-            self.wavelength = wavelength.to(u.nm)
+            self.wavelength = wavelength.to(u.angstrom)
         except AttributeError:
             # If not, raise an error.
             print('Given wavelength has no units!')
             raise
         # Check if the element is given as a number in a string.
-        if (type(element) is str) and (len(element) < 3):
-            try:
-                self.atomicNumber = int(element)
-                self.atomicSymbol = elements[self.atomicNumber]
-            # If not, see if it's a correct atomic symbol.
-            except ValueError:
-                cap_string = element.capitalize()
+        if type(element) not in (str, int):
+            raise BadElementInputError('"element" must be a string or an int.')
+        if type(element) is str:
+            if len(element) > 2:
+                raise BadElementInputError('Given string for parameter '
+                                           '"element" is too long!')
+            else:
                 try:
-                    self.atomicNumber = elements.inverse[cap_string]
-                except KeyError:
-                    print('Given atomic symbol not in elements dictionary!')
-                    print('Atomic symbol given was "{}".'.format(element))
-                    raise
-                self.atomicSymbol = cap_string
+                    self.atomicNumber = int(element)
+                    self.atomicSymbol = elements[self.atomicNumber]
+                # If not, see if it's a correct atomic symbol.
+                except ValueError:
+                    cap_string = element.capitalize()
+                    try:
+                        self.atomicNumber = elements.inverse[cap_string]
+                    except KeyError:
+                        raise BadElementInputError('Given atomic symbol not '
+                                                   'in elements dictionary!\n'
+                                                   'Atomic symbol given '
+                                                   'was "{}".'.format(
+                                                           element))
+                    self.atomicSymbol = cap_string
         elif type(element) is int:
-            assert 0 < element < 119, 'Element number not in range [1, 118]!'
+            if not 0 < element < 119:
+                raise AtomicNumberError('Element number not in '
+                                        'range [1, 118]!')
             self.atomicNumber = element
             self.atomicSymbol = elements[self.atomicNumber]
-
-        elif (type(element) is int) and (len(element) > 2):
-            print('Given string for parameter "element" is too long!')
-        else:
-            try:
-                self.atomicNumber = int(element)
-                self.atomicSymbol = elements[self.atomicNumber]
-            except ValueError:
-                raise TypeError("'element' parameter must be a valid "
-                                "integer atomic number or atomic symbol " +
-                                "(e.g., 'Fe').")
 
         # Next check the given ionization state.
         try:
             ionizationState = int(ionizationState)
-            assert ionizationState >= 0, 'Ionization state cannot be negative.'
+            if not ionizationState > 0:
+                raise IonizationStateError('Ionization state must be'
+                                           ' >0.')
         except ValueError:
             # If it's a string, see if it's a Roman numeral.
             try:
                 ionizationState = roman_numerals.inv[ionizationState]
             except KeyError:
-                raise ValueError('Ionization state "{}" invalid!'.format(
-                                 ionizationState))
+                raise IonizationStateError('Ionization state "{}" '
+                                           'invalid!'.format(ionizationState))
         self.ionizationState = ionizationState
 
         self.lowerEnergy = None
@@ -167,6 +172,32 @@ class Transition(object):
                     self.wavelength.to(u.angstrom).value,
                     self.atomicSymbol, self.ionizationState)
         return self._label
+
+    def formatInNistStyle(self):
+        """Return a string formatting the transition in the style of NIST.
+
+        The NIST web query of atomic transitions returns them in a particular
+        style, which this is intended to emulate (though not perfectly
+        reproduce).
+        """
+
+        str1 = '{:.4f} | {:.3f} | '.format(self.wavelength.
+                                           to(u.angstrom).value,
+                                           self.wavenumber.value)
+        str2 = '{:5} | '.format(self.atomicSpecies)
+        str3 = '{:9.3f} - {:9.3f} | '.format(self.lowerEnergy.value,
+                                             self.higherEnergy.value)
+        str4 = '{:35} | {!s:4} | '.format(self.lowerOrbital,
+                                          self.lowerJ)
+        str5 = '{:35} | {!s:4} | '.format(self.higherOrbital,
+                                          self.higherJ)
+        if hasattr(self, 'blendedness'):
+            str6 = '{:0<5.3} | {} \n'.format(self.normalizedDepth,
+                                             self.blendedness)
+        else:
+            str6 = '{:0<5.3} | \n'.format(self.normalizedDepth)
+
+        return str1 + str2 + str3 + str4 + str5 + str6
 
     def __repr__(self):
         return "{}({:.3f}, {}, {})".format(self.__class__.__name__,
