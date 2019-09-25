@@ -86,6 +86,41 @@ class PositiveAmplitudeError(FeatureFitError):
         self.message = message
 
 
+# Errors relating to Transition objects.
+class TransitionLineError(Error):
+    """Errors relating to Transition objects."""
+
+    pass
+
+
+class AtomicNumberError(TransitionLineError):
+    """Exception to raise if an unphsyical atomic number is given.
+
+    """
+
+    def __init__(self, message=None):
+        self.message = message
+
+
+class IonizationStateError(TransitionLineError):
+    """Exception to raise if an unphysical ionization state is given.
+
+    """
+
+    def __init__(self, message=None):
+        self.message = message
+
+
+class BadElementInputError(TransitionLineError):
+    """Exception to raise if a bad element parameter (too long, not a real
+    element, not a string or integer, etc.) is given.
+
+    """
+
+    def __init__(self, message=None):
+        self.message = message
+
+
 # Errors relating to TransitionPair objects.
 class TransitionPairError(Error):
     """Errors relating to TransitionPair objects."""
