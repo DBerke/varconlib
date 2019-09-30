@@ -18,8 +18,6 @@ from varconlib.exceptions import (AtomicNumberError,
                                   BadElementInputError)
 from varconlib.transition_line import Transition
 
-# TODO: possibly add a fixture for test cases?
-
 
 class TestTransitionCreation(object):
 
@@ -202,12 +200,12 @@ class TestTransitionRepresentation(object):
         assert mock_transition.label == '5580.345Xe1'
 
     def test_nist_formatting(self, mock_transition):
-        expected_string1 = '5580.3450 | 17920.039 | Xe I  ' +\
+        expected_string1 = '5580.345 | 17920.039 | Xe I  ' +\
                            '|    17.012 - 12051.823 | (4F)4s a5F ' +\
                            '                         | 3/2  ' +\
                            '| 3Gsp3P x3H                          ' +\
                            '| 0    | 0.234 | \n'
-        expected_string2 = '5580.3450 | 17920.039 | Xe I  ' +\
+        expected_string2 = '5580.345 | 17920.039 | Xe I  ' +\
                            '|    17.012 - 12051.823 | (4F)4s a5F ' +\
                            '                         | 3/2  ' +\
                            '| 3Gsp3P x3H                          ' +\
