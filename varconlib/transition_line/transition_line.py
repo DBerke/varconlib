@@ -187,7 +187,7 @@ class Transition(object):
 
         """
 
-        str1 = '{:.4f} | {:.3f} | '.format(self.wavelength.
+        str1 = '{:.3f} | {:.3f} | '.format(self.wavelength.
                                            to(u.angstrom).value,
                                            self.wavenumber.value)
         str2 = '{:5} | '.format(self.atomicSpecies)
