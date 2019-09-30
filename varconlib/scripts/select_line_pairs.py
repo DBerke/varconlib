@@ -592,61 +592,6 @@ def query_nist(transition_list, species_set):
     return master_nist_dict
 
 
-def format_transitions(transition_list, blendedness=False):
-    """Format a list of transitions for writing to a file.
-
-    Parameters
-    ----------
-    transition_list : list of `Transition` objects.
-        A list of Transitions to format. They should have the following
-        optional attributes:
-            lowerEnergy
-            higherEnergy
-            lowerOrbital
-            higherOrbital
-            lowerJ
-            higherJ
-            normalizedDepth
-
-    Optional
-    --------
-    blendedness : bool, Default : False
-        A flag indicating whether the given Transitions include the optional
-        attribute "blendedness". If *True*, will include the blendedness
-        value in the formatting.
-
-    Returns
-    -------
-    list
-        A list of formatted strings ready to be written to a file. Does not
-        include a header.
-
-    """
-
-    str_list = []
-
-    for transition in tqdm(transition_list):
-        str1 = '{:.4f} | {:.3f} | '.format(transition.wavelength.value,
-                                           transition.wavenumber.value)
-        str2 = '{:5} | '.format(transition.atomicSpecies)
-        str3 = '{:9.3f} - {:9.3f} | '.format(transition.lowerEnergy.value,
-                                             transition.higherEnergy.value)
-        str4 = '{:35} | {!s:4} | '.format(transition.lowerOrbital,
-                                          transition.lowerJ)
-        str5 = '{:35} | {!s:4} | '.format(transition.higherOrbital,
-                                          transition.higherJ)
-        if blendedness:
-            str6 = '{:0<5.3} | {} \n'.format(transition.normalizedDepth,
-                                             transition.blendedness)
-        else:
-            str6 = '{:0<5.3} | \n'.format(transition.normalizedDepth)
-        write_str = str1 + str2 + str3 + str4 + str5 + str6
-
-        str_list.append(write_str)
-
-    return str_list
-
-
 if __name__ == '__main__':
     # ----- Main routine of code -----
 
@@ -712,11 +657,6 @@ if __name__ == '__main__':
     global line_offsets
     line_offsets = []
 
-#    base_path = Path(__file__).parent
-#    config_file = base_path / '../config/variables.cfg'
-#    config = configparser.ConfigParser(interpolation=configparser.
-#                                       ExtendedInterpolation())
-#    config.read(config_file)
     data_dir = varconlib.data_dir
     masks_dir = varconlib.masks_dir
     pickle_dir = varconlib.pickle_dir
