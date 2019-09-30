@@ -349,7 +349,7 @@ class GaussianFit(object):
         if hasattr(self, 'mean') and hasattr(self, 'velocityOffset'):
             ax.axvline(self.mean.to(u.angstrom),
                        color='IndianRed',
-                       label='Mean ({:.3f}, {:+.2f})'.
+                       label='Mean ({:.4f}, {:+.2f})'.
                        format(self.mean.to(u.angstrom),
                               self.velocityOffset.to(u.m/u.s)),
                        linestyle='-')
