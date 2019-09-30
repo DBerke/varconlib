@@ -26,29 +26,22 @@ import numpy as np
 from tqdm import tqdm
 import unyt as u
 
+import varconlib as vcl
 from varconlib.miscellaneous import wavelength2velocity as wave2vel
 from varconlib.miscellaneous import date2index
 
 
 plt.rc('text', usetex=True)
 
-# Read the config file and set up some paths:
-base_path = Path(__file__).parent
-config_file = base_path / '../config/variables.cfg'
-
-config = configparser.ConfigParser(interpolation=configparser.
-                                   ExtendedInterpolation())
-config.read(config_file)
-
 # The list of pairs of transitions chosen:
-pickle_dir = Path(config['PATHS']['pickle_dir'])
+pickle_dir = vcl.pickle_dir
 pickle_pairs_file = pickle_dir / 'transition_pairs.pkl'
 
 # List of individual transitions chosen:
 final_selection_file = pickle_dir / 'final_transitions_selection.pkl'
 
 # Where the analysis results live:
-output_dir = Path(config['PATHS']['output_dir'])
+output_dir = Path(vcl.config['PATHS']['output_dir'])
 
 
 # Set up CL arguments.
@@ -220,10 +213,6 @@ if args.write_csv:
         for row in tqdm(master_star_list):
             csv_writer.writerow(row)
 
-#    data = pd.DataFrame(data=master_star_list, columns=column_names)
-#    data.to_csv(path_or_buf=csv_filename,
-#                header=column_names,
-#                index=False)
 
 # Create the plots for each pair of transitions
 if args.create_plots:
