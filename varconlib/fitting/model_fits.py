@@ -72,8 +72,10 @@ class GaussianFit(object):
 
         # Store the transition.
         self.transition = transition
-        # Grab the observation date from the observation.
+        # Grab some observation-specific information from the observation.
         self.dateObs = observation.dateObs
+        self.BERV = observation.BERV
+        self.airmass = observation.airmass
 
         # Store the plot paths.
         self.close_up_plot_path = close_up_plot_path
@@ -250,10 +252,10 @@ class GaussianFit(object):
         self.FWHMErr = 2.354820 * self.sigmaErr
         self.velocityFWHM = wavelength2velocity(self.mean,
                                                 self.mean +
-                                                self.FWHM)
+                                                self.FWHM).to(u.km/u.s)
         self.velocityFWHMErr = wavelength2velocity(self.mean,
                                                    self.mean +
-                                                   self.FWHMErr)
+                                                   self.FWHMErr).to(u.km/u.s)
 
         # Compute the offset between the input wavelength and the wavelength
         # found in the fit.
@@ -280,6 +282,48 @@ class GaussianFit(object):
     @property
     def chiSquaredNu(self):
         return self.chiSquared / 3  # ν = 7 (pixels) - 4 (params)
+
+    def getFitInformation(self):
+        """Return a list of information about the fit which can be written as
+        a CSV file.
+
+        Returns
+        -------
+        list
+            A list containing the following information about the fit:
+            1. Observation date, in ISO format
+            2. The amplitude of the fit (in photons)
+            3. The error on the amplitude (in photons)
+            4. The mean of the fit (in Å)
+            5. The error on the mean (in Å)
+            6. The error on the mean (in m/s in velocity space)
+            7. The sigma of the fitted Gaussian (in Å)
+            8. The error on the sigma (in Å)
+            9. The offset from expected wavelength (in m/s)
+            10. The error on the offset (in m/s)
+            11. The FWHM (in velocity space)
+            12. The error on the FWHM (in m/s)
+            13. The chi-squared-nu value
+            14. The order the fit was made on (starting at 0, so in [0, 71].
+            15. The mean airmass of the observation.
+
+        """
+
+        return [self.dateObs.isoformat(timespec='milliseconds'),
+                self.amplitude,
+                self.amplitudeErr,
+                self.mean.value,
+                self.meanErr.value,
+                self.meanErrVel.value,
+                self.sigma.value,
+                self.sigmaErr.value,
+                self.velocityOffset.to(u.m/u.s).value,
+                self.velocityOffsetErr.to(u.m/u.s).value,
+                self.velocityFWHM.to(u.m/u.s).value,
+                self.velocityFWHMErr.to(u.m/u.s).value,
+                self.chiSquaredNu,
+                self.order,
+                self.airmass]
 
     def plotFit(self, close_up_plot_path=None,
                 context_plot_path=None,
