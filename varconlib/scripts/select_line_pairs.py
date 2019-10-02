@@ -1100,7 +1100,7 @@ if __name__ == '__main__':
         print('{} "high energy" pairs found, out of {}.'.format(
                 high_energy_pairs, len(good_pairs)))
 
-        header1 = '#lambda(nm,vac) | wavenumber (cm^-1) | species | '
+        header1 = '#lambda(Å,vac) | wavenumber (cm^-1) | species | '
         header2 = 'lower energy - upper energy | '
         header3 = 'lower orbital configuration | lower J | '
         header4 = 'upper orbital configuration | upper J | '
