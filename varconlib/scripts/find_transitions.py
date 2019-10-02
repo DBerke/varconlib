@@ -11,7 +11,6 @@ attempts to fit each of the transitions listed in the dictionary.
 """
 
 import argparse
-import configparser
 from glob import glob
 import lzma
 import os
@@ -23,6 +22,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 
+import varconlib as vcl
 from varconlib.exceptions import (PositiveAmplitudeError,
                                   BlazeFileNotFoundError,
                                   NewCoefficientsNotFoundError)
@@ -86,20 +86,8 @@ data_files = [Path(string) for string in sorted(glob(glob_search_string))]
 
 tqdm.write('Found {} observations in the directory.'.format(len(data_files)))
 
-config_file = Path('/Users/dberke/code/config/variables.cfg')
-config = configparser.ConfigParser(interpolation=configparser.
-                                   ExtendedInterpolation())
-config.read(config_file)
-
-pickle_dir = Path(config['PATHS']['pickle_dir'])
-# All unique transitions found within pairs found:
-pickle_pairs_transitions_file = pickle_dir / 'pair_transitions.pkl'
-
-# Final selection of 145 transitions
-final_selection_file = pickle_dir / 'final_transitions_selection.pkl'
-
 # output_dir = /Users/dberke/data_output
-output_dir = Path(config['PATHS']['output_dir'])
+output_dir = Path(vcl.config['PATHS']['output_dir'])
 
 # Define edges between pixels to plot to see if transitions overlap them.
 edges = (509.5, 1021.5, 1533.5, 2045.5, 2557.5, 3069.5, 3581.5)
@@ -111,7 +99,7 @@ red_spec_format = np.loadtxt(redCCDpath, skiprows=1, delimiter=',',
                              usecols=(0, 5, 6))
 
 # Read the pickled list of transitions
-with open(final_selection_file, 'rb') as f:
+with open(vcl.final_selection_file, 'rb') as f:
     tqdm.write('Unpickling list of transitions...')
     transitions_list = pickle.load(f)
 
