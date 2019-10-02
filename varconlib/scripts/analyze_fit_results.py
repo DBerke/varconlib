@@ -10,7 +10,6 @@ information about them (via plots or otherwise).
 """
 
 import argparse
-import configparser
 import csv
 import datetime as dt
 from glob import glob
@@ -33,16 +32,8 @@ from varconlib.miscellaneous import date2index
 
 plt.rc('text', usetex=True)
 
-# The list of pairs of transitions chosen:
-pickle_dir = vcl.pickle_dir
-pickle_pairs_file = pickle_dir / 'transition_pairs.pkl'
-
-# List of individual transitions chosen:
-final_selection_file = pickle_dir / 'final_transitions_selection.pkl'
-
 # Where the analysis results live:
 output_dir = Path(vcl.config['PATHS']['output_dir'])
-
 
 # Set up CL arguments.
 desc = """A script to analyze fitted absorption features.
@@ -52,13 +43,17 @@ parser = argparse.ArgumentParser(description=desc)
 
 parser.add_argument('object_dir', action='store', type=str,
                     help='Object directory to search in')
+
 parser.add_argument('suffix', action='store', type=str,
                     help='Suffix to add to directory names to search for.')
+
 parser.add_argument('--create-plots', action='store_true', default=False,
                     help='Create plots of the offsets for each pair.')
+
 parser.add_argument('--write-csv', action='store_true', default=False,
                     help='Create a CSV file of offsets for each pair.')
-parser.add_argument('--verbose', action='store_true', default=False,
+
+parser.add_argument('-v', '--verbose', action='store_true', default=False,
                     help='Print more information about the process.')
 
 args = parser.parse_args()
@@ -98,36 +93,17 @@ if not data_dir.exists():
     raise RuntimeError('The given directory does not exist.')
 
 # Read the list of chosen transitions.
-with open(final_selection_file, 'r+b') as f:
+with open(vcl.final_selection_file, 'r+b') as f:
     transitions_list = pickle.load(f)
 
 tqdm.write(f'Found {len(transitions_list)} individual transitions.')
 
-all_transitions_set = set()
-for transition in transitions_list:
-    all_transitions_set.add(transition.label)
-
 # Read the list of chosen pairs.
-with open(pickle_pairs_file, 'r+b') as f:
+with open(vcl.final_pair_selection_file, 'r+b') as f:
     pairs_list = pickle.load(f)
 
 tqdm.write(f'Found {len(pairs_list)} transition pairs (total) in list.')
 
-# Set up lists of "good pairs" (ones with both features mostly unblended) and
-# "good transitions" (the ones in the good pairs).
-
-good_pairs = []
-good_transitions_set = set()
-for pair in pairs_list:
-    if pair.blendTuple in blends_of_interest:
-        good_pairs.append(pair)
-        for transition in pair:
-            good_transitions_set.add(transition.label)
-
-
-tqdm.write('Found {} "good pairs"'.format(len(good_pairs)))
-tqdm.write('and {} "good transitions" in those pairs.'.format(
-           len(good_transitions_set)))
 
 # Search for pickle files in the given directory.
 search_str = str(data_dir) + '/*/pickles_{}/*fits.lzma'.format(args.suffix)
@@ -143,9 +119,9 @@ master_star_dict = {}
 
 obs_name_re = re.compile('HARPS.*_e2ds_A')
 
-# Create a list to hold all the results for saving out as a csv file:
+# Create some lists to hold all the results for saving out as a CSV file:
 master_star_list = []
-observation_names = []
+master_fits_list = []
 for pickle_file in tqdm(pickle_files[:]):
 
     # Match the part of the pickle filename that is the observation name.
@@ -156,16 +132,16 @@ for pickle_file in tqdm(pickle_files[:]):
         fits_list = pickle.loads(f.read())
 
     # Set up a dictionary to map fits in this observation to transitions:
-    fits_dict = {}
-    for fit in fits_list:
-        fits_dict[fit.transition.label] = fit
+    fits_dict = {fit.transition.label: fit for fit in fits_list}
+    if args.write_csv:
+        master_fits_list.append(fits_dict)
 
     pairs_dict = {}
-    observation_names.append(obs_name)
-    pairs_list = [obs_name, dt.datetime.strftime(fits_list[0].dateObs,
-                                                 '%Y-%m-%dT%H:%M:%S.%f')]
+    separations_list = [obs_name, fits_list[0].dateObs.
+                        isoformat(timespec='milliseconds')]
+
     column_names = ['Observation', 'Time']
-    for pair in good_pairs:
+    for pair in pairs_list:
         column_names.extend([pair.label, pair.label + '_err'])
         try:
             fits_pair = [fits_dict[pair._higherEnergyTransition.label],
@@ -173,7 +149,7 @@ for pickle_file in tqdm(pickle_files[:]):
         except KeyError:
             # Measurement of one or the other transition doesn't exist, so
             # skip it (but fill in the list to prevent getting out of sync).
-            pairs_list.extend(['N/A', ' N/A'])
+            separations_list.extend(['N/A', ' N/A'])
             continue
 
         if np.isnan(fits_pair[0].meanErrVel) or \
@@ -183,23 +159,24 @@ for pickle_file in tqdm(pickle_files[:]):
                     fits_pair.label, obs_name))
             tqdm.write(str(fits_pair[0].meanErrVel))
             tqdm.write(str(fits_pair[1].meanErrVel))
-            pairs_list.extend(['NaN', ' NaN'])
+            separations_list.extend(['NaN', ' NaN'])
             continue
 
         pairs_dict[pair.label] = fits_pair
         error = np.sqrt(fits_pair[0].meanErrVel ** 2 +
                         fits_pair[1].meanErrVel ** 2)
         velocity_separation = wave2vel(fits_pair[0].mean, fits_pair[1].mean)
-        pairs_list.extend([velocity_separation.value, error.value])
+        separations_list.extend([velocity_separation.value, error.value])
 
     # This is for the script to use.
     master_star_dict[obs_name] = pairs_dict
-    # This is to be written out.
-    master_star_list.append(pairs_list)
+    if args.write_csv:
+        # This is to be written out.
+        master_star_list.append(separations_list)
 
+# Write out a CSV file containing the pair separation values for all
+# observations of this star.
 if args.write_csv:
-    # Write out a CSV file containing the pair separation values for all
-    # observations of this star.
     csv_filename = data_dir / 'pair_separations_{}.csv'.format(data_dir.stem)
     if args.verbose:
         tqdm.write(f'Creating CSV file of separations for {data_dir.stem} '
@@ -207,16 +184,40 @@ if args.write_csv:
 
     assert len(master_star_list[0]) == len(column_names)
 
-    with open(csv_filename, 'w', newline='') as csvfile:
+    with open(csv_filename, 'w') as csvfile:
         csv_writer = csv.writer(csvfile, delimiter=',')
         csv_writer.writerow(column_names)
         for row in tqdm(master_star_list):
             csv_writer.writerow(row)
 
+    # Write out a series of CSV files containing information on the fits of
+    # individual transitions for each star.
+    column_names = ['ObsDate', 'Amplitude', 'Amplitude_err (Å)', 'Mean (Å)',
+                    'Mean_err (Å)', 'Mean_err_vel (m/s)', 'Sigma (Å)',
+                    'Sigma_err (Å)', 'Offset (m/s)', 'Offset_err (m/s)',
+                    'FWHM (m/s)', 'FWHM_err (m/s)', 'Chi-squared-nu',
+                    'Order', 'Mean_airmass']
+
+    csv_fits_dir = data_dir / 'fits_info_csv'
+    if not csv_fits_dir.exists():
+        mkdir(csv_fits_dir)
+    if args.verbose:
+        tqdm.write('Writing information on fits to files in {}'.format(
+                   csv_fits_dir))
+    for transition in tqdm(transitions_list):
+        csv_filename = csv_fits_dir / '{}_{}.csv'.format(transition.label,
+                                                         data_dir.stem)
+
+        with open(csv_filename, 'w') as csvfile:
+            csv_writer = csv.writer(csvfile, delimiter=',')
+            csv_writer.writerow(column_names)
+            for fits_dict in master_fits_list:
+                csv_writer.writerow(fits_dict[transition.label].format_csv())
+
 
 # Create the plots for each pair of transitions
 if args.create_plots:
-    for pair in tqdm(good_pairs[:]):
+    for pair in tqdm(pairs_list):
         if args.verbose:
             tqdm.write(f'Creating plot for pair {pair.label}')
         fitted_pairs = []
