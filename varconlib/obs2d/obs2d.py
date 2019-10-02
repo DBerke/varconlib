@@ -78,9 +78,9 @@ class HARPSFile2D(object):
     """
 
     def __init__(self, FITSfile):
-        if type(FITSfile) is str:
+        if isinstance(FITSfile, str):
             self._filename = Path(FITSfile)
-        elif type(FITSfile is Path):
+        elif isinstance(FITSfile, Path):
             self._filename = FITSfile
         else:
             raise RuntimeError('File name not str or Path!')
@@ -101,10 +101,7 @@ class HARPSFile2D(object):
     @property
     def dateObs(self):
         if not hasattr(self, '_dateObs'):
-            try:
-                date_string = self.getHeaderCard('DATE-OBS')
-            except KeyError:
-                raise KeyError('No DATE-OBS header found for this observation')
+            date_string = self.getHeaderCard('DATE-OBS')
             self._dateObs = dt.datetime.strptime(date_string,
                                                  '%Y-%m-%dT%H:%M:%S.%f')
         return self._dateObs
@@ -152,13 +149,6 @@ class HARPSFile2D(object):
             array = array.reshape((72, 4096))
             tqdm.write('Data array reshaped from (4096, 72) to (72, 4096).')
         return array
-
-    def plotSelf(self):
-        """
-        Return a plot of the data.
-        """
-        # TODO: Implement a plot system.
-        pass
 
 
 class HARPSFile2DScience(HARPSFile2D):
@@ -471,13 +461,29 @@ class HARPSFile2DScience(HARPSFile2D):
     def BERV(self):
         # BERV = Barycentric Earth Radial Velocity
         if not hasattr(self, '_BERV'):
-            try:
-                berv_card = 'HIERARCH ESO DRS BERV'
-                self._BERV = float(self.getHeaderCard(berv_card)) * u.km / u.s
-            except KeyError:
-                tqdm.write('No BERV card found for this observation!')
-                raise
+            self._BERV = float(self.getHeaderCard('HIERARCH ESO DRS BERV'))\
+                               * u.km / u.s
         return self._BERV
+
+    @property
+    def airmassStart(self):
+        if not hasattr(self, '_airmassStart'):
+            self._airmassStart = float(self.getHeaderCard(
+                                       'HIERARCH ESO TEL AIRM START'))
+        return self._airmassStart
+
+    @property
+    def airmassEnd(self):
+        if not hasattr(self, '_airmassEnd'):
+            self._airmassEnd = float(self.getHeaderCard(
+                                     'HIERARCH ESO TEL AIRM END'))
+        return self._airmassEnd
+
+    @property
+    def airmass(self):
+        if not hasattr(self, '_airmass'):
+            self._airmass = (self.airmassStart + self.airmassEnd) / 2
+        return self._airmass
 
     def getBlazeFile(self):
         """Find and return the blaze file associated with this observation.
@@ -490,10 +496,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        try:
-            blaze_file = self.getHeaderCard('HIERARCH ESO DRS BLAZE FILE')
-        except KeyError:
-            raise KeyError('No blaze file listed for this observation!')
+        blaze_file = self.getHeaderCard('HIERARCH ESO DRS BLAZE FILE')
 
         file_date = blaze_file[6:16]
 

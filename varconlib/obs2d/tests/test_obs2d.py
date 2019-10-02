@@ -8,7 +8,6 @@ Created on Mon Dec  3 18:40:58 2018
 Test script for the HARPSFile2D class and subclasses
 """
 
-import configparser
 from pathlib import Path
 import shutil
 
@@ -47,6 +46,14 @@ class TestGeneric2DFile(object):
 
         return HARPSFile2D(generic_test_file)
 
+    def testBadFilename(self):
+        with pytest.raises(RuntimeError):
+            HARPSFile2D(1)
+
+    def testNonExistentFilename(self):
+        with pytest.raises(FileNotFoundError):
+            HARPSFile2D('nonexistent/filename')
+
     def testRawFileRead(self, s):
         assert s.getHeaderCard('INSTRUME') == 'HARPS'
 
@@ -54,6 +61,12 @@ class TestGeneric2DFile(object):
         assert hasattr(s, '_header')
         assert hasattr(s, '_rawData')
         assert hasattr(s, 'dateObs')
+
+#    def testRepr(self, s):
+#        assert repr(s) == 'HARPSFile2D({})'.format(generic_test_file
+#
+#    def testStr(sel, s):
+#        assert str(s) == 'HIP-40133, {}'.format(generic_test_file.stem)
 
 
 class TestScience2DFile(object):
@@ -65,6 +78,10 @@ class TestScience2DFile(object):
                                   use_new_coefficients=False,
                                   use_pixel_positions=False)
 
+    def testNonExistentFilename(self):
+        with pytest.raises(FileNotFoundError):
+            HARPSFile2DScience('nonexistent/filename')
+
     def testObsFileRead(self, s):
         assert s.getHeaderCard('INSTRUME') == 'HARPS'
 
@@ -72,19 +89,46 @@ class TestScience2DFile(object):
         assert hasattr(s, '_header')
         assert hasattr(s, '_rawData')
 
-    def testHasSpecificAttributes(self, s):
+    def testHasPropertyBERV(self, s):
         assert hasattr(s, 'BERV')
+
+    def testHasPropertyRadialVelocity(self, s):
         assert hasattr(s, 'radialVelocity')
+
+    def testHasPropertyDateObs(self, s):
         assert hasattr(s, 'dateObs')
 
-    def testArrayProperties(self, s):
+    def testHasPropertyAirmassStart(self, s):
+        assert hasattr(s, 'airmassStart')
+        assert isinstance(s.airmassStart, float)
+
+    def testHasPropertyAirmassEnd(self, s):
+        assert hasattr(s, 'airmassEnd')
+        assert isinstance(s.airmassEnd, float)
+
+    def testHasPropertyAirmass(self, s):
+        assert hasattr(s, 'airmass')
+        assert isinstance(s.airmass, float)
+
+    def testHasWavelengthArray(self, s):
         assert hasattr(s, 'wavelengthArray')
+
+    def testHasBarycentricArray(self, s):
         assert hasattr(s, 'barycentricArray')
+
+    def testHasPhotonFluxArray(self, s):
         assert hasattr(s, 'photonFluxArray')
+
+    def testHasErrorArray(self, s):
         assert hasattr(s, 'errorArray')
+
+    def testHasBlazeArray(self, s):
         assert hasattr(s, 'blazeArray')
-        # Test for created-on-the-fly arrays:
+
+    def testHasVacuumArray(self, s):
         assert hasattr(s, 'vacuumArray')
+
+    def testHasRVCorrectedArray(self, s):
         assert hasattr(s, 'rvCorrectedArray')
 
     def testArraysShapes(self, s):
@@ -97,11 +141,18 @@ class TestScience2DFile(object):
             assert np.shape(s.pixelLowerArray) == (72, 4096)
             assert np.shape(s.pixelUpperArray) == (72, 4096)
 
-    def testFindWavelength(self, s):
+    def testFindWavelengthInOneOrder(self, s):
         assert s.findWavelength(5039 * u.angstrom, s.barycentricArray,
                                 mid_most=True) == 40
+
+    def testFineWavelengthInTwoOrders(self, s):
         assert s.findWavelength(5039 * u.angstrom, s.barycentricArray,
                                 mid_most=False) == (39, 40)
         index1 = wavelength2index(5039 * u.angstrom, s.barycentricArray[39])
         index2 = wavelength2index(5039 * u.angstrom, s.barycentricArray[40])
         assert abs(index1 - 2047.5) > abs(index2 - 2047.5)
+
+    def testUpdateFile(self, generic_test_file):
+        a = HARPSFile2DScience(generic_test_file)
+        a = HARPSFile2DScience(generic_test_file, update=['ALL'])
+        assert a.getHeaderCard('INSTRUME') == 'HARPS'
