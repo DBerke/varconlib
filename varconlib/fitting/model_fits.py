@@ -10,6 +10,7 @@ Code to define a class for a model fit to an absorption line.
 """
 
 import matplotlib
+from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
@@ -22,7 +23,6 @@ from varconlib.exceptions import (PositiveAmplitudeError,
 from varconlib.miscellaneous import (shift_wavelength, velocity2wavelength,
                                      wavelength2index, gaussian,
                                      integrated_gaussian, wavelength2velocity)
-import varconlib as vcl
 
 # This line prevents the wavelength formatting from being in the form of
 # scientific notation.
@@ -366,63 +366,83 @@ class GaussianFit(object):
             context_plot_path = self.context_plot_path
 
         # Set up the figure.
-        fig = plt.figure(figsize=(7, 5), dpi=100, tight_layout=True)
+        fig = plt.figure(figsize=(7, 5), dpi=100)
 #        fig = plt.figure(figsize=(9, 9), dpi=100, tight_layout=True)
-        ax = fig.add_subplot(1, 1, 1)
+#        ax = fig.add_subplot(1, 1, 1)
+        gs = GridSpec(nrows=2, ncols=1, height_ratios=[5, 1], hspace=0)
+        ax1 = fig.add_subplot(gs[0])
+        ax2 = fig.add_subplot(gs[1], sharex=ax1)
+
+        ax1.tick_params(axis='x', direction='in')
+        plt.setp(ax1.get_xticklabels(), visible=False)
+        ax2.set_ybound(lower=-1.2, upper=1.2)
 
         for pixel in edge_pixels:
-            ax.axvline(x=self.baryArray[pixel-1], ymin=0, ymax=0.2,
-                       color='LimeGreen',
-                       linestyle='--')
+            ax1.axvline(x=self.baryArray[pixel-1], ymin=0, ymax=0.2,
+                        color='LimeGreen',
+                        linestyle='--')
 
-        ax.set_xlabel(r'Wavelength ($\AA$)')
-        ax.set_ylabel('Flux (photo-electrons)')
-        ax.xaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.2f}'))
-        ax.set_xlim(left=self.baryArray[self.lowContinuumIndex],
-                    right=self.baryArray[self.highContinuumIndex - 1])
+        ax1.set_xlabel(r'Wavelength ($\AA$)')
+        ax1.set_ylabel('Flux (photo-electrons)')
+        ax1.xaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.2f}'))
+        ax1.set_xlim(left=self.baryArray[self.lowContinuumIndex],
+                     right=self.baryArray[self.highContinuumIndex - 1])
         # Set y-limits so a fit doesn't balloon the plot scale out.
-        ax.set_ylim(top=self.continuumLevel * 1.2,
-                    bottom=self.fluxMinimum * 0.93)
+        ax1.set_ylim(top=self.continuumLevel * 1.2,
+                     bottom=self.fluxMinimum * 0.93)
 
         # Plot the expected and measured wavelengths.
-        ax.axvline(self.correctedWavelength.to(u.angstrom),
-                   color='LightSteelBlue', linestyle=':',
-                   label=r'RV-corrected $\lambda=${:.3f}'.format(
+        ax1.axvline(self.correctedWavelength.to(u.angstrom),
+                    color='LightSteelBlue', linestyle=':', alpha=0.8,
+                    label=r'RV-corrected $\lambda=${:.3f}'.format(
                            self.correctedWavelength.to(u.angstrom)))
         # Don't plot the mean if this is a failed fit.
         if hasattr(self, 'mean') and hasattr(self, 'velocityOffset'):
-            ax.axvline(self.mean.to(u.angstrom),
-                       color='IndianRed',
-                       label='Mean ({:.4f}, {:+.2f})'.
-                       format(self.mean.to(u.angstrom),
-                              self.velocityOffset.to(u.m/u.s)),
-                       linestyle='-')
+            ax1.axvline(self.mean.to(u.angstrom),
+                        color='IndianRed', alpha=0.7,
+                        label='Mean ({:.4f}, {:+.2f})'.
+                        format(self.mean.to(u.angstrom),
+                               self.velocityOffset.to(u.m/u.s)),
+                        linestyle='-')
         # Plot the actual data.
-        ax.errorbar(self.baryArray[self.lowContinuumIndex:
-                                   self.highContinuumIndex],
-                    self.fluxArray[self.lowContinuumIndex:
-                                   self.highContinuumIndex],
-                    yerr=self.errorArray[self.lowContinuumIndex:
-                                         self.highContinuumIndex],
-                    color='SandyBrown', ecolor='Sienna',
-                    label='Flux', barsabove=True)
+        ax1.errorbar(self.baryArray[self.lowContinuumIndex:
+                                    self.highContinuumIndex],
+                     self.fluxArray[self.lowContinuumIndex:
+                                    self.highContinuumIndex],
+                     yerr=self.errorArray[self.lowContinuumIndex:
+                                          self.highContinuumIndex],
+                     color='SandyBrown', ecolor='Sienna',
+                     label='Flux', barsabove=True)
 
         # Generate some x-values across the plot range.
         x = np.linspace(self.baryArray[self.lowContinuumIndex].value,
                         self.baryArray[self.highContinuumIndex].value, 1000)
         # Plot the initial guess for the gaussian.
-        ax.plot(x, gaussian(x, *self.initial_guess),
-                color='SlateGray', label='Initial guess',
-                linestyle='--', alpha=0.7)
+        ax1.plot(x, gaussian(x, *self.initial_guess),
+                 color='SlateGray', label='Initial guess',
+                 linestyle='--', alpha=0.5)
         # Plot the fitted gaussian, unless this is a failed fit attempt.
         if plot_fit:
-            ax.plot(x, gaussian(x, *self.popt),
-                    color='DarkGreen', alpha=0.7,
-                    linestyle='-.',
-                    label=r'Fit ($\chi^2_\nu=${:.3f}, $\sigma=${:.4f})'.format(
-                           self.chiSquaredNu, self.sigma))
+            ax1.plot(x, gaussian(x, *self.popt),
+                     color='DarkGreen', alpha=0.5,
+                     linestyle='-.',
+                     label=r'Fit ($\chi^2_\nu=${:.3f}, $\sigma=${:.4f})'.
+                     format(self.chiSquaredNu, self.sigma))
 
-        ax.legend(loc='upper center', framealpha=0.6, fontsize='medium')
+        ax1.legend(loc='upper center', framealpha=0.6, fontsize='medium')
+
+        # Plot the residuals on the lower axis.
+        residuals = (self.fluxes - gaussian(self.wavelengths.value,
+                                            *self.popt)) / self.errors
+
+        ax2.plot(self.wavelengths,
+                 residuals, color='Gray')
+
+        # Add in some guidelines.
+        ax2.axhline(color='LightGray', linestyle='--')
+        ax2.axhline(y=1, color='LightBlue', linestyle=':')
+        ax2.axhline(y=-1, color='LightBlue', linestyle=':')
+
         # Save the resultant plot.
         fig.savefig(str(context_plot_path))
         if verbose:
@@ -430,10 +450,10 @@ class GaussianFit(object):
                     context_plot_path))
 
         # Now create a close-in version to focus on the fit.
-        ax.set_xlim(left=self.baryArray[self.lowFitIndex - 1],
-                    right=self.baryArray[self.highFitIndex])
-        ax.set_ylim(top=self.fluxes.max() * 1.15,
-                    bottom=self.fluxes.min() * 0.95)
+        ax1.set_xlim(left=self.baryArray[self.lowFitIndex - 1],
+                     right=self.baryArray[self.highFitIndex])
+        ax1.set_ylim(top=self.fluxes.max() * 1.15,
+                     bottom=self.fluxes.min() * 0.95)
 
         fig.savefig(str(close_up_plot_path))
         if verbose:
