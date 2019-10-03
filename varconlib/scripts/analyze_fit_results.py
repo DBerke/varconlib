@@ -30,8 +30,6 @@ from varconlib.miscellaneous import wavelength2velocity as wave2vel
 from varconlib.miscellaneous import date2index
 
 
-plt.rc('text', usetex=True)
-
 # Where the analysis results live:
 output_dir = Path(vcl.config['PATHS']['output_dir'])
 
@@ -47,8 +45,14 @@ parser.add_argument('object_dir', action='store', type=str,
 parser.add_argument('suffix', action='store', type=str,
                     help='Suffix to add to directory names to search for.')
 
+parser.add_argument('--use-tex', action='store_true', default=False,
+                    help='Use TeX rendering for fonts in plots (slow!).')
+
 parser.add_argument('--create-plots', action='store_true', default=False,
                     help='Create plots of the offsets for each pair.')
+
+parser.add_argument('--create-fit-plots', action='store_true', default=False,
+                    help='Create plots of the fits for each transition.')
 
 parser.add_argument('--write-csv', action='store_true', default=False,
                     help='Create a CSV file of offsets for each pair.')
@@ -57,6 +61,9 @@ parser.add_argument('-v', '--verbose', action='store_true', default=False,
                     help='Print more information about the process.')
 
 args = parser.parse_args()
+
+if args.use_tex or args.create_plots:
+    plt.rc('text', usetex=True)
 
 if args.create_plots:
 
@@ -136,6 +143,24 @@ for pickle_file in tqdm(pickle_files[:]):
     if args.write_csv:
         master_fits_list.append(fits_dict)
 
+    if args.create_fit_plots:
+        closeup_dir = data_dir /\
+            '{}/plots_{}/close_up'.format(obs_name, args.suffix)
+        context_dir = data_dir /\
+            '{}/plots_{}/context'.format(obs_name, args.suffix)
+        tqdm.write('Creating plots of fits.')
+
+        for transition in tqdm(transitions_list):
+            plot_closeup = closeup_dir / '{}_{}_close.png'.format(
+                    obs_name, transition.label)
+            plot_context = context_dir / '{}_{}_context.png'.format(
+                    obs_name, transition.label)
+            if args.verbose:
+                tqdm.write('Creating plots at:')
+                tqdm.write(str(plot_closeup))
+                tqdm.write(str(plot_context))
+            fits_dict[transition.label].plotFit(plot_closeup, plot_context)
+
     pairs_dict = {}
     separations_list = [obs_name, fits_list[0].dateObs.
                         isoformat(timespec='milliseconds')]
@@ -192,9 +217,9 @@ if args.write_csv:
 
     # Write out a series of CSV files containing information on the fits of
     # individual transitions for each star.
-    column_names = ['ObsDate', 'Amplitude', 'Amplitude_err (Å)', 'Mean (Å)',
-                    'Mean_err (Å)', 'Mean_err_vel (m/s)', 'Sigma (Å)',
-                    'Sigma_err (Å)', 'Offset (m/s)', 'Offset_err (m/s)',
+    column_names = ['ObsDate', 'Amplitude', 'Amplitude_err (A)', 'Mean (A)',
+                    'Mean_err (A)', 'Mean_err_vel (m/s)', 'Sigma (A)',
+                    'Sigma_err (A)', 'Offset (m/s)', 'Offset_err (m/s)',
                     'FWHM (m/s)', 'FWHM_err (m/s)', 'Chi-squared-nu',
                     'Order', 'Mean_airmass']
 
@@ -212,7 +237,8 @@ if args.write_csv:
             csv_writer = csv.writer(csvfile, delimiter=',')
             csv_writer.writerow(column_names)
             for fits_dict in master_fits_list:
-                csv_writer.writerow(fits_dict[transition.label].format_csv())
+                csv_writer.writerow(fits_dict[transition.label].
+                                    getFitInformation())
 
 
 # Create the plots for each pair of transitions
@@ -272,7 +298,8 @@ if args.create_plots:
 
         fig, axes = plt.subplots(ncols=2, nrows=2,
                                  tight_layout=True,
-                                 figsize=(10, 8))
+                                 figsize=(10, 8),
+                                 sharey='all')  # Share y-axis among all.
         fig.autofmt_xdate()
         (ax1, ax2), (ax3, ax4) = axes
         for ax in (ax1, ax2, ax3, ax4):
