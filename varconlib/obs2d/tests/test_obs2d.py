@@ -110,6 +110,10 @@ class TestScience2DFile(object):
         assert hasattr(s, 'airmass')
         assert isinstance(s.airmass, float)
 
+    def testHasPropertyExptime(self, s):
+        assert hasattr(s, 'exptime')
+        assert isinstance(s.exptime, float)
+
     def testHasWavelengthArray(self, s):
         assert hasattr(s, 'wavelengthArray')
 

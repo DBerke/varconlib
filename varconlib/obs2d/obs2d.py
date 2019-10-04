@@ -485,6 +485,12 @@ class HARPSFile2DScience(HARPSFile2D):
             self._airmass = (self.airmassStart + self.airmassEnd) / 2
         return self._airmass
 
+    @property
+    def exptime(self):
+        if not hasattr(self, '_exptime'):
+            self._exptime = float(self.getHeaderCard('EXPTIME'))
+        return self._exptime
+
     def getBlazeFile(self):
         """Find and return the blaze file associated with this observation.
 
