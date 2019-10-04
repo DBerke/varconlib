@@ -76,6 +76,7 @@ class GaussianFit(object):
         self.dateObs = observation.dateObs
         self.BERV = observation.BERV
         self.airmass = observation.airmass
+        self.exptime = observation.exptime
 
         # Store the plot paths.
         self.close_up_plot_path = close_up_plot_path
