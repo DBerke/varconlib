@@ -14,7 +14,7 @@ import csv
 import datetime as dt
 from glob import glob
 import lzma
-from os import mkdir
+import os
 from pathlib import Path
 import pickle
 import re
@@ -53,6 +53,9 @@ parser.add_argument('--create-plots', action='store_true', default=False,
 
 parser.add_argument('--create-fit-plots', action='store_true', default=False,
                     help='Create plots of the fits for each transition.')
+
+parser.add_argument('--link-fit-plots', action='store_true', default=False,
+                    help='Hard-link fit plots by transition into new folders.')
 
 parser.add_argument('--write-csv', action='store_true', default=False,
                     help='Create a CSV file of offsets for each pair.')
@@ -225,7 +228,7 @@ if args.write_csv:
 
     csv_fits_dir = data_dir / 'fits_info_csv'
     if not csv_fits_dir.exists():
-        mkdir(csv_fits_dir)
+        os.mkdir(csv_fits_dir)
     if args.verbose:
         tqdm.write('Writing information on fits to files in {}'.format(
                    csv_fits_dir))
@@ -293,7 +296,7 @@ if args.create_plots:
 
         plot_dir = data_dir / 'offset_plots'
         if not plot_dir.exists():
-            mkdir(plot_dir)
+            os.mkdir(plot_dir)
         plot_name = plot_dir / '{}.png'.format(pair.label)
 
         fig, axes = plt.subplots(ncols=2, nrows=2,
@@ -353,3 +356,36 @@ if args.create_plots:
 
         fig.savefig(str(plot_name))
         plt.close(fig)
+
+# Create hard links to all the fit plots by transition (across star) in their
+# own directory, to make it easier to compare transitions across observations.
+if args.link_fit_plots:
+    tqdm.write('Linking fit plots to cross-observation directories.')
+    transition_plots_dir = data_dir / 'plots_by_transition'
+    if not transition_plots_dir.exists():
+        os.mkdir(transition_plots_dir)
+    for transition in tqdm(transitions_list):
+
+        wavelength_str = '{:.3f}'.format(transition.wavelength.to(u.angstrom)
+                                         .value)
+        transition_dir = transition_plots_dir / wavelength_str
+        close_up_dir = transition_dir / 'close_up'
+        context_dir = transition_dir / 'context'
+
+        for directory in (transition_dir, close_up_dir, context_dir):
+            if not directory.exists():
+                os.mkdir(directory)
+
+        for plot_type, directory in zip(('close_up', 'context'),
+                                        (close_up_dir, context_dir)):
+
+            search_str = str(data_dir) +\
+                          '/HARPS*/plots_{}/{}/*{}*.png'.format(args.suffix,
+                                                                plot_type,
+                                                                wavelength_str)
+
+            files_to_link = [Path(path) for path in glob(search_str)]
+            for file_to_link in files_to_link:
+                dest_name = directory / file_to_link.name
+                if not dest_name.exists():
+                    os.link(file_to_link, dest_name)

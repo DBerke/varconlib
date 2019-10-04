@@ -21,6 +21,7 @@ from adjustText import adjust_text
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
+import unyt as u
 
 import varconlib as vcl
 from varconlib.exceptions import (PositiveAmplitudeError,
@@ -88,6 +89,9 @@ tqdm.write('Found {} observations in the directory.'.format(len(data_files)))
 
 # output_dir = /Users/dberke/data_output
 output_dir = Path(vcl.config['PATHS']['output_dir'])
+data_dir = output_dir / args.object_name
+if not data_dir.exists():
+    os.mkdir(data_dir)
 
 # Define edges between pixels to plot to see if transitions overlap them.
 edges = (509.5, 1021.5, 1533.5, 2045.5, 2557.5, 3069.5, 3581.5)
@@ -113,6 +117,19 @@ new_coeffs = True if args.new_coefficients else False
 if new_coeffs:
     tqdm.write('Using new wavelength calibration coefficients.')
 
+# Define directory suffixes based on arguments:
+if (not args.pixel_positions) and (not args.new_coefficients):
+    suffix = 'old'
+elif args.pixel_positions and (not args.new_coefficients):
+    suffix = 'pix'
+elif (not args.pixel_positions) and args.new_coefficients:
+    suffix = 'coeffs'
+elif args.pixel_positions and args.new_coefficients:
+    if args.integrated_gaussian:
+        suffix = 'int'
+    else:
+        suffix = 'new'
+
 for obs_path in tqdm(data_files[args.start:args.end]) if\
   len(data_files) > 1 else data_files:
     tqdm.write('Fitting {}...'.format(obs_path.name))
@@ -133,39 +150,23 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
         tqdm.write('New coefficients not found, continuing.')
         continue
 
-    object_dir = output_dir / args.object_name / obs_path.stem
+    obs_dir = data_dir / obs_path.stem
 
-    if not object_dir.parent.exists():
-        os.mkdir(object_dir.parent)
+    if not obs_dir.exists():
+        os.mkdir(obs_dir)
 
-    if not object_dir.exists():
-        os.mkdir(object_dir)
-
-    ccd_positions_dir = object_dir.parent / 'ccd_positions'
+    ccd_positions_dir = obs_dir.parent / 'ccd_positions'
 
     if not ccd_positions_dir.exists():
         os.mkdir(ccd_positions_dir)
 
-    # Define directory suffixes based on arguments:
-    if (not args.pixel_positions) and (not args.new_coefficients):
-        suffix = 'old'
-    elif args.pixel_positions and (not args.new_coefficients):
-        suffix = 'pix'
-    elif (not args.pixel_positions) and args.new_coefficients:
-        suffix = 'coeffs'
-    elif args.pixel_positions and args.new_coefficients:
-        if args.integrated_gaussian:
-            suffix = 'int'
-        else:
-            suffix = 'new'
-
     # Define directory for output pickle files:
-    output_pickle_dir = object_dir / '_'.join(['pickles', suffix])
+    output_pickle_dir = obs_dir / '_'.join(['pickles', suffix])
     if not output_pickle_dir.exists():
         os.mkdir(output_pickle_dir)
 
     # Define paths for plots to go in:
-    output_plots_dir = object_dir / '_'.join(['plots', suffix])
+    output_plots_dir = obs_dir / '_'.join(['plots', suffix])
 
     if not output_plots_dir.exists():
         os.mkdir(output_plots_dir)
@@ -274,3 +275,41 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
             '{}_CCD_positions.png'.format(obs_path.stem)
         fig.savefig(str(ccd_position_filename))
         plt.close(fig)
+
+
+# Create hard links to all the fit plots by transition (across star) in
+# their own directories, to make it easier to compare transitions
+# across observations.
+transition_plots_dir = data_dir / 'plots_by_transition'
+
+if not transition_plots_dir.exists():
+    os.mkdir(transition_plots_dir)
+
+tqdm.write('Linking fit plots to cross-observation directories.')
+for transition in tqdm(transitions_list):
+
+    wavelength_str = '{:.3f}'.format(transition.wavelength.to(u.angstrom)
+                                     .value)
+    transition_dir = transition_plots_dir / wavelength_str
+    close_up_dir = transition_dir / 'close_up'
+    context_dir = transition_dir / 'context'
+
+    # Create the required directories if they don't exist.
+    for directory in (transition_dir, close_up_dir, context_dir):
+        if not directory.exists():
+            os.mkdir(directory)
+
+    for plot_type, directory in zip(('close_up', 'context'),
+                                    (close_up_dir, context_dir)):
+
+        search_str = str(data_dir) +\
+                      '/HARPS*/plots_{}/{}/*{}*.png'.format(suffix,
+                                                            plot_type,
+                                                            wavelength_str)
+
+        files_to_link = [Path(path) for path in glob(search_str)]
+        for file_to_link in files_to_link:
+            dest_name = directory / file_to_link.name
+            # If the file already exists, linking will fail with an error.
+            if not dest_name.exists():
+                os.link(file_to_link, dest_name)
