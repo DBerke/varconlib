@@ -89,12 +89,15 @@ if args.create_plots:
 
     style_params = {'marker': 'o', 'color': 'Chocolate',
                     'markeredgecolor': 'Black', 'ecolor': 'BurlyWood',
-                    'linestyle': '', 'alpha': 0.7, 'markersize': 8}
+                    'linestyle': '', 'alpha': 0.7, 'markersize': 6}
+
+    style_params_post = {'marker': 'o', 'color': 'CornFlowerBlue',
+                         'markeredgecolor': 'Black', 'ecolor': 'LightSkyBlue',
+                         'linestyle': '', 'alpha': 0.7, 'markersize': 6}
+
     weighted_mean_params = {'color': 'RoyalBlue', 'linestyle': '--'}
     weighted_err_params = {'color': 'SteelBlue', 'linestyle': ':'}
 
-# Define a list of good "blend numbers" for chooosing which blends to look at.
-blends_of_interest = ((0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2))
 
 # Find the data in the given directory.
 data_dir = Path(args.object_dir)
@@ -146,6 +149,8 @@ for pickle_file in tqdm(pickle_files[:]):
     if args.write_csv:
         master_fits_list.append(fits_dict)
 
+    # This can be used to remake plots for individual fits without rerunning
+    # the fitting process in case the plot visual format changes.
     if args.create_fit_plots:
         closeup_dir = data_dir /\
             '{}/plots_{}/close_up'.format(obs_name, args.suffix)
@@ -184,7 +189,7 @@ for pickle_file in tqdm(pickle_files[:]):
            np.isnan(fits_pair[1].meanErrVel):
             # Similar to above, fill in list with placeholder value.
             tqdm.write('{} in {} has a NaN velocity offset!'.format(
-                    fits_pair.label, obs_name))
+                    pair.label, obs_name))
             tqdm.write(str(fits_pair[0].meanErrVel))
             tqdm.write(str(fits_pair[1].meanErrVel))
             separations_list.extend(['NaN', ' NaN'])
@@ -279,20 +284,29 @@ if args.create_plots:
         weights = 1 / errors ** 2
         weighted_mean = np.average(offsets, weights=weights)
 
-        tqdm.write('Weighted mean for {} is {:.2f}'.format(pair.label,
-                   weighted_mean))
+        if args.verbose:
+            tqdm.write('Weighted mean for {} is {:.2f}'.format(pair.label,
+                       weighted_mean))
 
         normalized_offsets = offsets - weighted_mean
         chi_squared = sum((normalized_offsets / errors) ** 2)
 
         weighted_mean_err = 1 / np.sqrt(sum(weights))
 
+        # Find the indices between dates of changes to make subsets of points.
         date_indices = []
         for value in dates_of_change.values():
             date_indices.append(date2index(value['x'], date_obs))
 
-        chi_squared = sum((normalized_offsets / errors) ** 2)
-        chi_squared_nu = chi_squared / (len(normalized_offsets) - 1)
+        chi_squared_pre = sum((normalized_offsets[:date_indices[2]] /
+                               errors[:date_indices[2]]) ** 2)
+        chi_squared_nu_pre = chi_squared_pre /\
+            (len(normalized_offsets[:date_indices[2]]) - 1)
+
+        chi_squared_post = sum((normalized_offsets[date_indices[2]:] /
+                               errors[date_indices[2]:]) ** 2)
+        chi_squared_nu_post = chi_squared_post /\
+            (len(normalized_offsets[date_indices[2]:]) - 1)
 
         plot_dir = data_dir / 'offset_plots'
         if not plot_dir.exists():
@@ -316,17 +330,32 @@ if args.create_plots:
             ax3.axvline(label=key, **value)
 
         # Set up axis 1.
-        ax1.errorbar(x=range(len(offsets)),
-                     y=normalized_offsets,
-                     yerr=errors,
-                     label=r'$\chi^2_\nu=${:.3f}'.format(chi_squared_nu.value),
+        # Plot pre-fiber change observations.
+        pre_fiber_change_obs = len(offsets[:date_indices[2]])
+        x_values = [x for x in range(pre_fiber_change_obs)]
+        ax1.errorbar(x=x_values,
+                     y=normalized_offsets[:date_indices[2]],
+                     yerr=errors[:date_indices[2]],
+                     label=r'$\chi^2_\nu=${:.3f}'.format(
+                             chi_squared_nu_pre.value),
                      **style_params)
+        # Plot post-fiber change observations.
+        if date_indices[2] is not None:
+            x_values = [x + pre_fiber_change_obs for x in
+                        range(len(offsets[date_indices[2]:]))]
+            ax1.errorbar(x=x_values,
+                         y=normalized_offsets[date_indices[2]:],
+                         yerr=errors[date_indices[2]:],
+                         label=r'$\chi^2_\nu=${:.3f}'.format(
+                                 chi_squared_nu_post.value),
+                         **style_params_post)
+
         for index, key in zip(date_indices, dates_of_change.keys()):
             if index is not None:
-                ax1.axvline(x=index+0.5,
+                ax1.axvline(x=index - 0.5,
                             linestyle=dates_of_change[key]['linestyle'],
                             color=dates_of_change[key]['color'])
-        ax1.legend(loc='upper right')
+        ax1.legend(loc='upper right', framealpha=0.6)
 
         # Set up axis 2.
         ax2.set_xlabel('Count')
