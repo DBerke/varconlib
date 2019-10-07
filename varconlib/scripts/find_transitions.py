@@ -132,6 +132,7 @@ elif args.pixel_positions and args.new_coefficients:
 
 for obs_path in tqdm(data_files[args.start:args.end]) if\
   len(data_files) > 1 else data_files:
+    tqdm.write('-' * 40)
     tqdm.write('Fitting {}...'.format(obs_path.name))
     try:
         obs = obs2d.HARPSFile2DScience(obs_path,
