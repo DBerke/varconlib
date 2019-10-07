@@ -49,13 +49,13 @@ class TestDate2Index(object):
             vcl.date2index(mock_date, date_list)
 
     def test_datetime_value(self, date_list):
-        mock_date = dt.datetime(year=2003, month=2, day=15,
+        mock_date = dt.datetime(year=2005, month=2, day=15,
                                 hour=0, minute=0, second=0)
-        assert vcl.date2index(mock_date, date_list) == 0
+        assert vcl.date2index(mock_date, date_list) == 2
 
     def test_date_value(self, date_list):
-        mock_date = dt.datetime(year=2003, month=2, day=15)
-        assert vcl.date2index(mock_date, date_list) == 0
+        mock_date = dt.date(year=2011, month=2, day=15)
+        assert vcl.date2index(mock_date, date_list) == 5
 
     def test_out_of_range_dates(self, date_list):
         mock_date = dt.datetime(year=2001, month=1, day=1,
@@ -68,7 +68,9 @@ class TestDate2Index(object):
     def test_indexing(self, date_list):
         mock_date = dt.datetime(year=2005, month=6, day=1,
                                 hour=0, minute=0, second=0)
-        assert vcl.date2index(mock_date, date_list) == 1
+        assert vcl.date2index(mock_date, date_list) == 2
+        mock_date = dt.date(year=2014, month=1, day=1)
+        assert vcl.date2index(mock_date, date_list) == 6
 
 
 class TestQCoefficientShifts(object):

@@ -123,13 +123,15 @@ def date2index(given_date, date_list):
     ----------
     date : `datetime.date` or `datetime.datetime`
         The given date to search for.
-    date_date : iterable collection of `datetime.datetime`s
+    date_list : iterable collection of `datetime.datetime`s
         A list of timestamps in chronological order.
 
     Returns
     -------
-    int
-        The index of the closest timestamp prior to the given date.
+    int or None
+        The index of the closest timestamp prior to the given `date`. If all
+        dates in the list are past or before the given `date` *None* will be
+        returned.
 
     """
 
@@ -149,7 +151,7 @@ def date2index(given_date, date_list):
 
     for i in range(0, len(date_list), 1):
         if date_to_find < date_list[i]:
-            return i - 1
+            return i
 
 
 def shift_wavelength(wavelength, shift_velocity):
