@@ -10,6 +10,7 @@ Created on Wed Mar 21 15:57:52 2018
 # various constraints.
 
 import argparse
+from copy import deepcopy
 import pickle
 import datetime
 from math import sqrt, isclose
@@ -25,6 +26,8 @@ import unyt as u
 
 import varconlib
 import varconlib.miscellaneous as vcl
+from varconlib.miscellaneous import wavelength2velocity as wave2vel
+from varconlib.obs2d import HARPSFile2DScience
 from varconlib.transition_line import Transition
 from varconlib.transition_pair import TransitionPair
 
@@ -44,6 +47,66 @@ elements = {"H": 1, "He": 2, "Li": 3, "Be": 4, "B": 5, "C": 6, "N": 7,
             "Hg": 80, "Tl": 81, "Pb": 82, "Bi": 83, "Po": 84, "At": 85,
             "Rn": 86, "Fr": 87, "Ra": 88, "Ac": 89, "Th": 90, "Pa": 91,
             "U": 92}
+
+
+def save_transitions_and_pairs(good_transitions, good_pairs):
+    """Save a pickled list of the final selection of transitions and pairs.
+
+    """
+
+    good_transitions.sort()
+
+    # This pickle file is the final selection of transitions from pairs
+    # that are considered "good" (low blending of both features).
+    print('Pickling final selection of transitions to file: {}.'.format(
+            final_selection_file))
+    with open(final_selection_file, 'wb') as f:
+        pickle.dump(good_transitions, f)
+
+    # This pickle file has the final selection of pairs with acceptable
+    # levels of blending.
+    print('Pickling collection of best pairs to {}'.format(
+            final_pair_selection_file))
+    with open(final_pair_selection_file, 'wb') as f:
+        pickle.dump(good_pairs, f)
+
+
+def format_transitions_and_pairs(good_transitions, good_pairs):
+    """Save a human-readable text file of the final selection of transitions
+    and pairs.
+
+    """
+
+    good_transitions.sort()
+
+    header1 = '#lambda(Å,vac) | wavenumber (cm^-1) | species | '
+    header2 = 'lower energy - upper energy | '
+    header3 = 'lower orbital configuration | lower J | '
+    header4 = 'upper orbital configuration | upper J | '
+    header5 = 'normalized depth | blendedness\n'
+
+    header = header1 + header2 + header3 + header4 + header5
+
+    # Write out a list of the final selection of transitions in human-
+    # readable format.
+    lines_to_write = [transition.formatInNistStyle() for transition in
+                      good_transitions]
+
+    print(f'Writing out list of transition at {nist_best_formatted_file}')
+    with open(nist_best_formatted_file, 'w') as f:
+        f.write(header)
+        for write_str in lines_to_write:
+            f.write(write_str)
+
+    # Write out a list of the final selection of pairs in a human-readable
+    # format.
+    print(f'Writing out list of pairs at {nist_formatted_pairs_file}')
+    with open(nist_formatted_pairs_file, 'w') as f:
+        f.write(header)
+        for pair in good_pairs:
+            f.write('\n')
+            for transition in pair:
+                f.write(transition.formatInNistStyle())
 
 
 def parse_spectral_mask_file(file):
@@ -209,22 +272,22 @@ def harmonize_lists(transitions1, transitions2, spectral_mask,
                 # match those as well using the energy tolerance.
                 if (line1.higherEnergy is not None) and\
                    (line2.higherEnergy is not None):
-                        energy_diff2 = abs(line2.higherEnergy -
-                                           line1.higherEnergy)
-                        if (energy_diff <= delta_energy) and\
-                           (energy_diff2 <= delta_energy) and\
-                           (wavelength_diff <= delta_wavelength):
-                            # Check if both lines have orbital momentum
-                            # information, and compare that too.
-                            if (line1.higherJ is not None) and\
-                               (line2.higherJ is not None) and\
-                               (line1.lowerJ is not None) and\
-                               (line2.lowerJ is not None):
-                                if (line1.lowerJ == line2.lowerJ) and\
-                                   (line1.higherJ == line2.higherJ):
-                                    matched_lines.append(line2)
-                            else:
+                    energy_diff2 = abs(line2.higherEnergy -
+                                       line1.higherEnergy)
+                    if (energy_diff <= delta_energy) and\
+                       (energy_diff2 <= delta_energy) and\
+                       (wavelength_diff <= delta_wavelength):
+                        # Check if both lines have orbital momentum
+                        # information, and compare that too.
+                        if (line1.higherJ is not None) and\
+                           (line2.higherJ is not None) and\
+                           (line1.lowerJ is not None) and\
+                           (line2.lowerJ is not None):
+                            if (line1.lowerJ == line2.lowerJ) and\
+                               (line1.higherJ == line2.higherJ):
                                 matched_lines.append(line2)
+                        else:
+                            matched_lines.append(line2)
 
                 else:
                     if (energy_diff <= delta_energy) and\
@@ -648,7 +711,12 @@ if __name__ == '__main__':
                         default=False,
                         help='List pairs based on blend status.')
 
-    parser.add_argument('--verbose', action='store_true',
+    parser.add_argument('--incorporate-position-information',
+                        action='store_true',
+                        default=False,
+                        help='Incorporate information about CCD position.')
+
+    parser.add_argument('-v', '--verbose', action='store_true',
                         default=False,
                         help='Print out more information during the process.')
 
@@ -1064,20 +1132,6 @@ if __name__ == '__main__':
                     if transition not in good_transitions:
                         good_transitions.append(transition)
 
-        # This pickle file has the final selection of pairs with acceptable
-        # levels of blending.
-        print('Pickling collection of best pairs to {}'.format(
-                final_pair_selection_file))
-        with open(final_pair_selection_file, 'wb') as f:
-            pickle.dump(good_pairs, f)
-
-        # This pickle file is the final selection of transitions from pairs
-        # that are considered "good" (low blending of both features).
-        print('Pickling final selection of transitions to file: {}.'.format(
-                final_selection_file))
-        with open(final_selection_file, 'wb') as f:
-            pickle.dump(good_transitions, f)
-
         # Check for "high-energy" pairs which are more difficult to calculate
         # q-coefficients for.
         high_energy_transitions = 0
@@ -1100,31 +1154,220 @@ if __name__ == '__main__':
         print('{} "high energy" pairs found, out of {}.'.format(
                 high_energy_pairs, len(good_pairs)))
 
-        header1 = '#lambda(Å,vac) | wavenumber (cm^-1) | species | '
-        header2 = 'lower energy - upper energy | '
-        header3 = 'lower orbital configuration | lower J | '
-        header4 = 'upper orbital configuration | upper J | '
-        header5 = 'normalized depth | blendedness\n'
+        # Save out pickled lists and formatted text files of the good pairs and
+        # transitions.
+        save_transitions_and_pairs(good_transitions, good_pairs)
+        format_transitions_and_pairs(good_transitions, good_pairs)
 
-        header = header1 + header2 + header3 + header4 + header5
+    if args.incorporate_position_information:
 
-        # Write out a list of the final selection of transitions in human-
-        # readable format.
-        lines_to_write = [transition.formatInNistStyle() for transition in
-                          good_transitions]
+        tqdm.write('Reading list of pairs from {}...'.format(
+                pickle_pairs_file))
+        with open(final_pair_selection_file, 'rb') as g:
+            pairs = pickle.load(g)
+        tqdm.write(f'{len(pairs)} pairs found.')
 
-        print(f'Writing out list of transition at {nist_best_formatted_file}')
-        with open(nist_best_formatted_file, 'w') as f:
-            f.write(header)
-            for write_str in lines_to_write:
-                f.write(write_str)
+        tqdm.write('Reading list of transitions from {}...'.format(
+                final_selection_file))
+        with open(final_selection_file, 'rb') as f:
+            transitions = pickle.load(f)
+        tqdm.write(f'{len(transitions)} transitions found.')
 
-        # Write out a list of the final selection of pairs in a human-readable
-        # format.
-        print(f'Writing out list of pairs at {nist_formatted_pairs_file}')
-        with open(nist_formatted_pairs_file, 'w') as f:
-            f.write(header)
-            for pair in good_pairs:
-                f.write('\n')
-                for transition in pair:
-                    f.write(transition.formatInNistStyle())
+        # An observation with a low relative velocity of only ~1.1 km/s. In
+        # theory it shouldn't matter and the wavelength scale should be
+        # corrected anyway, but it doesn't hurt to start with something close
+        # to zero relative radial velocity.
+        base_file = varconlib.data_dir /\
+            'HARPS.2005-05-02T03:49:08.735_e2ds_A.fits'
+
+        obs = HARPSFile2DScience(base_file)
+
+        wavelength_scale = obs.rvCorrectedArray
+
+        for transition in transitions:
+            transition.ordersFoundIn = []
+            # Remember these order numbers are from 0-71, not 1-72.
+            for num, order in enumerate(wavelength_scale):
+                if order[0] < transition.wavelength < order[-1]:
+                    transition.ordersFoundIn.append(num)
+                    left_dist = wave2vel(transition.wavelength, order[0])
+                    right_dist = wave2vel(transition.wavelength, order[-1])
+                    if not hasattr(transition, 'firstOrder'):
+                        transition.firstOrder = {}
+                        transition.firstOrder['left_dist'] = left_dist.to(
+                                                              u.km/u.s)
+                        transition.firstOrder['right_dist'] = right_dist.to(
+                                                               u.km/u.s)
+                    elif hasattr(transition, 'firstOrder'):
+                        transition.secondOrder = {}
+                        transition.secondOrder['left_dist'] = left_dist.to(
+                                                               u.km/u.s)
+                        transition.secondOrder['right_dist'] = right_dist.to(
+                                                                u.km/u.s)
+
+        transition_dict = {transition.label: transition for transition in
+                           transitions}
+
+        for pair in pairs:
+            for transition in pair:
+                transition.ordersFoundIn = transition_dict[
+                        transition.label].ordersFoundIn
+                transition.firstOrder = transition_dict[
+                        transition.label].firstOrder
+                if hasattr(transition_dict[transition.label], 'secondOrder'):
+                    transition.secondOrder = transition_dict[
+                            transition.label].secondOrder
+
+            orders1 = pair._higherEnergyTransition.ordersFoundIn
+            orders2 = pair._lowerEnergyTransition.ordersFoundIn
+
+            # Now, to check various cases. The simplest case is if both
+            # transitions are only found in a single order.
+            if (len(orders1) == 1) and (len(orders2) == 1):
+                # If both are found in the same order, great!
+                if orders1[0] == orders2[0]:
+                    pair.status = [True]
+                # If both are in separate orders, we have a genuine cross-order
+                # pair.
+                else:
+                    pair.status = [False]
+
+            # Now, assume the first transition is found in one order and the
+            # second in two:
+            elif (len(orders1) == 1) and (len(orders2) == 2):
+                if orders1[0] == orders2[0]:
+                    if not (pair._lowerEnergyTransition.
+                            firstOrder['right_dist'] > 100 * u.km / u.s):
+                        if args.verbose:
+                            print(f'{pair} too close on right side!')
+                        pair.status = [False, None]
+                    else:
+                        pair.status = [True, None]
+                else:
+                    print(f'Something went wrong with {pair}')
+                    print(orders1, orders2)
+
+            # Now, assume the second transition is found in one order and the
+            # first in two:
+            elif (len(orders1) == 2) and (len(orders2) == 1):
+                if orders1[1] == orders2[0]:
+                    if not (abs(pair._higherEnergyTransition.
+                                secondOrder['left_dist']) > 100 * u.km / u.s):
+                        if args.verbose:
+                            print(f'{pair} too close on left side!')
+                        pair.status = [None, False]
+                    else:
+                        pair.status = [None, True]
+                else:
+                    print(f'Something went wrong with {pair}')
+                    print(orders1, orders2)
+
+            # Now, to check if both transitions involved show up on two orders:
+            # (We can combine the checks from before.)
+            elif (len(orders1) == 2) and (len(orders2) == 2):
+                pair.status = [None, None]
+                if not (pair._lowerEnergyTransition.
+                        firstOrder['right_dist'] > 100 * u.km / u.s):
+                    if args.verbose:
+                        print(f'{pair} too close on right side!')
+                    pair.status[0] = False
+                else:
+                    pair.status[0] = True
+                if not (abs(pair._higherEnergyTransition.
+                            secondOrder['left_dist']) > 100 * u.km / u.s):
+                    if args.verbose:
+                        print(f'{pair} too close on left side!')
+                    pair.status[1] = False
+                else:
+                    pair.status[1] = True
+
+            else:
+                print(f'Situation not caught by previous checks! {pair}')
+
+        # Sort out truly cross-order pairs (should return 236 usable pairs).
+        pairs_to_consider = []
+        for pair in pairs:
+            if pair.status == [False]:
+                pass
+            elif pair.status == [False, None]:
+                pass
+            elif pair.status == [None, False]:
+                pass
+            else:
+                pairs_to_consider.append(pair)
+
+        tqdm.write('{} pairs that are not cross-order'.format(
+                   len(pairs_to_consider)))
+
+        # Sort out transitions appearing only in those pairs. In practice, only
+        # one, so should return 143 transitions.
+        if len(pairs_to_consider) != len(pairs):
+            transitions_to_consider = []
+            for transition in transitions:
+                for pair in pairs_to_consider:
+                    if transition in pair:
+                        transitions_to_consider.append(transition)
+                        break
+        else:
+            transitions_to_consider = transitions
+
+        tqdm.write('{} transitions not in cross-order pairs'.format(
+                   len(transitions_to_consider)))
+
+        for transition in transitions_to_consider:
+            pairs_found_in = []
+            orders_to_fit_in = set()
+            for pair in pairs_to_consider:
+                if transition in pair:
+                    pairs_found_in.append(pair)
+
+            # Now check each pair the transition is found in, and decide which
+            # order(s) it needs to be fitted in.
+            for pair in pairs_found_in:
+                orders1 = pair._higherEnergyTransition.ordersFoundIn
+                orders2 = pair._lowerEnergyTransition.ordersFoundIn
+                if pair.status == [True]:
+                    order_to_add = transition.ordersFoundIn[0]
+                    pair.ordersToMeasureIn = [order_to_add]
+                    orders_to_fit_in.add(order_to_add)
+
+                elif (pair.status == [True, None]) or\
+                     (pair.status == [True, False]):
+                    if len(orders1) == 2:
+                        order_to_add = orders1[0]
+                    else:
+                        order_to_add = orders2[0]
+                    pair.ordersToMeasureIn = [order_to_add]
+                    orders_to_fit_in.add(order_to_add)
+
+                elif (pair.status == [None, True]) or\
+                     (pair.status == [False, True]):
+                    if len(orders1) == 2:
+                        order_to_add = orders1[1]
+                    else:
+                        order_to_add = orders2[1]
+                    pair.ordersToMeasureIn = [order_to_add]
+                    orders_to_fit_in.add(order_to_add)
+
+                elif pair.status == [True, True]:
+                    # If both transitions appear in both orders, fit them both
+                    # in both orders, so we can measure the same pair on
+                    # multiple orders as a consistency check.
+                    pair.ordersToMeasureIn = deepcopy(orders1)
+                    orders_to_fit_in.add(orders1[0])
+                    orders_to_fit_in.add(orders1[1])
+
+            # Create a Transition attribute saying which orders to fit that
+            # transition in.
+            transition.ordersToFitIn = sorted(orders_to_fit_in)
+            if args.verbose:
+                print(transition, transition.ordersToFitIn)
+                for pair in pairs_found_in:
+                    print('   {}: {}, {}'.format(pair.label,
+                          pair.ordersToMeasureIn, pair.status))
+
+        # Save out and format the final selection to the usual locations.
+        save_transitions_and_pairs(transitions_to_consider,
+                                   pairs_to_consider)
+        format_transitions_and_pairs(transitions_to_consider,
+                                     pairs_to_consider)
