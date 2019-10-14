@@ -160,7 +160,8 @@ for pair in pairs:
         if orders1[0] == orders2[0]:
             if not (pair._lowerEnergyTransition.
                     first_order['right_dist'] > 100 * u.km / u.s):
-                print(f'{pair} too close on right side!')
+                if args.verbose:
+                    print(f'{pair} too close on right side!')
                 pair.status = [False, None]
             else:
                 pair.status = [True, None]
@@ -174,7 +175,8 @@ for pair in pairs:
         if orders1[1] == orders2[0]:
             if not (abs(pair._higherEnergyTransition.
                         second_order['left_dist']) > 100 * u.km / u.s):
-                print(f'{pair} too close on left side!')
+                if args.verbose:
+                    print(f'{pair} too close on left side!')
                 pair.status = [None, False]
             else:
                 pair.status = [None, True]
@@ -188,13 +190,15 @@ for pair in pairs:
         pair.status = [None, None]
         if not (pair._lowerEnergyTransition.
                 first_order['right_dist'] > 100 * u.km / u.s):
-            print(f'{pair} too close on right side!')
+            if args.verbose:
+                print(f'Double {pair} too close on right side!')
             pair.status[0] = False
         else:
             pair.status[0] = True
         if not (abs(pair._higherEnergyTransition.
                     second_order['left_dist']) > 100 * u.km / u.s):
-            print(f'{pair} too close on left side!')
+            if args.verbose:
+                print(f'Double {pair} too close on left side!')
             pair.status[1] = False
         else:
             pair.status[1] = True
@@ -206,35 +210,43 @@ for pair in pairs:
 if args.verbose:
     affected_transitions = []
     print(f'Out of {len(pairs)} pairs:')
-    print('Pairs entirely on one order:')
+    print('--- Pairs entirely on one order:')
     for pair in pairs:
         if pair.status == [True]:
             print(pair.label)
-    print('Pairs safe on first order:')
+    print('--- Pairs safe on first order:')
     for pair in pairs:
         if pair.status == [True, None]:
             print(pair.label)
-    print('Pairs safe on second order:')
+    print('--- Pairs safe on second order:')
     for pair in pairs:
         if pair.status == [None, True]:
             print(pair.label)
-    print('Pairs safe on both orders:')
+    print('--- Pairs safe on both orders:')
     for pair in pairs:
         if pair.status == [True, True]:
             print(pair.label)
-    print('Pairs safe on first of two orders:')
+    print('--- Pairs safe on first of two orders:')
     for pair in pairs:
         if pair.status == [True, False]:
             print(pair.label)
-    print('Pairs safe on second of two orders:')
+    print('--- Pairs safe on second of two orders:')
     for pair in pairs:
         if pair.status == [False, True]:
             print(pair.label)
-    print('Pairs not safe on either order:')
+    print('--- Pairs not safe on either order:')
     for pair in pairs:
         if pair.status == [False, False]:
             print(pair.label)
-    print('Truly cross-order pairs:')
+    print('--- Pairs cross-order due to being too close on first order:')
+    for pair in pairs:
+        if pair.status == [False, None]:
+            print(pair.label)
+    print('--- Pairs cross-order due to being too close on second order:')
+    for pair in pairs:
+        if pair.status == [None, False]:
+            print(pair.label)
+    print('--- Entirely cross-order pairs:')
     for pair in pairs:
         if pair.status == [False]:
             print(pair.label)
