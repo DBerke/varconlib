@@ -49,8 +49,24 @@ elements = {"H": 1, "He": 2, "Li": 3, "Be": 4, "B": 5, "C": 6, "N": 7,
             "U": 92}
 
 
-def save_transitions_and_pairs(good_transitions, good_pairs):
-    """Save a pickled list of the final selection of transitions and pairs.
+def save_and_format_selections(good_transitions, good_pairs):
+    """Save a pickled list of the final selection of transitions and pairs and
+    write out human-readable text files.
+
+    Multiple scripts use a list of transitions and pairs of transitions to
+    work; this function saves out such a list in the format used by other
+    scripts.
+
+    Parameters
+    ----------
+    good_transitions : list of `varconlib.transition_line.Transition` objects
+        The list of `Transition`s to be pickled as the "final selection", and
+        also written out to a human-readable file using a format based upon the
+        format used by NIST.
+    good_pairs : list of `varconlib.transition_pair.TransitionPair` objects
+        The list of `TransitionPair`s to be pickled as the "final selection",
+        and also written out to a human-readable file using a format based upon
+        the format used by NIST.
 
     """
 
@@ -69,15 +85,6 @@ def save_transitions_and_pairs(good_transitions, good_pairs):
             final_pair_selection_file))
     with open(final_pair_selection_file, 'wb') as f:
         pickle.dump(good_pairs, f)
-
-
-def format_transitions_and_pairs(good_transitions, good_pairs):
-    """Save a human-readable text file of the final selection of transitions
-    and pairs.
-
-    """
-
-    good_transitions.sort()
 
     header1 = '#lambda(Å,vac) | wavenumber (cm^-1) | species | '
     header2 = 'lower energy - upper energy | '
@@ -1156,8 +1163,7 @@ if __name__ == '__main__':
 
         # Save out pickled lists and formatted text files of the good pairs and
         # transitions.
-        save_transitions_and_pairs(good_transitions, good_pairs)
-        format_transitions_and_pairs(good_transitions, good_pairs)
+        save_and_format_selections(good_transitions, good_pairs)
 
     if args.incorporate_position_information:
 
@@ -1367,7 +1373,5 @@ if __name__ == '__main__':
                           pair.ordersToMeasureIn, pair.status))
 
         # Save out and format the final selection to the usual locations.
-        save_transitions_and_pairs(transitions_to_consider,
+        save_and_format_selections(transitions_to_consider,
                                    pairs_to_consider)
-        format_transitions_and_pairs(transitions_to_consider,
-                                     pairs_to_consider)
