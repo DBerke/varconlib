@@ -46,13 +46,6 @@ class TransitionPair(object):
             raise SameWavelengthsError(msg)
 
     @property
-    def wavelengthSeparation(self):
-        if not hasattr(self, '_wavelengthSeparation'):
-            self._wavelengthSeparation = self._lowerEnergyTransition.\
-                wavelength - self._higherEnergyTransition.wavelength
-        return self._wavelengthSeparation
-
-    @property
     def velocitySeparation(self):
         if not hasattr(self, '_velocitySeparation'):
             self._velocitySeparation = wave2vel(
