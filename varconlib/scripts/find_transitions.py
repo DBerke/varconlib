@@ -21,7 +21,6 @@ from adjustText import adjust_text
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
-import unyt as u
 
 import varconlib as vcl
 from varconlib.exceptions import (PositiveAmplitudeError,
@@ -32,8 +31,15 @@ import varconlib.obs2d as obs2d
 from varconlib.miscellaneous import (wavelength2index, blueCCDpath,
                                      redCCDpath)
 
-desc = 'Fit absorption features in spectra.'
-parser = argparse.ArgumentParser(description=desc)
+desc = ("Fit absorption features in spectra.\n\n"
+        "Example usage:\n"
+        "find_transitions.py /Volumes/External\ Storage/HARPS/HD117618/"
+        " HD117618 --pixel-positions --new-coefficients --integrated-gaussian"
+        " --create-plots")
+
+parser = argparse.ArgumentParser(description=desc,
+                                 formatter_class=argparse.
+                                 RawDescriptionHelpFormatter)
 parser.add_argument('object_dir', action='store',
                     help='Directory in which to find e2ds sub-folders.')
 parser.add_argument('object_name', action='store',
@@ -69,7 +75,7 @@ observations_dir = Path(args.object_dir)
 # Check that the path given exists:
 if not observations_dir.exists():
     print(observations_dir)
-    raise RuntimeError('The given directory does not exist.')
+    raise FileNotFoundError('The given directory could not be found.')
 
 # Check if the given path ends in data/reduced:
 if observations_dir.match('*/data/reduced'):
@@ -78,7 +84,7 @@ else:
     observations_dir = observations_dir / 'data/reduced'
     if not observations_dir.exists():
         print(observations_dir)
-        raise RuntimeError('The directory does not contain "data/reduced".')
+        raise FileNotFoundError('The directory could not be found')
 
 # Search through subdirectories for e2ds files:
 glob_search_string = str(observations_dir) + '/*/*e2ds_A.fits'
@@ -102,7 +108,7 @@ blue_spec_format = np.loadtxt(blueCCDpath, skiprows=1, delimiter=',',
 red_spec_format = np.loadtxt(redCCDpath, skiprows=1, delimiter=',',
                              usecols=(0, 5, 6))
 
-# Read the pickled list of transitions
+# Read the pickled list of the final selection of transitions:
 with open(vcl.final_selection_file, 'rb') as f:
     tqdm.write('Unpickling list of transitions...')
     transitions_list = pickle.load(f)
@@ -186,32 +192,36 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
 
     fits_list = []
     for transition in tqdm(transitions_list):
-        tqdm.write('Attempting fit of {}'.format(transition))
-        plot_closeup = closeup_dir / '{}_{}_close.png'.format(
-                obs_path.stem, transition.label)
-        plot_context = context_dir / '{}_{}_context.png'.format(
-                obs_path.stem, transition.label)
-        try:
-            fit = GaussianFit(transition, obs, verbose=args.verbose,
-                              integrated=args.integrated_gaussian,
-                              close_up_plot_path=plot_closeup,
-                              context_plot_path=plot_context)
-        except (RuntimeError, PositiveAmplitudeError):
-            tqdm.write('Warning! Unable to fit {}!'.format(transition))
-            continue
+        for order_num in transition.ordersToFitIn:
+            tqdm.write('Attempting fit of {} in order {}'.format(transition,
+                       order_num))
+            plot_closeup = closeup_dir / '{}_{}_{}_close.png'.format(
+                    obs_path.stem, transition.label, order_num)
+            plot_context = context_dir / '{}_{}_{}_context.png'.format(
+                    obs_path.stem, transition.label, order_num)
+            try:
+                fit = GaussianFit(transition, obs, order_num,
+                                  verbose=args.verbose,
+                                  integrated=args.integrated_gaussian,
+                                  close_up_plot_path=plot_closeup,
+                                  context_plot_path=plot_context)
+            except (RuntimeError, PositiveAmplitudeError):
+                tqdm.write('Warning! Unable to fit {}!'.format(transition))
+                continue
 
-        # Assuming the fit didn't fail, continue on:
-        fits_list.append(fit)
-        if args.create_plots:
-            fit.plotFit(plot_closeup, plot_context)
-            y = obs.findWavelength(fit.correctedWavelength,
-                                   obs.barycentricArray,
-                                   mid_most=True, verbose=False)
-            x = wavelength2index(fit.correctedWavelength,
-                                 obs.barycentricArray[y])
-            transitions_y.append(y + 1)
-            transitions_x.append(x)
-            labels.append(transition.label)
+            # Assuming the fit didn't fail, continue on:
+            fits_list.append(fit)
+            if args.create_plots:
+                fit.plotFit(plot_closeup, plot_context)
+#                y = obs.findWavelength(fit.correctedWavelength,
+#                                       obs.barycentricArray,
+#                                       mid_most=True, verbose=False)
+#                x = wavelength2index(fit.correctedWavelength,
+#                                     obs.barycentricArray[y])
+                transitions_y.append(fit.order + 1)
+                transitions_x.append(wavelength2index(fit.correctedWavelength,
+                                     obs.barycentricArray[order_num]))
+                labels.append(fit.label)
 
     # Pickle the list of fits, then compress them to save space before writing
     # them out.
@@ -243,34 +253,14 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
 
         ax.axhline(46.5, linestyle='-.', color='Peru', alpha=0.6)
 
-    #    for row in blue_spec_format:
-    #        order = order_numbers.inverse[row[0]]
-    #        wls = [shift_wavelength(conversions.air2vacESO(row[i] * u.nm),
-    #                                obs.radialVelocity)
-    #               for i in (1, 2)]
-    #        for wl in wls:
-    #            ax.plot(wavelength2index(wl, obs.wavelengthArray[order-1]),
-    #                    order, marker='|', color='Blue')
-    #            ax.plot(wavelength2index(wl, obs.barycentricArray[order-1]),
-    #                    order, marker='|', color='SlateBlue')
-    #    for row in red_spec_format:
-    #        order = order_numbers.inverse[row[0]]
-    #        wls = (shift_wavelength(conversions.air2vacESO(row[i] * u.nm),
-    #                                obs.radialVelocity)
-    #               for i in (1, 2))
-    #        for wl in wls:
-    #            ax.plot(wavelength2index(wl, obs.wavelengthArray[order-1]),
-    #                    order, marker='|', color='Red')
-    #            ax.plot(wavelength2index(wl, obs.barycentricArray[order-1]),
-    #                    order, marker='|', color='FireBrick')
-
         ax.plot(transitions_x, transitions_y, marker='+', color='Sienna',
                 linestyle='')
         texts = [plt.text(transitions_x[i], transitions_y[i], labels[i],
                           ha='center', va='center')
                  for i in range(len(labels))]
         tqdm.write('Adjusting label text positions...')
-        adjust_text(texts, arrowprops=dict(arrowstyle='-', color='OliveDrab'))
+        adjust_text(texts, arrowprops=dict(arrowstyle='-', color='OliveDrab'),
+                    lim=1000, fontsize=9)
 
         ccd_position_filename = ccd_positions_dir /\
             '{}_CCD_positions.png'.format(obs_path.stem)
@@ -289,8 +279,7 @@ if not transition_plots_dir.exists():
 tqdm.write('Linking fit plots to cross-observation directories.')
 for transition in tqdm(transitions_list):
 
-    wavelength_str = '{:.3f}'.format(transition.wavelength.to(u.angstrom)
-                                     .value)
+    wavelength_str = transition.label
     transition_dir = transition_plots_dir / wavelength_str
     close_up_dir = transition_dir / 'close_up'
     context_dir = transition_dir / 'context'
@@ -303,10 +292,8 @@ for transition in tqdm(transitions_list):
     for plot_type, directory in zip(('close_up', 'context'),
                                     (close_up_dir, context_dir)):
 
-        search_str = str(data_dir) +\
-                      '/HARPS*/plots_{}/{}/*{}*.png'.format(suffix,
-                                                            plot_type,
-                                                            wavelength_str)
+        search_str = str(data_dir) + '/HARPS*/plots_{}/{}/*{}*.png'.format(
+                suffix, plot_type, wavelength_str)
 
         files_to_link = [Path(path) for path in glob(search_str)]
         for file_to_link in files_to_link:
