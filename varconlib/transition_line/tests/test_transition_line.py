@@ -21,51 +21,51 @@ from varconlib.transition_line import Transition
 
 class TestTransitionCreation(object):
 
-    def test_no_units(self):
+    def testNoUnits(self):
         with pytest.raises(AttributeError):
             Transition(500, 26, 1)
 
-    def test_zero_atomic_number(self):
+    def testZeroAtomicNumber(self):
         with pytest.raises(AtomicNumberError):
             Transition(500 * u.nm, 0, 1)
 
-    def test_negative_atomic_number(self):
+    def testNegativeAtomicNumber(self):
         with pytest.raises(AtomicNumberError):
             Transition(500 * u.nm, -1, 1)
 
-    def test_zero_ionization_state(self):
+    def testZeroIonizationState(self):
         with pytest.raises(IonizationStateError):
             Transition(500 * u.nm, 26, 0)
 
-    def test_negative_ionization_state(self):
+    def testNegativeIonizationState(self):
         with pytest.raises(IonizationStateError):
             Transition(500 * u.nm, 26, -1)
 
-    def test_unsupported_roman_numeral(self):
+    def testUnsupportedRomanNumeral(self):
         with pytest.raises(IonizationStateError):
             Transition(500 * u.nm, 26, 'XL')
 
-    def test_atomic_symbol_string(self):
+    def testAtomicSymbolString(self):
         a = Transition(500 * u.nm, 'fe', 1)
         assert a.atomicNumber == 26
 
-    def test_atomic_number_string(self):
+    def testAtomicNumberString(self):
         a = Transition(500 * u.nm, '77', 1)
         assert a.atomicSymbol == 'Ir'
 
-    def test_atomic_number_int(self):
+    def testAtomicNumberInt(self):
         a = Transition(500 * u.nm, 54, 1)
         assert a.atomicSymbol == 'Xe'
 
-    def test_wrong_atomic_symbol_too_long(self):
+    def testWrongAtomicSymbolTooLong(self):
         with pytest.raises(BadElementInputError):
             Transition(500 * u.nm, 'Ah!', 1)  # Element of surprise
 
-    def test_nonexistent_atomic_symbol(self):
+    def testNonexistentAtomicSymbol(self):
         with pytest.raises(BadElementInputError):
             Transition(500 * u.nm, 'X', 1)
 
-    def test_nonsensical_atomic_symbol(self):
+    def testNonsensicalAtomicSymbol(self):
         with pytest.raises(BadElementInputError):
             Transition(500 * u.nm, True, 1)
         with pytest.raises(BadElementInputError):
@@ -75,32 +75,32 @@ class TestTransitionCreation(object):
         with pytest.raises(BadElementInputError):
             Transition(500 * u.nm, [False], 1)
 
-    def test_atomic_species(self):
+    def testAtomicSpecies(self):
         a = Transition(500 * u.nm, 26, 1)
         assert a.atomicSpecies == 'Fe I'
         b = Transition(500 * u.nm, 31, 2)
         assert b.atomicSpecies == 'Ga II'
 
-    def test_string_roman_numeral_ionization_state(self):
+    def testStringRomanNumeralIonizationState(self):
         a = Transition(500 * u.nm, 26, 'I')
         assert a.ionizationState == 1
         assert a.atomicSpecies == 'Fe I'
         assert a.atomicSymbol == 'Fe'
 
-    def test_wavenumber_assigment(self):
+    def testWavenumberAssigment(self):
         a = Transition(500 * u.nm, 26, 1)
         assert a.wavenumber.value == pytest.approx(20000)
         a.wavenumber = 20000 * u.cm ** -1
         assert a.wavelength.value == pytest.approx(5e-5)
 
-    def test_wavenumber_conversion(self):
+    def testWavenumberConversion(self):
         a = Transition(500 * u.nm, 26, 1)
         a.wavenumber = 2500000 * 1 / u.m
         assert a.wavelength.value == pytest.approx(4e-5)
         assert a.wavelength.units == u.cm
         assert a.wavenumber.units == u.cm ** -1
 
-    def test_fractional_J_conversion(self):
+    def testFractionalJConversion(self):
         a = Transition(500 * u.nm, 26, 1)
         a.lowerJ = 1.5
         assert a.lowerJ == Fraction(3, 2)
@@ -114,7 +114,7 @@ class TestTransitionCreation(object):
 
 class TestTransitionComparison(object):
 
-    def test_wavelength_sorting(self):
+    def testWavelengthSorting(self):
         a = Transition(500 * u.nm, 26, 1)
         b = Transition(501 * u.nm, 26, 1)
         assert a < b
@@ -122,7 +122,7 @@ class TestTransitionComparison(object):
         assert b > a
         assert not b < a
 
-    def test_equality(self):
+    def testEquality(self):
         a = Transition(500.0 * u.nm, 26, 1)
         b = Transition(500.0 * u.nm, 26, 1)
 
@@ -181,25 +181,25 @@ class TestTransitionRepresentation(object):
         a.normalizedDepth = 0.234
         return a
 
-    def test_repr(self, mock_transition):
+    def testRepr(self, mock_transition):
 
         assert repr(mock_transition) == 'Transition(5580.345 Å, 54, 1)'
 
-    def test_str(self, mock_transition):
+    def testStr(self, mock_transition):
 
         assert str(mock_transition) ==\
-               '5580.345 Å Xe I (17.0120 1/cm, 12051.823 1/cm)'
+               '5580.345 Å Xe I'
 
         mock_transition.lowerEnergy = None
         mock_transition.higherEnergy = None
 
         assert str(mock_transition) == '5580.345 Å Xe I'
 
-    def test_label(self, mock_transition):
+    def testLabel(self, mock_transition):
 
         assert mock_transition.label == '5580.345Xe1'
 
-    def test_nist_formatting(self, mock_transition):
+    def testNistFormatting(self, mock_transition):
         expected_string1 = '5580.345 | 17920.039 | Xe I  ' +\
                            '|    17.012 - 12051.823 | (4F)4s a5F ' +\
                            '                         | 3/2  ' +\
