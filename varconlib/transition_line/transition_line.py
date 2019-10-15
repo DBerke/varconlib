@@ -212,16 +212,8 @@ class Transition(object):
                                            self.ionizationState)
 
     def __str__(self):
-        if (self.lowerEnergy is not None) and\
-          (self.higherEnergy is not None):
-            return "{:.3f} {} ({:.4f}, {:.3f})".format(self.wavelength.
-                                                       to(u.angstrom),
-                                                       self.atomicSpecies,
-                                                       self.lowerEnergy,
-                                                       self.higherEnergy)
-        else:
-            return "{:.3f} {}".format(self.wavelength.to(u.angstrom),
-                                      self.atomicSpecies)
+        return "{:.3f} {}".format(self.wavelength.to(u.angstrom),
+                                  self.atomicSpecies)
 
     def __lt__(self, other):
         if self.wavelength.value < other.wavelength.value:
