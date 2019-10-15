@@ -34,7 +34,7 @@ class GaussianFit(object):
 
     """
 
-    def __init__(self, transition, observation, radial_velocity=None,
+    def __init__(self, transition, observation, order, radial_velocity=None,
                  close_up_plot_path=None, context_plot_path=None,
                  integrated=True, verbose=False):
         """Construct a fit to an absorption feature using a Gaussian or
@@ -46,6 +46,9 @@ class GaussianFit(object):
             A `Transition` object representing the absorption feature to fit.
         observation : `obs2d.HARPSFile2DScience` object
             A `HARPSFile2DScience` object to find the absorption feature in.
+        order : int
+            The order in the e2ds file to fit the transition in. Zero-indexed,
+            so ranging from [0-71].
 
         Optional
         --------
@@ -77,6 +80,8 @@ class GaussianFit(object):
         self.BERV = observation.BERV
         self.airmass = observation.airmass
         self.exptime = observation.exptime
+
+        self.order = int(order)
 
         # Store the plot paths.
         self.close_up_plot_path = close_up_plot_path
@@ -111,15 +116,6 @@ class GaussianFit(object):
                        format(radial_velocity,
                               nominal_wavelength.to(u.angstrom),
                               self.correctedWavelength.to(u.angstrom)))
-        # Find which order of the echelle spectrum the wavelength falls in.
-        self.order = observation.findWavelength(self.correctedWavelength,
-                                                observation.barycentricArray,
-                                                mid_most=True)
-        if verbose:
-            tqdm.write('Wavelength found in order {}'.format(self.order))
-
-        if self.order is None:
-            raise WavelengthNotFoundInArrayError('Wavelength not found!')
 
         self.baryArray = observation.barycentricArray[self.order]
         self.fluxArray = observation.photonFluxArray[self.order]
@@ -284,6 +280,10 @@ class GaussianFit(object):
     def chiSquaredNu(self):
         return self.chiSquared / 3  # ν = 7 (pixels) - 4 (params)
 
+    @property
+    def label(self):
+        return self.transition.label + '_' + str(self.order)
+
     def getFitInformation(self):
         """Return a list of information about the fit which can be written as
         a CSV file.
@@ -367,29 +367,31 @@ class GaussianFit(object):
             context_plot_path = self.context_plot_path
 
         # Set up the figure.
-        fig = plt.figure(figsize=(7, 5), dpi=100)
-#        fig = plt.figure(figsize=(9, 9), dpi=100, tight_layout=True)
-#        ax = fig.add_subplot(1, 1, 1)
-        gs = GridSpec(nrows=2, ncols=1, height_ratios=[5, 1], hspace=0)
+        fig = plt.figure(figsize=(7, 5), dpi=100, tight_layout=True)
+        gs = GridSpec(nrows=2, ncols=1, height_ratios=[4, 1], hspace=0)
         ax1 = fig.add_subplot(gs[0])
         ax2 = fig.add_subplot(gs[1], sharex=ax1)
 
         ax1.tick_params(axis='x', direction='in')
         plt.setp(ax1.get_xticklabels(), visible=False)
-        ax2.set_ybound(lower=-1.2, upper=1.2)
+        ax2.set_ylim(bottom=-3, top=3)
+
+        ax2.yaxis.set_major_locator(ticker.FixedLocator([-2, -1, 0, 1, 2]))
 
         for pixel in edge_pixels:
             ax1.axvline(x=self.baryArray[pixel-1], ymin=0, ymax=0.2,
                         color='LimeGreen',
                         linestyle='--')
 
-        ax1.set_xlabel(r'Wavelength ($\AA$)')
         ax1.set_ylabel('Flux (photo-electrons)')
+        ax2.set_xlabel('Wavelength ($\\AA$)')
+        ax2.set_ylabel('Residuals\n($\\sigma$)')
+
         ax1.xaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.2f}'))
         ax1.set_xlim(left=self.baryArray[self.lowContinuumIndex],
                      right=self.baryArray[self.highContinuumIndex - 1])
         # Set y-limits so a fit doesn't balloon the plot scale out.
-        ax1.set_ylim(top=self.continuumLevel * 1.2,
+        ax1.set_ylim(top=self.continuumLevel * 1.25,
                      bottom=self.fluxMinimum * 0.93)
 
         # Plot the expected and measured wavelengths.
@@ -397,6 +399,7 @@ class GaussianFit(object):
                     color='LightSteelBlue', linestyle=':', alpha=0.8,
                     label=r'RV-corrected $\lambda=${:.3f}'.format(
                            self.correctedWavelength.to(u.angstrom)))
+
         # Don't plot the mean if this is a failed fit.
         if hasattr(self, 'mean') and hasattr(self, 'velocityOffset'):
             ax1.axvline(self.mean.to(u.angstrom),
@@ -405,6 +408,7 @@ class GaussianFit(object):
                         format(self.mean.to(u.angstrom),
                                self.velocityOffset.to(u.m/u.s)),
                         linestyle='-')
+
         # Plot the actual data.
         ax1.errorbar(self.baryArray[self.lowContinuumIndex:
                                     self.highContinuumIndex],
@@ -430,19 +434,23 @@ class GaussianFit(object):
                      label=r'Fit ($\chi^2_\nu=${:.3f}, $\sigma=${:.4f})'.
                      format(self.chiSquaredNu, self.sigma))
 
-        ax1.legend(loc='upper center', framealpha=0.6, fontsize='medium')
+        ax1.legend(loc='upper center', framealpha=0.6, fontsize=9,
+                   ncol=2, title=self.label, title_fontsize=10,
+                   labelspacing=0.4)
+
+        # Add in some guidelines.
+        ax2.axhline(color='Gray', linestyle='-')
+        ax2.axhline(y=1, color='SkyBlue', linestyle='--')
+        ax2.axhline(y=-1, color='SkyBlue', linestyle='--')
+        ax2.axhline(y=2, color='LightSteelBlue', linestyle=':')
+        ax2.axhline(y=-2, color='LightSteelBlue', linestyle=':')
 
         # Plot the residuals on the lower axis.
         residuals = (self.fluxes - gaussian(self.wavelengths.value,
                                             *self.popt)) / self.errors
 
-        ax2.plot(self.wavelengths,
-                 residuals, color='Gray')
-
-        # Add in some guidelines.
-        ax2.axhline(color='LightGray', linestyle='--')
-        ax2.axhline(y=1, color='LightBlue', linestyle=':')
-        ax2.axhline(y=-1, color='LightBlue', linestyle=':')
+        ax2.plot(self.wavelengths, residuals, color='Navy',
+                 linestyle=':', marker='+', linewidth=1.5, markersize=10)
 
         # Save the resultant plot.
         fig.savefig(str(context_plot_path))
