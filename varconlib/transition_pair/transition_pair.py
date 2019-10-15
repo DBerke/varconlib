@@ -104,16 +104,16 @@ class TransitionPair(object):
             return False
 
     def __gt__(self, other):
-        """Sort first by lower energy, then by higher energy.
+        """Sort first by higher energy, then by lower energy.
 
         """
 
         if self == other:
             return False
-        elif self._lowerEnergyTransition > other._lowerEnergyTransition:
+        elif self._higherEnergyTransition > other._higherEnergyTransition:
             return True
-        elif self._lowerEnergyTransition == other._lowerEnergyTransition:
-            if self._higherEnergyTransition > other._higherEnergyTransition:
+        elif self._higherEnergyTransition == other._higherEnergyTransition:
+            if self._lowerEnergyTransition > other._lowerEnergyTransition:
                 return True
             else:
                 return False
@@ -121,16 +121,16 @@ class TransitionPair(object):
             return False
 
     def __lt__(self, other):
-        """Sort first by lower energy, then by higher energy.
+        """Sort first by higher energy, then by lower energy.
 
         """
 
         if self == other:
             return False
-        elif self._lowerEnergyTransition < other._lowerEnergyTransition:
+        elif self._higherEnergyTransition < other._higherEnergyTransition:
             return True
-        elif self._lowerEnergyTransition == other._lowerEnergyTransition:
-            if self._higherEnergyTransition < other._higherEnergyTransition:
+        elif self._higherEnergyTransition == other._higherEnergyTransition:
+            if self._lowerEnergyTransition < other._lowerEnergyTransition:
                 return True
             else:
                 return False
