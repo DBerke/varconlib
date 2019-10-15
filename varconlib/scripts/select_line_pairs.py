@@ -77,14 +77,14 @@ def save_and_format_selections(good_transitions, good_pairs):
     print('Pickling final selection of transitions to file: {}.'.format(
             final_selection_file))
     with open(final_selection_file, 'wb') as f:
-        pickle.dump(good_transitions, f)
+        pickle.dump(good_transitions, f, protocol=4)
 
     # This pickle file has the final selection of pairs with acceptable
     # levels of blending.
     print('Pickling collection of best pairs to {}'.format(
             final_pair_selection_file))
     with open(final_pair_selection_file, 'wb') as f:
-        pickle.dump(good_pairs, f)
+        pickle.dump(good_pairs, f, protocol=4)
 
     header1 = '#lambda(Å,vac) | wavenumber (cm^-1) | species | '
     header2 = 'lower energy - upper energy | '
@@ -665,21 +665,22 @@ def query_nist(transition_list, species_set):
 if __name__ == '__main__':
     # ----- Main routine of code -----
 
-    desc = """Create a selection of transitions and transition pairs to use.
+    desc = ("Create a selection of transitions and transition pairs to use.\n"
+            "To generate:\n"
+            "1. select_line_pairs.py --match-lines -dw 3000 -de 100000\n"
+            "2. select_line_pairs.py --pair-lines\n"
+            "3. select_line_pairs.py --query-nist\n"
+            "4. select_line_pairs.py --match-nist -dw 3300 -de 100000\n"
+            "5. select_line_pairs.py --format-lines\n"
+            "5.5 manually edit 'NIST_formatted_transitions.txt' to"
+            " 'NIST_formatted_transtions_with_blends.txt'\n"
+            "6. select_line_pairs.py --incorporate-blendedness\n"
+            "7. select_line_pairs.py --rate-pairs\n"
+            "8. select_line_pairs.py --incorporate-position-information")
 
-    To generate:\n
-    1. select_line_pairs.py --match-lines -dw 3000 -de 100000\n
-    2. select_line_pairs.py --pair-lines\n
-    3. select_line_pairs.py --query-nist\n
-    4. select_line_pairs.py --match-nist -dw 3300 -de 100000\n
-    5. select_line_pairs.py --format-lines\n
-    5.5 manually edit 'NIST_formatted_transitions.txt' to
-        'NIST_formatted_transtions_with_blends.txt'
-    6. select_line_pairs.py --incorporate-blendedness\n
-    7. select_line_pairs.py --rate-pairs\n
-    """
-
-    parser = argparse.ArgumentParser(description=desc)
+    parser = argparse.ArgumentParser(description=desc,
+                                     formatter_class=argparse.
+                                     RawDescriptionHelpFormatter)
     parser.add_argument('--match-lines', action='store_true',
                         default=False,
                         help='Flag to match transitions between lists.')
@@ -878,9 +879,9 @@ if __name__ == '__main__':
                 datetime.date.today().isoformat())
         tqdm.write('Saving transitions to {}'.format(pickle_file))
         with open(pickle_file, 'wb') as f:
-            pickle.dump(transitions, f)
+            pickle.dump(transitions, f, protocol=4)
         with open(pickle_file_backup, 'wb') as f:
-            pickle.dump(transitions, f)
+            pickle.dump(transitions, f, protocol=4)
 
     if args.pair_lines:
         # Parameters for widest selection of line pairs:
@@ -902,7 +903,7 @@ if __name__ == '__main__':
         print(f'Found {len(pairs)} pairs.')
         print('Pickling pairs to file.')
         with open(pickle_pairs_file, 'wb') as f:
-            pickle.dump(pairs, f)
+            pickle.dump(pairs, f, protocol=4)
 
         transition_list = []
         for pair in pairs:
@@ -916,7 +917,7 @@ if __name__ == '__main__':
         # Pickle the list of unique transitions in the returned pairs.
         print('Pickling unique transitions to file.')
         with open(pickle_pairs_transitions_file, 'wb') as f:
-            pickle.dump(transition_list, f)
+            pickle.dump(transition_list, f, protocol=4)
 
     if args.query_nist:
 
@@ -931,7 +932,7 @@ if __name__ == '__main__':
         nist_transition_dict = query_nist(transitions, species_set)
         tqdm.write('Pickling NIST query...')
         with open(nist_pickle_file, 'wb') as f:
-            pickle.dump(nist_transition_dict, f)
+            pickle.dump(nist_transition_dict, f, protocol=4)
 
         print(sorted(nist_transition_dict.keys()))
 
@@ -945,7 +946,7 @@ if __name__ == '__main__':
             nist_transition_dict = query_nist(transition_list, species_set)
             tqdm.write('Pickling NIST query...')
             with open(nist_pickle_file, 'wb') as f:
-                pickle.dump(nist_transition_dict, f)
+                pickle.dump(nist_transition_dict, f, protocol=4)
 
         tqdm.write('Unpickling transition lines...')
         with open(pickle_pairs_transitions_file, 'rb') as f:
@@ -1001,7 +1002,7 @@ if __name__ == '__main__':
 
         tqdm.write('Pickling NIST matches...')
         with open(nist_matched_pickle_file, 'wb') as f:
-            pickle.dump(master_match_dict, f)
+            pickle.dump(master_match_dict, f, protocol=4)
 
     if args.format_lines:
         with open(nist_matched_pickle_file, 'rb') as f:
@@ -1098,7 +1099,7 @@ if __name__ == '__main__':
         print(f'Found {len(pairs)} pairs.')
         print('Pickling pairs to file.')
         with open(pickle_pairs_file, 'wb') as f:
-            pickle.dump(pairs, f)
+            pickle.dump(pairs, f, protocol=4)
 
     if args.rate_pairs:
 
@@ -1127,7 +1128,7 @@ if __name__ == '__main__':
         # including ones with bad blending.
         print('Pickling pairs with blend information to file.')
         with open(pickle_pairs_file, 'wb') as f:
-            pickle.dump(pairs, f)
+            pickle.dump(pairs, f, protocol=4)
 
         good_transitions = []
         good_pairs = []
@@ -1371,6 +1372,15 @@ if __name__ == '__main__':
                 for pair in pairs_found_in:
                     print('   {}: {}, {}'.format(pair.label,
                           pair.ordersToMeasureIn, pair.status))
+
+        if args.verbose:
+            double_pairs = []
+            for pair in pairs_to_consider:
+                if len(pair.ordersToMeasureIn) == 2:
+                    double_pairs.append(pair)
+            print(f'Found {len(double_pairs)} pairs in two orders:')
+            for pair in double_pairs:
+                print(pair, pair.ordersToMeasureIn)
 
         # Save out and format the final selection to the usual locations.
         save_and_format_selections(transitions_to_consider,
