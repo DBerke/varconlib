@@ -1193,24 +1193,26 @@ if __name__ == '__main__':
 
         for transition in transitions:
             transition.ordersFoundIn = []
+            transition.ordersToFitIn = []
             # Remember these order numbers are from 0-71, not 1-72.
             for num, order in enumerate(wavelength_scale):
                 if order[0] < transition.wavelength < order[-1]:
                     transition.ordersFoundIn.append(num)
-                    left_dist = wave2vel(transition.wavelength, order[0])
-                    right_dist = wave2vel(transition.wavelength, order[-1])
+                    left_dist = wave2vel(transition.wavelength,
+                                         order[0]).to(u.km/u.s)
+                    right_dist = wave2vel(transition.wavelength,
+                                          order[-1]).to(u.km/u.s)
+                    if (abs(left_dist.value) > 100) and\
+                       (abs(right_dist.value) > 100):
+                        transition.ordersToFitIn.append(num)
                     if not hasattr(transition, 'firstOrder'):
                         transition.firstOrder = {}
-                        transition.firstOrder['left_dist'] = left_dist.to(
-                                                              u.km/u.s)
-                        transition.firstOrder['right_dist'] = right_dist.to(
-                                                               u.km/u.s)
+                        transition.firstOrder['left_dist'] = left_dist
+                        transition.firstOrder['right_dist'] = right_dist
                     elif hasattr(transition, 'firstOrder'):
                         transition.secondOrder = {}
-                        transition.secondOrder['left_dist'] = left_dist.to(
-                                                               u.km/u.s)
-                        transition.secondOrder['right_dist'] = right_dist.to(
-                                                                u.km/u.s)
+                        transition.secondOrder['left_dist'] = left_dist
+                        transition.secondOrder['right_dist'] = right_dist
 
         transition_dict = {transition.label: transition for transition in
                            transitions}
@@ -1323,20 +1325,17 @@ if __name__ == '__main__':
 
         for transition in transitions_to_consider:
             pairs_found_in = []
-            orders_to_fit_in = set()
             for pair in pairs_to_consider:
                 if transition in pair:
                     pairs_found_in.append(pair)
 
             # Now check each pair the transition is found in, and decide which
-            # order(s) it needs to be fitted in.
+            # order the pair needs to be fitted in.
             for pair in pairs_found_in:
                 orders1 = pair._higherEnergyTransition.ordersFoundIn
                 orders2 = pair._lowerEnergyTransition.ordersFoundIn
                 if pair.status == [True]:
-                    order_to_add = transition.ordersFoundIn[0]
-                    pair.ordersToMeasureIn = [order_to_add]
-                    orders_to_fit_in.add(order_to_add)
+                    pair.ordersToMeasureIn = [transition.ordersFoundIn[0]]
 
                 elif (pair.status == [True, None]) or\
                      (pair.status == [True, False]):
@@ -1345,7 +1344,6 @@ if __name__ == '__main__':
                     else:
                         order_to_add = orders2[0]
                     pair.ordersToMeasureIn = [order_to_add]
-                    orders_to_fit_in.add(order_to_add)
 
                 elif (pair.status == [None, True]) or\
                      (pair.status == [False, True]):
@@ -1354,19 +1352,13 @@ if __name__ == '__main__':
                     else:
                         order_to_add = orders2[1]
                     pair.ordersToMeasureIn = [order_to_add]
-                    orders_to_fit_in.add(order_to_add)
 
                 elif pair.status == [True, True]:
-                    # If both transitions appear in both orders, fit them both
-                    # in both orders, so we can measure the same pair on
-                    # multiple orders as a consistency check.
+                    # If both transitions appear in both orders, fit the pair
+                    # in both orders, so we can measure it as a consistency
+                    # check.
                     pair.ordersToMeasureIn = deepcopy(orders1)
-                    orders_to_fit_in.add(orders1[0])
-                    orders_to_fit_in.add(orders1[1])
 
-            # Create a Transition attribute saying which orders to fit that
-            # transition in.
-            transition.ordersToFitIn = sorted(orders_to_fit_in)
             if args.verbose:
                 print(transition, transition.ordersToFitIn)
                 for pair in pairs_found_in:
