@@ -66,6 +66,7 @@ class Star(object):
             self.initializeFromDir(Path(star_dir), suffix,
                                    pairs_list=pairs_list,
                                    transitions_list=transitions_list)
+            self._getPairSeparations()
 
     def initializeFromDir(self, star_dir, suffix, transitions_list=None,
                           pairs_list=None):
@@ -151,7 +152,6 @@ class Star(object):
         self.tMeansArray = np.array(means_list, ndmin=2)
         self.tErrorsArray = np.array(errors_list, ndmin=2)
 
-        # Now generate the pair separation values:
         pair_labels = []
         for pair in self.pairs_list:
             for order_num in pair.ordersToMeasureIn:
@@ -160,13 +160,22 @@ class Star(object):
         self._pair_label_dict = {pair_label: num for num, pair_label in
                                  enumerate(pair_labels)}
 
+    def _getPairSeparations(self):
+        """Create attributes containing pair separations and associated errors.
+
+        This method creates attributes called pSeparationsArray and
+        pSepErrorsArray containing lists of pair separations and associated
+        errors in each row corresponding to an observation of this star.
+        """
+
         # Set up the arrays for pair separations and errors
         self.pSeparationsArray = np.empty([len(self._obs_date_dict),
                                            len(self._pair_label_dict)])
         self.pSepErrorsArray = np.empty([len(self._obs_date_dict),
                                          len(self._pair_label_dict)])
 
-        for pair, pair_label in zip(self.pairs_list, pair_labels):
+        for pair, pair_label in zip(self.pairs_list,
+                                    self._pair_label_dict.keys()):
             for order_num in pair.ordersToMeasureIn:
                 label1 = '_'.join((pair._higherEnergyTransition.label,
                                    str(order_num)))
