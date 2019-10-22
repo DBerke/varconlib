@@ -26,6 +26,10 @@ from varconlib.miscellaneous import wavelength2velocity as wave2vel
 
 class Star(object):
 
+    # Date of fiber change in HARPS:
+    fiber_change_date = dt.datetime(year=2015, month=6, day=1,
+                                    hour=0, minute=0, second=0)
+
     def __init__(self, name, star_dir=None, suffix='int',
                  transitions_list=None, pairs_list=None):
         """Instantiate a Star object.
@@ -67,6 +71,7 @@ class Star(object):
                                    pairs_list=pairs_list,
                                    transitions_list=transitions_list)
             self._getPairSeparations()
+            self.fiberSplitIndex = self._getFiberSplitIndex()
 
     def initializeFromDir(self, star_dir, suffix, transitions_list=None,
                           pairs_list=None):
@@ -132,7 +137,7 @@ class Star(object):
         errors_list = []
 
         # For each pickle file:
-        for obs_num, pickle_file in tqdm(enumerate(pickle_files)):
+        for obs_num, pickle_file in enumerate(tqdm(pickle_files)):
 
             # Import it, read the list of fits inside, save their means to
             # a Series with index made up of the fit labels, and their errors
@@ -174,9 +179,9 @@ class Star(object):
         self.pSepErrorsArray = np.empty([len(self._obs_date_dict),
                                          len(self._pair_label_dict)])
 
-        for pair, pair_label in zip(self.pairs_list,
-                                    self._pair_label_dict.keys()):
+        for pair in self.pairs_list:
             for order_num in pair.ordersToMeasureIn:
+                pair_label = '_'.join((pair.label, str(order_num)))
                 label1 = '_'.join((pair._higherEnergyTransition.label,
                                    str(order_num)))
                 label2 = '_'.join((pair._lowerEnergyTransition.label,
@@ -188,6 +193,29 @@ class Star(object):
                 self.pSepErrorsArray[:, self._p_label(pair_label)]\
                     = np.sqrt(self.tErrorsArray[:, self._t_label(label1)] ** 2,
                               self.tErrorsArray[:, self._t_label(label2)] ** 2)
+
+    def _getFiberSplitIndex(self):
+        """Return the index of the first observation after the HARPS fiber
+        change. If there are none, return None.
+
+        There are three possibilities:
+            1. All observations are after the fiber change date, in which case
+               this method will return 0.
+            2. Some observations are prior to the fiber change, and some after,
+               in which case the returned value will be a positive integer.
+            3. All observations are prior to the fiber change, in which case
+               `None` will be returned as it runs off the end of the list.
+        """
+
+        dates = [dt.datetime.fromisoformat(s) for s in
+                 sorted(self._obs_date_dict.keys())]
+
+        for index, date in enumerate(dates):
+            if date > self.fiber_change_date:
+                return index
+
+        # Else if no observation dates are after the fiber change:
+        return None
 
     def _p_label(self, label):
         """Return the index number of the column associated with this pair
