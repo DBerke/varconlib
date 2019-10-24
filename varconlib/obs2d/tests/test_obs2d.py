@@ -62,12 +62,6 @@ class TestGeneric2DFile(object):
         assert hasattr(s, '_rawData')
         assert hasattr(s, 'dateObs')
 
-#    def testRepr(self, s):
-#        assert repr(s) == 'HARPSFile2D({})'.format(generic_test_file
-#
-#    def testStr(sel, s):
-#        assert str(s) == 'HIP-40133, {}'.format(generic_test_file.stem)
-
 
 class TestScience2DFile(object):
 
@@ -75,8 +69,8 @@ class TestScience2DFile(object):
     def s(self, generic_test_file):
 
         return HARPSFile2DScience(generic_test_file,
-                                  use_new_coefficients=False,
-                                  use_pixel_positions=False)
+                                  new_coefficients=False,
+                                  pixel_positions=False)
 
     def testNonExistentFilename(self):
         with pytest.raises(FileNotFoundError):
