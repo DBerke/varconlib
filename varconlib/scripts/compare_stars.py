@@ -24,12 +24,12 @@ from varconlib.star import Star
 
 
 style_params_pre = {'marker': 'o', 'color': 'Chocolate',
-                    'markeredgecolor': 'Black', 'ecolor': 'BurlyWood',
-                    'linestyle': '', 'alpha': 0.7, 'markersize': 6}
+                    'markeredgecolor': 'Black', 'ecolor': 'DarkGoldenRod',
+                    'linestyle': '', 'alpha': 0.6, 'markersize': 4}
 
 style_params_post = {'marker': 'o', 'color': 'CornFlowerBlue',
-                     'markeredgecolor': 'Black', 'ecolor': 'LightSkyBlue',
-                     'linestyle': '', 'alpha': 0.7, 'markersize': 6}
+                     'markeredgecolor': 'Black', 'ecolor': 'DodgerBlue',
+                     'linestyle': '', 'alpha': 0.6, 'markersize': 4}
 
 if __name__ == '__main__':
     # Where the analysis results live:
@@ -90,7 +90,7 @@ if __name__ == '__main__':
        and (star2.fiberSplitIndex not in (0, None)):
         fig, axes = plt.subplots(ncols=1, nrows=2,
                                  tight_layout=True,
-                                 figsize=(9, 7),
+                                 figsize=(10, 7),
                                  sharey='all',
                                  sharex='all')
         fig.suptitle(f'{data_dir1.name} {data_dir2.name}')
@@ -98,6 +98,8 @@ if __name__ == '__main__':
         ax1.set_ylabel('Pre-fiber change pair separations (m/s)')
         ax2.set_ylabel('Post-fiber change pair separations (m/s)')
         ax2.set_xlabel('Pair index number (increasing wavelength)')
+        ax1.set_xlim(left=-2,
+                     right=star1.pSeparationsArray.shape[1]+2)
 
         differences_pre = np.empty(shape=star1.pSeparationsArray.shape[1])
         differences_post = np.empty(shape=star1.pSeparationsArray.shape[1])
@@ -105,64 +107,83 @@ if __name__ == '__main__':
         errors_post = np.empty(shape=star1.pSepErrorsArray.shape[1])
 
         for pair in star1._pair_label_dict.keys():
-            differences_pre[star1._p_label(pair)] =\
-                np.mean(star1.pSeparationsArray[:star1.fiberSplitIndex,
-                                                star1._p_label(pair)]) -\
-                np.mean(star2.pSeparationsArray[:star2.fiberSplitIndex,
-                                                star2._p_label(pair)])
-            errors1 = np.average(star1.
-                                 pSepErrorsArray[:star1.fiberSplitIndex,
-                                                 star1._p_label(pair)])
+            separations1 = star1.pSeparationsArray[:star1.fiberSplitIndex,
+                                                   star1._p_label(pair)]
+            separations2 = star2.pSeparationsArray[:star2.fiberSplitIndex,
+                                                   star2._p_label(pair)]
+            errors1 = star1.pSepErrorsArray[:star1.fiberSplitIndex,
+                                            star1._p_label(pair)]
+            errors2 = star2.pSepErrorsArray[:star2.fiberSplitIndex,
+                                            star2._p_label(pair)]
             weights1 = 1 / errors1 ** 2
-            errors2 = np.average(star2.
-                                 pSepErrorsArray[:star2.fiberSplitIndex,
-                                                 star2._p_label(pair)])
             weights2 = 1 / errors2 ** 2
-            errors_pre = np.sqrt((np.average(errors1, weights=weights1)) ** 2 +
-                                 (np.average(errors2, weights=weights2)) ** 2)
 
-            differences_post[star1._p_label(pair)] =\
-                np.mean(star1.pSeparationsArray[star1.fiberSplitIndex:,
-                                                star1._p_label(pair)]) -\
-                np.mean(star2.pSeparationsArray[star2.fiberSplitIndex:,
-                                                star2._p_label(pair)])
+            w_mean1 = np.average(separations1, weights=weights1)
+            w_mean2 = np.average(separations2, weights=weights2)
 
-            errors1 = np.average(star1.
-                                 pSepErrorsArray[star1.fiberSplitIndex:,
-                                                 star1._p_label(pair)])
+            w_mean_err1 = 1 / np.sqrt(np.sum(weights1))
+            w_mean_err2 = 1 / np.sqrt(np.sum(weights2))
+
+            differences_pre[star1._p_label(pair)] = w_mean1 - w_mean2
+            errors_pre[star1._p_label(pair)] = np.sqrt(w_mean_err1 ** 2 +
+                                                       w_mean_err2 ** 2)
+
+            separations1 = star1.pSeparationsArray[star1.fiberSplitIndex:,
+                                                   star1._p_label(pair)]
+            separations2 = star2.pSeparationsArray[star2.fiberSplitIndex:,
+                                                   star2._p_label(pair)]
+            errors1 = star1.pSepErrorsArray[star1.fiberSplitIndex:,
+                                            star1._p_label(pair)]
+            errors2 = star2.pSepErrorsArray[star2.fiberSplitIndex:,
+                                            star2._p_label(pair)]
             weights1 = 1 / errors1 ** 2
-            errors2 = np.average(star2.
-                                 pSepErrorsArray[star2.fiberSplitIndex:,
-                                                 star2._p_label(pair)])
             weights2 = 1 / errors2 ** 2
-            errors_post = np.sqrt((np.average(errors1, weights=weights1))**2 +
-                                  (np.average(errors2, weights=weights2))**2)
+
+            w_mean1 = np.average(separations1, weights=weights1)
+            w_mean2 = np.average(separations2, weights=weights2)
+
+            w_mean_err1 = 1 / np.sqrt(np.sum(weights1))
+            w_mean_err2 = 1 / np.sqrt(np.sum(weights2))
+
+            differences_post[star1._p_label(pair)] = w_mean1 - w_mean2
+            errors_post[star1._p_label(pair)] = np.sqrt(w_mean_err1 ** 2 +
+                                                        w_mean_err2 ** 2)
 
         sigma_pre = np.std(differences_pre)
         sigma_post = np.std(differences_post)
 
         ax1.axhline(y=0, color='Black', alpha=0.9)
-        ax1.axhline(y=sigma_pre, color='DarkGray', linestyle='--')
-        ax1.axhline(y=-sigma_pre, color='DarkGray', linestyle='--')
-        ax1.axhline(y=2 * sigma_pre, color='Gray', linestyle='--')
-        ax1.axhline(y=-2 * sigma_pre, color='Gray', linestyle='--')
+        ax1.axhline(y=sigma_pre, color='DimGray', linestyle='--')
+        ax1.axhline(y=-sigma_pre, color='DimGray', linestyle='--')
+        ax1.axhline(y=2 * sigma_pre, color='DarkGray', linestyle='--')
+        ax1.axhline(y=-2 * sigma_pre, color='DarkGray', linestyle='--')
         ax1.axhline(y=3 * sigma_pre, color='LightGray', linestyle='--')
         ax1.axhline(y=-3 * sigma_pre, color='LightGray', linestyle='--')
 
+        weighted_mean_pre = np.average(differences_pre,
+                                       weights=(1/errors_pre**2))
+        ax1.axhline(y=weighted_mean_pre, color='DarkSalmon',
+                    label=f'Weighted mean: {weighted_mean_pre:.2f} m/s')
+
         ax2.axhline(y=0, color='Black', alpha=0.9)
-        ax2.axhline(y=sigma_post, color='DarkGray', linestyle='--')
-        ax2.axhline(y=-sigma_post, color='DarkGray', linestyle='--')
-        ax2.axhline(y=2 * sigma_post, color='Gray', linestyle='--')
-        ax2.axhline(y=-2 * sigma_post, color='Gray', linestyle='--')
+        ax2.axhline(y=sigma_post, color='DimGray', linestyle='--')
+        ax2.axhline(y=-sigma_post, color='DimGray', linestyle='--')
+        ax2.axhline(y=2 * sigma_post, color='DarkGray', linestyle='--')
+        ax2.axhline(y=-2 * sigma_post, color='DarkGray', linestyle='--')
         ax2.axhline(y=3 * sigma_post, color='LightGray', linestyle='--')
         ax2.axhline(y=-3 * sigma_post, color='LightGray', linestyle='--')
 
+        weighted_mean_post = np.average(differences_post,
+                                        weights=(1/errors_post**2))
+        ax2.axhline(y=weighted_mean_post, color='DarkTurquoise',
+                    label=f'Weighted mean: {weighted_mean_post:.2f} m/s')
+
         indices = range(len(star1._pair_label_dict.keys()))
         ax1.errorbar(x=indices, y=differences_pre, yerr=errors_pre,
-                     label='Pre-fiber change',
+                     label='Pre-fiber change', barsabove=False,
                      **style_params_pre)
         ax2.errorbar(x=indices, y=differences_post, yerr=errors_post,
-                     label='Post-fiber change',
+                     label='Post-fiber change', barsabove=False,
                      **style_params_post)
 
         ax1.legend()
