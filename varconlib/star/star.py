@@ -17,8 +17,11 @@ import lzma
 from pathlib import Path
 import pickle
 
+import h5py
+import hickle
 import numpy as np
 from tqdm import tqdm
+import unyt as u
 
 import varconlib as vcl
 from varconlib.miscellaneous import wavelength2velocity as wave2vel
@@ -31,7 +34,8 @@ class Star(object):
                                     hour=0, minute=0, second=0)
 
     def __init__(self, name, star_dir=None, suffix='int',
-                 transitions_list=None, pairs_list=None):
+                 transitions_list=None, pairs_list=None,
+                 load_data=True, dump_data=True):
         """Instantiate a Star object.
 
         The `Star` class is intended to hold information relating to a single
@@ -61,20 +65,41 @@ class Star(object):
             A list of `transition_pair.TransitionPair` objects. If `star_dir`
             is given, will be passed to `initializeFromFits`, otherwise no
             effect.
+        load_data : bool, Default : True
+            Controls whether to attempt to read a file containing data for the
+            star.
+        dump_data : bool, Default : True
+            Whether or not to save the data collected in an HDF5 file for
+            faster recovery later.
 
         """
 
         self.name = name
 
-        if (star_dir is not None):
-            self.initializeFromDir(Path(star_dir), suffix,
-                                   pairs_list=pairs_list,
-                                   transitions_list=transitions_list)
-            self._getPairSeparations()
-            self.fiberSplitIndex = self._getFiberSplitIndex()
+        # Initialize some attributes to be filled later.
+        self._obs_date_dict = {}
+        self.fifitMeansArray = None
+        self.fitErrorsArray = None
+        self.pairSeparationsArray = None
+        self.pairSepErrorsArray = None
 
-    def initializeFromDir(self, star_dir, suffix, transitions_list=None,
-                          pairs_list=None):
+        if (star_dir is not None):
+            star_dir = Path(star_dir)
+            h5filename = star_dir / f'{name}_data.hdf5'
+            if h5filename.exists():
+                if load_data:
+                    self.constructFromHDF5(h5filename)
+            else:
+                self.constructFromDir(star_dir, suffix,
+                                      pairs_list=pairs_list,
+                                      transitions_list=transitions_list)
+                self._getPairSeparations()
+                if dump_data:
+                    self._dumpDataToDisk(str(h5filename))
+                self.fiberSplitIndex = self._getFiberSplitIndex()
+
+    def constructFromDir(self, star_dir, suffix, transitions_list=None,
+                         pairs_list=None):
         """
         Collect information on fits in observations of the star, and organize
         it.
@@ -94,7 +119,6 @@ class Star(object):
             A list of `transition_line.Transition` objects. If this is omitted
             the default list of transitions selected for use will be read, but
             this will be slower.
-
         pairs_list : list
             A list of `transition_pair.TransitionPair` objects. If this is
             omitted the default list of pairs selected for use will be read,
@@ -109,30 +133,14 @@ class Star(object):
                                f'{star_dir}')
 
         if transitions_list is not None:
-            if isinstance(transitions_list, list):
-                if isinstance(transitions_list[0],
-                              vcl.transition_line.Transition):
-                    self.transitions_list = transitions_list
-        else:
-            # Read the list of chosen transitions.
-            with open(vcl.final_selection_file, 'r+b') as f:
-                self.transitions_list = pickle.load(f)
-
+            self.transitions_list = transitions_list
         if pairs_list is not None:
-            if isinstance(pairs_list, list):
-                if isinstance(pairs_list[0],
-                              vcl.transition_pair.TransitionPair):
-                    self.pairs_list = pairs_list
-        else:
-            # Read the list of chosen pairs.
-            with open(vcl.final_pair_selection_file, 'r+b') as f:
-                self.pairs_list = pickle.load(f)
+            self.pairs_list = pairs_list
 
         # Get a list of pickled fit results in the given directory.
         search_str = str(star_dir) + '/*/pickles_{}/*fits.lzma'.format(suffix)
         pickle_files = [Path(path) for path in glob(search_str)]
 
-        self._obs_date_dict = {}
         means_list = []
         errors_list = []
 
@@ -150,12 +158,15 @@ class Star(object):
                                timespec='milliseconds')] = obs_num
             transition_dict = {fit.label: num for num, fit in
                                enumerate(fits_list)}
-            means_list.append([fit.mean for fit in fits_list])
-            errors_list.append([fit.meanErrVel for fit in fits_list])
+            means_list.append([fit.mean.to(u.angstrom) for fit in fits_list])
+            means_units = fits_list[0].mean.units
+            errors_list.append([fit.meanErrVel.to(u.m/u.s) for
+                                fit in fits_list])
+            errors_units = fits_list[0].meanErrVel.units
 
         self._transition_label_dict = transition_dict
-        self.tMeansArray = np.array(means_list, ndmin=2)
-        self.tErrorsArray = np.array(errors_list, ndmin=2)
+        self.fitMeansArray = np.array(means_list, ndmin=2) * means_units
+        self.fitErrorsArray = np.array(errors_list, ndmin=2) * errors_units
 
         pair_labels = []
         for pair in self.pairs_list:
@@ -168,16 +179,16 @@ class Star(object):
     def _getPairSeparations(self):
         """Create attributes containing pair separations and associated errors.
 
-        This method creates attributes called pSeparationsArray and
-        pSepErrorsArray containing lists of pair separations and associated
+        This method creates attributes called pairSeparationsArray and
+        pairSepErrorsArray containing lists of pair separations and associated
         errors in each row corresponding to an observation of this star.
         """
 
         # Set up the arrays for pair separations and errors
-        self.pSeparationsArray = np.empty([len(self._obs_date_dict),
-                                           len(self._pair_label_dict)])
-        self.pSepErrorsArray = np.empty([len(self._obs_date_dict),
+        pairSeparationsArray = np.empty([len(self._obs_date_dict),
                                          len(self._pair_label_dict)])
+        pairSepErrorsArray = np.empty([len(self._obs_date_dict),
+                                       len(self._pair_label_dict)])
 
         for pair in self.pairs_list:
             for order_num in pair.ordersToMeasureIn:
@@ -187,12 +198,92 @@ class Star(object):
                 label2 = '_'.join((pair._lowerEnergyTransition.label,
                                    str(order_num)))
 
-                self.pSeparationsArray[:, self._p_label(pair_label)]\
-                    = wave2vel(self.tMeansArray[:, self._t_label(label1)],
-                               self.tMeansArray[:, self._t_label(label2)])
-                self.pSepErrorsArray[:, self._p_label(pair_label)]\
-                    = np.sqrt(self.tErrorsArray[:, self._t_label(label1)] ** 2,
-                              self.tErrorsArray[:, self._t_label(label2)] ** 2)
+                pairSeparationsArray[:, self._p_label(pair_label)]\
+                    = wave2vel(self.fitMeansArray[:, self._t_label(label1)],
+                               self.fitMeansArray[:, self._t_label(label2)])
+
+                self.pairSeparationsArray = u.unyt_array(pairSeparationsArray,
+                                                         units='m/s')
+
+                pairSepErrorsArray[:, self._p_label(pair_label)]\
+                    = np.sqrt(self.fitErrorsArray[:, self._t_label(label1)]**2,
+                              self.fitErrorsArray[:, self._t_label(label2)]**2)
+
+                self.pairSepErrorsArray = u.unyt_array(pairSepErrorsArray,
+                                                       units='m/s')
+
+    def _dumpDataToDisk(self, file_path):
+        """Save important data arrays to disk in HDF5 format.
+
+        """
+
+        dataset_names = ('transition_means', 'transition_errors',
+                         'pair_separations', 'pair_separation_errors')
+        datasets = (self.fitMeansArray, self.fitErrorsArray,
+                    self.pairSeparationsArray, self.pairSepErrorsArray)
+
+        with h5py.File(file_path, mode='a') as f:
+
+            for dataset_name, dataset in zip(dataset_names, datasets):
+                f.create_dataset(dataset_name, data=dataset)
+                f[dataset_name].attrs['units'] = str(dataset.units)
+            hickle.dump(self._obs_date_dict, f, path='/obs_date_dict')
+            hickle.dump(self._transition_label_dict, f,
+                        path='/transition_label_dict')
+            hickle.dump(self._pair_label_dict, f,
+                        path='/pair_label_dict')
+
+    def constructFromHDF5(self, filename):
+        """Retrieve datasets from HDF5 file.
+
+        """
+
+        dataset_names = ('transition_means', 'transition_errors',
+                         'pair_separations', 'pair_separation_errors')
+        attr_names = ('fitMeansArray', 'fitErrorsArray',
+                      'pairSeparationsArray', 'pairSepErrorsArray')
+
+        with h5py.File(filename, mode='r') as f:
+
+            for dataset_name, attr_name in zip(dataset_names, attr_names):
+                units_added_dataset = u.unyt_array(f[dataset_name],
+                                                   units=f[dataset_name]
+                                                   .attrs['units'])
+                setattr(self, attr_name, units_added_dataset)
+            self._obs_date_dict = hickle.load(f, path='/obs_date_dict')
+            self._transition_label_dict = hickle.load(f, path='/transition_'
+                                                      'label_dict')
+            self._pair_label_dict = hickle.load(f, path='/pair_label_dict')
+
+    @property
+    def transitions_list(self):
+        if not hasattr(self, '_transitions_list'):
+            # Read the default list of chosen transitions.
+            with open(vcl.final_selection_file, 'r+b') as f:
+                self._transitions_list = pickle.load(f)
+        return self._transitions_list
+
+    @transitions_list.setter
+    def transitions_list(self, transitions_list):
+        if isinstance(transitions_list, list):
+            if isinstance(transitions_list[0], vcl.transition_line.Transition):
+                self._transitions_list = transitions_list
+
+    @property
+    def pairs_list(self):
+        if not hasattr(self, '_pairs_list'):
+            # Read the default list of chosen pairs.
+            with open(vcl.final_pair_selection_file, 'r+b') as f:
+                self._pairs_list = pickle.load(f)
+        return self._pairs_list
+
+    @pairs_list.setter
+    def pairs_list(self, pairs_list):
+        if pairs_list is not None:
+            if isinstance(pairs_list, list):
+                if isinstance(pairs_list[0],
+                              vcl.transition_pair.TransitionPair):
+                    self._pairs_list = pairs_list
 
     def _getFiberSplitIndex(self):
         """Return the index of the first observation after the HARPS fiber
@@ -266,9 +357,6 @@ class Star(object):
             automatically converted and tried in that format.
 
         """
-
-        if not hasattr(self, '_obs_date_dict'):
-            raise AttributeError('self._obs_date_dict not instantiated yet')
 
         if isinstance(observation_date, str):
             return self._obs_date_dict[observation_date]
