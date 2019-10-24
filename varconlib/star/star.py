@@ -83,6 +83,11 @@ class Star(object):
         self.pairSeparationsArray = None
         self.pairSepErrorsArray = None
 
+        if transitions_list:
+            self.transitions_list = transitions_list
+        if pairs_list:
+            self.pairs_list = pairs_list
+
         if (star_dir is not None):
             star_dir = Path(star_dir)
             h5filename = star_dir / f'{name}_data.hdf5'
@@ -95,7 +100,7 @@ class Star(object):
                                       transitions_list=transitions_list)
                 self._getPairSeparations()
                 if dump_data:
-                    self._dumpDataToDisk(str(h5filename))
+                    self.dumpDataToDisk(str(h5filename))
                 self.fiberSplitIndex = self._getFiberSplitIndex()
 
     def constructFromDir(self, star_dir, suffix, transitions_list=None,
@@ -131,11 +136,6 @@ class Star(object):
             print(star_dir)
             raise RuntimeError('The given directory does not exist:'
                                f'{star_dir}')
-
-        if transitions_list is not None:
-            self.transitions_list = transitions_list
-        if pairs_list is not None:
-            self.pairs_list = pairs_list
 
         # Get a list of pickled fit results in the given directory.
         search_str = str(star_dir) + '/*/pickles_{}/*fits.lzma'.format(suffix)
@@ -212,7 +212,7 @@ class Star(object):
                 self.pairSepErrorsArray = u.unyt_array(pairSepErrorsArray,
                                                        units='m/s')
 
-    def _dumpDataToDisk(self, file_path):
+    def dumpDataToDisk(self, file_path):
         """Save important data arrays to disk in HDF5 format.
 
         """
