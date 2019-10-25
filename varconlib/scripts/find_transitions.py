@@ -191,8 +191,10 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
     transitions_x, transitions_y, labels = [], [], []
 
     fits_list = []
+    total_transitions = 0
     for transition in tqdm(transitions_list):
         for order_num in transition.ordersToFitIn:
+            total_transitions += 1
             tqdm.write('Attempting fit of {} in order {}'.format(transition,
                        order_num))
             plot_closeup = closeup_dir / '{}_{}_{}_close.png'.format(
@@ -226,7 +228,7 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
     # Pickle the list of fits, then compress them to save space before writing
     # them out.
     tqdm.write('Fit {}/{} transitions in {}.'.format(len(fits_list),
-               len(transitions_list), obs_path.name))
+               total_transitions, obs_path.name))
     outfile = output_pickle_dir / '{}_gaussian_fits.lzma'.format(
             obs._filename.stem)
     if not outfile.parent.exists():
