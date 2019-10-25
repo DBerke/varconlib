@@ -142,8 +142,8 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
     tqdm.write('Fitting {}...'.format(obs_path.name))
     try:
         obs = obs2d.HARPSFile2DScience(obs_path,
-                                       use_pixel_positions=pix_pos,
-                                       use_new_coefficients=new_coeffs,
+                                       pixel_positions=pix_pos,
+                                       new_coefficients=new_coeffs,
                                        update=args.update)
         # We need to test if new calibration coefficients are available or not,
         # but if the wavelenth array isn't updated it won't call the function
