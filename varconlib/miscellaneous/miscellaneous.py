@@ -188,38 +188,51 @@ def shift_wavelength(wavelength, shift_velocity):
     return result.to(original_units)
 
 
-def velocity2wavelength(velocity_offset, wavelength):
+def velocity2wavelength(velocity_offset, wavelength, unit=None):
     """Return the wavelength separation for a given velocity separation at the
     given wavelength.
 
     Parameters
     ----------
-    velocity_offset : unyt_quantity
+    velocity_offset : `unyt.unyt_quantity`
         The velocity separation. Can be in any valid units with dimensions of
         length / time.
-    wavelength : unyt_quantity
+    wavelength : `unyt.unyt_quantity`
         The wavelength at which the function should be evaluated, since
         it's a function of wavelength. Returned in whatever units it's
         given in (should have dimensions of length).
+
+    Optional
+    --------
+    unit : `unyt.unyt_object.Unit`
+        A valid unit with dimension of length, such as `unyt.angstrom` or
+        `unyt.nm`. This is the units the returned value will be converted to.
+        If not given, the returned value will be in the same units as the input
+        `wavelength`.
 
     Returns
     -------
     unyt_quantity
         The separation in wavelength space for the given velocity offset at
-        the given wavelength.
+        the given wavelength. Units will be the ones given in `units`, or the
+        same as `wavelength` if `units` is not given.
 
     """
 
     original_units = wavelength.units
     result = (velocity_offset * wavelength) / u.c
-    return result.to(original_units)
+    if not unit:
+        return result.to(original_units)
+    else:
+        return result.to(unit)
 
 
 def wavelength2velocity(wavelength1, wavelength2):
     """Return velocity separation of a pair of wavelengths.
 
     In terms of order, the second wavelength parameter is subtracted from the
-    first.
+    first; or, the returned velocity is the velocity of the second wavelength
+    compared to the first one.
 
     Parameters
     ----------
