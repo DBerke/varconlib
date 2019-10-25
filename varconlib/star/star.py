@@ -91,17 +91,15 @@ class Star(object):
         if (star_dir is not None):
             star_dir = Path(star_dir)
             h5filename = star_dir / f'{name}_data.hdf5'
-            if h5filename.exists():
-                if load_data:
-                    self.constructFromHDF5(h5filename)
+            if load_data and h5filename.exists():
+                self.constructFromHDF5(h5filename)
             else:
                 self.constructFromDir(star_dir, suffix,
                                       pairs_list=pairs_list,
                                       transitions_list=transitions_list)
-                self._getPairSeparations()
+                self.getPairSeparations()
                 if dump_data:
                     self.dumpDataToDisk(str(h5filename))
-                self.fiberSplitIndex = self._getFiberSplitIndex()
 
     def constructFromDir(self, star_dir, suffix, transitions_list=None,
                          pairs_list=None):
@@ -156,27 +154,34 @@ class Star(object):
             # Save the observation date.
             self._obs_date_dict[fits_list[0].dateObs.isoformat(
                                timespec='milliseconds')] = obs_num
-            transition_dict = {fit.label: num for num, fit in
-                               enumerate(fits_list)}
             means_list.append([fit.mean.to(u.angstrom) for fit in fits_list])
             means_units = fits_list[0].mean.units
             errors_list.append([fit.meanErrVel.to(u.m/u.s) for
                                 fit in fits_list])
             errors_units = fits_list[0].meanErrVel.units
 
-        self._transition_label_dict = transition_dict
         self.fitMeansArray = np.array(means_list, ndmin=2) * means_units
         self.fitErrorsArray = np.array(errors_list, ndmin=2) * errors_units
+
+        transition_labels = []
+        for transition in self.transitions_list:
+            for order_num in transition.ordersToFitIn:
+                transition_labels.append('_'.join((transition.label,
+                                         str(order_num))))
 
         pair_labels = []
         for pair in self.pairs_list:
             for order_num in pair.ordersToMeasureIn:
                 pair_labels.append('_'.join((pair.label, str(order_num))))
 
-        self._pair_label_dict = {pair_label: num for num, pair_label in
+        self._pair_label_dict = {pair_label: num for num,
+                                 pair_label in
                                  enumerate(pair_labels)}
+        self._transition_label_dict = {transition_label: num for
+                                       num, transition_label in
+                                       enumerate(transition_labels)}
 
-    def _getPairSeparations(self):
+    def getPairSeparations(self):
         """Create attributes containing pair separations and associated errors.
 
         This method creates attributes called pairSeparationsArray and
@@ -284,6 +289,13 @@ class Star(object):
                 if isinstance(pairs_list[0],
                               vcl.transition_pair.TransitionPair):
                     self._pairs_list = pairs_list
+
+    @property
+    def fiberSplitIndex(self):
+        if not hasattr(self, '_fiberSplitIndex'):
+            self._fiberSplitIndex = self._getFiberSplitIndex()
+
+        return self._fiberSplitIndex
 
     def _getFiberSplitIndex(self):
         """Return the index of the first observation after the HARPS fiber
