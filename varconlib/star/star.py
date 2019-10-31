@@ -84,9 +84,9 @@ class Star(object):
         self.pairSepErrorsArray = None
 
         if transitions_list:
-            self.transitions_list = transitions_list
+            self.transitionsList = transitions_list
         if pairs_list:
-            self.pairs_list = pairs_list
+            self.pairsList = pairs_list
 
         if (star_dir is not None):
             star_dir = Path(star_dir)
@@ -99,7 +99,7 @@ class Star(object):
                                       transitions_list=transitions_list)
                 self.getPairSeparations()
                 if dump_data:
-                    self.dumpDataToDisk(str(h5filename))
+                    self.dumpDataToDisk(h5filename)
 
     def constructFromDir(self, star_dir, suffix, transitions_list=None,
                          pairs_list=None):
@@ -143,7 +143,7 @@ class Star(object):
         errors_list = []
 
         # For each pickle file:
-        for obs_num, pickle_file in enumerate(tqdm(pickle_files)):
+        for obs_num, pickle_file in enumerate(tqdm(pickle_files[:])):
 
             # Import it, read the list of fits inside, save their means to
             # a Series with index made up of the fit labels, and their errors
@@ -154,23 +154,27 @@ class Star(object):
             # Save the observation date.
             self._obs_date_dict[fits_list[0].dateObs.isoformat(
                                timespec='milliseconds')] = obs_num
-            means_list.append([fit.mean.to(u.angstrom) for fit in fits_list])
+            means_list.append(np.array([fit.mean.to(u.angstrom).value for
+                                        fit in fits_list]))
             means_units = fits_list[0].mean.units
-            errors_list.append([fit.meanErrVel.to(u.m/u.s) for
-                                fit in fits_list])
+            errors_list.append(np.array([fit.meanErrVel.to(u.m/u.s).value for
+                                         fit in fits_list]))
             errors_units = fits_list[0].meanErrVel.units
 
-        self.fitMeansArray = np.array(means_list, ndmin=2) * means_units
-        self.fitErrorsArray = np.array(errors_list, ndmin=2) * errors_units
+        means_array = np.array(means_list)
+        errors_array = np.array(errors_list)
+
+        self.fitMeansArray = means_array * means_units
+        self.fitErrorsArray = errors_array * errors_units
 
         transition_labels = []
-        for transition in self.transitions_list:
+        for transition in self.transitionsList:
             for order_num in transition.ordersToFitIn:
                 transition_labels.append('_'.join((transition.label,
                                          str(order_num))))
 
         pair_labels = []
-        for pair in self.pairs_list:
+        for pair in self.pairsList:
             for order_num in pair.ordersToMeasureIn:
                 pair_labels.append('_'.join((pair.label, str(order_num))))
 
@@ -195,7 +199,7 @@ class Star(object):
         pairSepErrorsArray = np.empty([len(self._obs_date_dict),
                                        len(self._pair_label_dict)])
 
-        for pair in self.pairs_list:
+        for pair in self.pairsList:
             for order_num in pair.ordersToMeasureIn:
                 pair_label = '_'.join((pair.label, str(order_num)))
                 label1 = '_'.join((pair._higherEnergyTransition.label,
@@ -227,16 +231,17 @@ class Star(object):
         datasets = (self.fitMeansArray, self.fitErrorsArray,
                     self.pairSeparationsArray, self.pairSepErrorsArray)
 
-        with h5py.File(file_path, mode='a') as f:
+        if not file_path.exists():
+            with h5py.File(file_path, mode='a') as f:
 
-            for dataset_name, dataset in zip(dataset_names, datasets):
-                f.create_dataset(dataset_name, data=dataset)
-                f[dataset_name].attrs['units'] = str(dataset.units)
-            hickle.dump(self._obs_date_dict, f, path='/obs_date_dict')
-            hickle.dump(self._transition_label_dict, f,
-                        path='/transition_label_dict')
-            hickle.dump(self._pair_label_dict, f,
-                        path='/pair_label_dict')
+                for dataset_name, dataset in zip(dataset_names, datasets):
+                    f.create_dataset(dataset_name, data=dataset)
+                    f[dataset_name].attrs['units'] = str(dataset.units)
+                hickle.dump(self._obs_date_dict, f, path='/obs_date_dict')
+                hickle.dump(self._transition_label_dict, f,
+                            path='/transition_label_dict')
+                hickle.dump(self._pair_label_dict, f,
+                            path='/pair_label_dict')
 
     def constructFromHDF5(self, filename):
         """Retrieve datasets from HDF5 file.
@@ -261,29 +266,29 @@ class Star(object):
             self._pair_label_dict = hickle.load(f, path='/pair_label_dict')
 
     @property
-    def transitions_list(self):
+    def transitionsList(self):
         if not hasattr(self, '_transitions_list'):
             # Read the default list of chosen transitions.
             with open(vcl.final_selection_file, 'r+b') as f:
                 self._transitions_list = pickle.load(f)
         return self._transitions_list
 
-    @transitions_list.setter
-    def transitions_list(self, transitions_list):
+    @transitionsList.setter
+    def transitionsList(self, transitions_list):
         if isinstance(transitions_list, list):
             if isinstance(transitions_list[0], vcl.transition_line.Transition):
                 self._transitions_list = transitions_list
 
     @property
-    def pairs_list(self):
+    def pairsList(self):
         if not hasattr(self, '_pairs_list'):
             # Read the default list of chosen pairs.
             with open(vcl.final_pair_selection_file, 'r+b') as f:
                 self._pairs_list = pickle.load(f)
         return self._pairs_list
 
-    @pairs_list.setter
-    def pairs_list(self, pairs_list):
+    @pairsList.setter
+    def pairsList(self, pairs_list):
         if pairs_list is not None:
             if isinstance(pairs_list, list):
                 if isinstance(pairs_list[0],
