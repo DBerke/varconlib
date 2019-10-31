@@ -64,9 +64,9 @@ class TransitionPair(object):
     def blendTuple(self):
         if not hasattr(self, '_blendTuple'):
             try:
-                self._blendTuple = tuple(sorted([self._lowerEnergyTransition.
+                self._blendTuple = tuple(sorted([self._higherEnergyTransition.
                                          blendedness,
-                                         self._higherEnergyTransition.
+                                         self._lowerEnergyTransition.
                                          blendedness]))
             except AttributeError:
                 raise AttributeError
