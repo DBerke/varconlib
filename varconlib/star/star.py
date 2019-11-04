@@ -30,6 +30,21 @@ from varconlib.miscellaneous import wavelength2velocity as wave2vel
 
 class Star(object):
 
+    # Define dataset names and corresponding attribute names to be saved
+    # and loaded when dumping star data.
+    dataset_names = ('transition_means',
+                     'transition_errors',
+                     'offsets',
+                     'pair_separations',
+                     'pair_separation_errors',
+                     'BERV_array')
+    attr_names = ('fitMeansArray',
+                  'fitErrorsArray',
+                  'fitOffsetsArray',
+                  'pairSeparationsArray',
+                  'pairSepErrorsArray',
+                  'bervArray')
+
     # Date of fiber change in HARPS:
     fiber_change_date = dt.datetime(year=2015, month=6, day=1,
                                     hour=0, minute=0, second=0)
@@ -76,11 +91,14 @@ class Star(object):
 
         # Initialize some attributes to be filled later.
         self._obs_date_dict = {}
+        self.bervArray = None
         self.fitMeansArray = None
         self.fitErrorsArray = None
         self.fitOffsetsArray = None
         self.pairSeparationsArray = None
         self.pairSepErrorsArray = None
+
+        self._radialVelocity = None
 
         if transitions_list:
             self.transitionsList = transitions_list
@@ -140,6 +158,7 @@ class Star(object):
         means_list = []
         errors_list = []
         offsets_list = []
+        self.bervArray = np.empty(len(pickle_files))
 
         # For each pickle file:
         for obs_num, pickle_file in enumerate(tqdm(pickle_files[:])):
@@ -153,6 +172,8 @@ class Star(object):
             # Save the observation date.
             self._obs_date_dict[fits_list[0].dateObs.isoformat(
                                timespec='milliseconds')] = obs_num
+            # Save the BERV.
+            self.bervArray[obs_num] = fits_list[0].BERV
             means_list.append(np.array([fit.mean.to(u.angstrom).value for
                                         fit in fits_list]))
             means_units = fits_list[0].mean.units
@@ -170,6 +191,7 @@ class Star(object):
         self.fitMeansArray = means_array * means_units
         self.fitErrorsArray = errors_array * errors_units
         self.fitOffsetsArray = offsets_array * offsets_units
+        self.bervArray *= u.km / u.s
 
         transition_labels = []
         for transition in self.transitionsList:
@@ -228,21 +250,24 @@ class Star(object):
     def dumpDataToDisk(self, file_path):
         """Save important data arrays to disk in HDF5 format.
 
-        """
+        Saves various arrays which are time-consuming to create to disk in HDF5
+        format for easy retrieval later.
 
-        dataset_names = ('transition_means', 'transition_errors',
-                         'offsets',
-                         'pair_separations', 'pair_separation_errors')
-        datasets = (self.fitMeansArray, self.fitErrorsArray,
-                    self.fitOffsetsArray,
-                    self.pairSeparationsArray, self.pairSepErrorsArray)
+        Parameters
+        ----------
+        file_path : `pathlib.Path` object
+            The file name to save the data to.
+
+        """
 
         if file_path.exists():
             unlink(file_path)
         with h5py.File(file_path, mode='a') as f:
 
-            for dataset_name, dataset in zip(dataset_names, datasets):
-                dataset.write_hdf5(file_path, dataset_name=dataset_name)
+            for dataset_name, attr_name in zip(self.dataset_names,
+                                               self.attr_names):
+                getattr(self, attr_name).write_hdf5(file_path,
+                                                    dataset_name=dataset_name)
             hickle.dump(self._obs_date_dict, f, path='/obs_date_dict')
             hickle.dump(self._transition_label_dict, f,
                         path='/transition_label_dict')
@@ -252,18 +277,20 @@ class Star(object):
     def constructFromHDF5(self, filename):
         """Retrieve datasets from HDF5 file.
 
-        """
+        Loads data previously saved to disc into an initialized `Star` object,
+        ready for use without needed to create or collate it again.
 
-        dataset_names = ('transition_means', 'transition_errors',
-                         'offsets',
-                         'pair_separations', 'pair_separation_errors')
-        attr_names = ('fitMeansArray', 'fitErrorsArray',
-                      'fitOffsetsArray',
-                      'pairSeparationsArray', 'pairSepErrorsArray')
+        Paramters
+        ---------
+        filename : `pathlib.Path` or str
+            An HDF5 file name to retrieve previously-saved data from.
+
+        """
 
         with h5py.File(filename, mode='r') as f:
 
-            for dataset_name, attr_name in zip(dataset_names, attr_names):
+            for dataset_name, attr_name in zip(self.dataset_names,
+                                               self.attr_names):
                 dataset = u.unyt_array.from_hdf5(filename,
                                                  dataset_name=dataset_name)
                 setattr(self, attr_name, dataset)
@@ -301,6 +328,23 @@ class Star(object):
                 if isinstance(pairs_list[0],
                               vcl.transition_pair.TransitionPair):
                     self._pairs_list = pairs_list
+
+    @property
+    def radialVelocity(self):
+        if self._radialVelocity is None:
+            rv_file = vcl.data_dir / 'StellarRadialVelocities.txt'
+            rv_dict = {}
+            with open(rv_file, 'r') as f:
+                lines = f.readlines()
+                for line in lines:
+                    name, rv = line.rstrip().split(' ')
+                    rv_dict[name] = float(rv) * u.km / u.s
+                try:
+                    self._radialVelocity = rv_dict[self.name]
+                except KeyError:
+                    print(f"{self.name} not found in rv_dict")
+                    return None
+        return self._radialVelocity
 
     @property
     def fiberSplitIndex(self):
@@ -343,6 +387,12 @@ class Star(object):
             in which it was measured, e.g.,
             '6769.640Ni1_6774.190Ni1_70'.
 
+        Returns
+        -------
+        int
+            The index number of the column corresponding to the given pair
+            label in `self._pair_label_dict`.
+
         """
 
         if not hasattr(self, '_pair_label_dict'):
@@ -361,6 +411,12 @@ class Star(object):
             A label of a transition, including the number of the order on which
             it was fitted (zero-based), e.g., '6769.640Ni1_70'.
 
+        Returns
+        -------
+        int
+            The index number of the column corresponding to the given
+            transition label in `self._transition_label_dict`.
+
         """
 
         if not hasattr(self, '_transition_label_dict'):
@@ -370,8 +426,8 @@ class Star(object):
             return self._transition_label_dict[label]
 
     def _o_label(self, observation_date):
-        """Return the index associated with a given observation date (either as
-        a `datetime.datetime` object or an ISO-formatted string.)
+        """Return the index of the row associated with a given observation date
+        (either as a `datetime.datetime` object or an ISO-formatted string.)
 
         Parameters
         ----------
@@ -379,6 +435,12 @@ class Star(object):
             The date to look for the index for. Internally the dates are saved
             as ISO-formatted strings so `datetime.datetime` objects will be
             automatically converted and tried in that format.
+
+        Returns
+        -------
+        int
+            The index number of the row corresponding to the given observation
+            time in `self._obs_date_dict`.
 
         """
 

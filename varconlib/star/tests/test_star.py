@@ -43,8 +43,7 @@ class TestStar(object):
 
     @pytest.fixture(scope='class')
     def test_star(self, test_dir):
-        return Star('HD117618', star_dir=test_dir, suffix='int',
-                    dump_data=False)
+        return Star('HD117618', star_dir=test_dir, suffix='int')
 
     def testNonExistentDir(self):
         with pytest.raises(RuntimeError):
@@ -92,11 +91,7 @@ class TestStar(object):
         test_star.dumpDataToDisk(tmp_file_path)
         new_star = Star(star_name, tmp_dir)
 
-        attr_names = ('fitMeansArray', 'fitErrorsArray',
-                      'fitOffsetsArray',
-                      'pairSeparationsArray', 'pairSepErrorsArray')
-
-        for name in attr_names:
+        for name in test_star.attr_names:
             assert u.array.allclose_units(getattr(new_star, name),
                                           getattr(test_star, name))
             assert getattr(new_star, name).units == getattr(test_star,
