@@ -14,6 +14,7 @@ various observations taken of it.
 import datetime as dt
 from glob import glob
 import lzma
+from os import unlink
 from pathlib import Path
 import pickle
 
@@ -35,7 +36,7 @@ class Star(object):
 
     def __init__(self, name, star_dir=None, suffix='int',
                  transitions_list=None, pairs_list=None,
-                 load_data=True, dump_data=True):
+                 load_data=True):
         """Instantiate a Star object.
 
         The `Star` class is intended to hold information relating to a single
@@ -68,9 +69,6 @@ class Star(object):
         load_data : bool, Default : True
             Controls whether to attempt to read a file containing data for the
             star.
-        dump_data : bool, Default : True
-            Whether or not to save the data collected in an HDF5 file for
-            faster recovery later.
 
         """
 
@@ -78,8 +76,9 @@ class Star(object):
 
         # Initialize some attributes to be filled later.
         self._obs_date_dict = {}
-        self.fifitMeansArray = None
+        self.fitMeansArray = None
         self.fitErrorsArray = None
+        self.fitOffsetsArray = None
         self.pairSeparationsArray = None
         self.pairSepErrorsArray = None
 
@@ -98,8 +97,7 @@ class Star(object):
                                       pairs_list=pairs_list,
                                       transitions_list=transitions_list)
                 self.getPairSeparations()
-                if dump_data:
-                    self.dumpDataToDisk(h5filename)
+                self.dumpDataToDisk(h5filename)
 
     def constructFromDir(self, star_dir, suffix, transitions_list=None,
                          pairs_list=None):
@@ -141,6 +139,7 @@ class Star(object):
 
         means_list = []
         errors_list = []
+        offsets_list = []
 
         # For each pickle file:
         for obs_num, pickle_file in enumerate(tqdm(pickle_files[:])):
@@ -160,12 +159,17 @@ class Star(object):
             errors_list.append(np.array([fit.meanErrVel.to(u.m/u.s).value for
                                          fit in fits_list]))
             errors_units = fits_list[0].meanErrVel.units
+            offsets_list.append(np.array([fit.velocityOffset.to(u.m/u.s).value
+                                         for fit in fits_list]))
+            offsets_units = fits_list[0].velocityOffset.units
 
         means_array = np.array(means_list)
         errors_array = np.array(errors_list)
+        offsets_array = np.array(offsets_list)
 
         self.fitMeansArray = means_array * means_units
         self.fitErrorsArray = errors_array * errors_units
+        self.fitOffsetsArray = offsets_array * offsets_units
 
         transition_labels = []
         for transition in self.transitionsList:
@@ -227,21 +231,23 @@ class Star(object):
         """
 
         dataset_names = ('transition_means', 'transition_errors',
+                         'offsets',
                          'pair_separations', 'pair_separation_errors')
         datasets = (self.fitMeansArray, self.fitErrorsArray,
+                    self.fitOffsetsArray,
                     self.pairSeparationsArray, self.pairSepErrorsArray)
 
-        if not file_path.exists():
-            with h5py.File(file_path, mode='a') as f:
+        if file_path.exists():
+            unlink(file_path)
+        with h5py.File(file_path, mode='a') as f:
 
-                for dataset_name, dataset in zip(dataset_names, datasets):
-                    f.create_dataset(dataset_name, data=dataset)
-                    f[dataset_name].attrs['units'] = str(dataset.units)
-                hickle.dump(self._obs_date_dict, f, path='/obs_date_dict')
-                hickle.dump(self._transition_label_dict, f,
-                            path='/transition_label_dict')
-                hickle.dump(self._pair_label_dict, f,
-                            path='/pair_label_dict')
+            for dataset_name, dataset in zip(dataset_names, datasets):
+                dataset.write_hdf5(file_path, dataset_name=dataset_name)
+            hickle.dump(self._obs_date_dict, f, path='/obs_date_dict')
+            hickle.dump(self._transition_label_dict, f,
+                        path='/transition_label_dict')
+            hickle.dump(self._pair_label_dict, f,
+                        path='/pair_label_dict')
 
     def constructFromHDF5(self, filename):
         """Retrieve datasets from HDF5 file.
@@ -249,17 +255,18 @@ class Star(object):
         """
 
         dataset_names = ('transition_means', 'transition_errors',
+                         'offsets',
                          'pair_separations', 'pair_separation_errors')
         attr_names = ('fitMeansArray', 'fitErrorsArray',
+                      'fitOffsetsArray',
                       'pairSeparationsArray', 'pairSepErrorsArray')
 
         with h5py.File(filename, mode='r') as f:
 
             for dataset_name, attr_name in zip(dataset_names, attr_names):
-                units_added_dataset = u.unyt_array(f[dataset_name],
-                                                   units=f[dataset_name]
-                                                   .attrs['units'])
-                setattr(self, attr_name, units_added_dataset)
+                dataset = u.unyt_array.from_hdf5(filename,
+                                                 dataset_name=dataset_name)
+                setattr(self, attr_name, dataset)
             self._obs_date_dict = hickle.load(f, path='/obs_date_dict')
             self._transition_label_dict = hickle.load(f, path='/transition_'
                                                       'label_dict')

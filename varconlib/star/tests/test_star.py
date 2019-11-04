@@ -85,7 +85,7 @@ class TestStar(object):
                                            minute=0, second=0))
         assert test_star._p_label('4217.791Fe1_4219.893V1_16') == 0
 
-    def testDumpData(self, test_star, tmp_dir):
+    def testDumpAndRestoreData(self, test_star, tmp_dir):
 
         star_name = test_star.name
         tmp_file_path = tmp_dir / f'{star_name}_data.hdf5'
@@ -93,6 +93,7 @@ class TestStar(object):
         new_star = Star(star_name, tmp_dir)
 
         attr_names = ('fitMeansArray', 'fitErrorsArray',
+                      'fitOffsetsArray',
                       'pairSeparationsArray', 'pairSepErrorsArray')
 
         for name in attr_names:
