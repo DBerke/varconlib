@@ -19,8 +19,10 @@ from pathlib import Path
 import pickle
 import re
 
+from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.ticker as ticker
 import numpy as np
 from tqdm import tqdm
 import unyt as u
@@ -28,6 +30,7 @@ import unyt as u
 import varconlib as vcl
 from varconlib.miscellaneous import wavelength2velocity as wave2vel
 from varconlib.miscellaneous import date2index
+from varconlib.star import Star
 
 
 # Where the analysis results live:
@@ -48,12 +51,20 @@ parser.add_argument('suffix', action='store', type=str,
 parser.add_argument('--use-tex', action='store_true', default=False,
                     help='Use TeX rendering for fonts in plots (slow!).')
 
+parser.add_argument('--create-transition-plots', action='store_true',
+                    help='Create plots of the distributions of each individual'
+                    'transition for a star.')
+
 parser.add_argument('--create-offset-plots',
                     action='store_true', default=False,
                     help='Create plots of the offsets for each pair.')
 
 parser.add_argument('--create-fit-plots', action='store_true', default=False,
                     help='Create plots of the fits for each transition.')
+
+parser.add_argument('--create-berv-plots', action='store_true',
+                    help="Create plots of each pair's separation vs. the"
+                    " the BERV at the time of observation.")
 
 parser.add_argument('--create-airmass-plots', action='store_true',
                     default=False,
@@ -64,6 +75,10 @@ parser.add_argument('--link-fit-plots', action='store_true', default=False,
 
 parser.add_argument('--write-csv', action='store_true', default=False,
                     help='Create a CSV file of offsets for each pair.')
+
+parser.add_argument('--recreate-star', action='store_true', default=False,
+                    help='Force the star to be recreated from directories'
+                    ' rather than be read in from saved data.')
 
 parser.add_argument('-v', '--verbose', action='store_true', default=False,
                     help='Print more information about the process.')
@@ -120,6 +135,148 @@ with open(vcl.final_pair_selection_file, 'r+b') as f:
 
 tqdm.write(f'Found {len(pairs_list)} transition pairs (total) in list.')
 
+# Read or create a Star object for this star.
+obj_name = data_dir.stem
+if args.recreate_star:
+    load_data = False
+else:
+    load_data = True
+star = Star(obj_name, data_dir, suffix=args.suffix, load_data=load_data)
+
+if args.create_transition_plots:
+    for transition in tqdm(star.transitionsList):
+        for order in transition.ordersToFitIn:
+            transition_label = '_'.join((transition.label, str(order)))
+
+            fig = plt.figure(figsize=(6, 6), tight_layout=True)
+            if star.fiberSplitIndex not in (0, None):
+                gs = GridSpec(nrows=2, ncols=1, figure=fig,
+                              height_ratios=[1, 1], hspace=0)
+                ax1 = fig.add_subplot(gs[0])
+                ax2 = fig.add_subplot(gs[1])
+                ax1.set_ylabel('Offset from expected position (m/s)')
+                ax2.set_ylabel('Offset from expected position (m/s)')
+                ax2.set_xlabel('Index number')
+
+                offsets = star.fitOffsetsArray[:star.fiberSplitIndex,
+                                               star._t_label(transition_label)]
+                errors = star.fitErrorsArray[:star.fiberSplitIndex,
+                                             star._t_label(transition_label)]
+                w_mean, weight_sum = np.average(offsets, weights=(1/errors**2),
+                                                returned=True)
+                w_mean_err = 1 / np.sqrt(weight_sum)
+                ax1.axhline(w_mean, color=style_params_pre['color'])
+
+                indices = range(len(offsets))
+                ax1.errorbar(x=indices,
+                             y=offsets,
+                             yerr=errors,
+                             label=f'Mean: {w_mean:.2f}$\\pm${w_mean_err:.2f}',
+                             **style_params_pre)
+                ax1.legend(loc='lower right')
+
+                offsets = star.fitOffsetsArray[star.fiberSplitIndex:,
+                                               star._t_label(transition_label)]
+                errors = star.fitErrorsArray[star.fiberSplitIndex:,
+                                             star._t_label(transition_label)]
+                w_mean, weight_sum = np.average(offsets, weights=(1/errors**2),
+                                                returned=True)
+                w_mean_err = 1 / np.sqrt(weight_sum)
+                ax2.axhline(w_mean, color=style_params_post['color'])
+
+                indices = range(len(offsets))
+                ax2.errorbar(x=indices,
+                             y=offsets,
+                             yerr=errors,
+                             label=f'Mean: {w_mean:.2f}$\\pm${w_mean_err:.2f}',
+                             **style_params_post)
+                ax2.legend(loc='lower right')
+
+            else:
+                ax = fig.add_subplot(1, 1, 1)
+                if star.fiberSplitIndex == 0:
+                    params = style_params_post
+                else:
+                    params = style_params_pre
+
+                offsets = star.fitOffsetsArray[:,
+                                               star._t_label(transition_label)]
+                errors = star.fitErrorsArray[:,
+                                             star._t_label(transition_label)]
+                w_mean, weight_sum = np.average(offsets, weights=(1/errors**2),
+                                                returned=True)
+                w_mean_err = 1 / np.sqrt(weight_sum)
+                ax1.axhline(w_mean, color=style_params_post['color'])
+
+                indices = range(len(offsets))
+
+                ax.errorbar(x=indices,
+                            y=offsets,
+                            yerr=errors,
+                            label=f'Mean: {w_mean:.2f}$\\pm${w_mean_err:.2f}',
+                            **params)
+                ax.legend(loc='lower right')
+
+            plots_dir = data_dir / 'transition_offset_plots'
+            if not plots_dir.exists():
+                os.mkdir(plots_dir)
+            filename = plots_dir / '{}_{}.png'.format(
+                    obj_name, transition_label)
+            fig.savefig(filename)
+            plt.close(fig)
+
+if args.create_berv_plots:
+    for pair_label in tqdm(star._pair_label_dict.keys()):
+        fig = plt.figure(figsize=(6, 6), tight_layout=True)
+        if star.fiberSplitIndex not in (0, None):
+            gs = GridSpec(nrows=2, ncols=1, figure=fig,
+                          height_ratios=[1, 1], hspace=0)
+            ax1 = fig.add_subplot(gs[0])
+            ax2 = fig.add_subplot(gs[1], sharex=ax1)
+            ax1.set_ylabel('Pair separation pre-change (km/s)')
+            ax2.set_ylabel('Pair separation post-change (km/s)')
+            ax2.set_xlabel('Radial velocity (km/s)')
+
+            ax1.set_xlim(left=-100, right=100)
+            ax1.tick_params(labelbottom=False)
+            ax1.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.2f}'))
+            ax2.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.2f}'))
+
+            separations = star.pairSeparationsArray[:star.fiberSplitIndex,
+                                                    star._p_label(
+                                                            pair_label)].to(
+                                                                u.km/u.s)
+            errors = star.pairSepErrorsArray[:star.fiberSplitIndex,
+                                             star._p_label(pair_label)]
+
+            velocities = star.bervArray[:star.fiberSplitIndex] +\
+                star.radialVelocity
+
+            ax1.errorbar(x=velocities, y=separations, yerr=errors,
+                         **style_params_pre)
+
+            separations = star.pairSeparationsArray[star.fiberSplitIndex:,
+                                                    star._p_label(
+                                                            pair_label)].to(
+                                                                u.km/u.s)
+            errors = star.pairSepErrorsArray[star.fiberSplitIndex:,
+                                             star._p_label(pair_label)]
+
+            velocities = star.bervArray[star.fiberSplitIndex:] +\
+                star.radialVelocity
+
+            ax2.errorbar(x=velocities, y=separations, yerr=errors,
+                         **style_params_post)
+
+            plots_dir = data_dir / 'BERV_plots'
+            if not plots_dir.exists():
+                os.mkdir(plots_dir)
+            filename = plots_dir / '{}_{}.png'.format(
+                    obj_name, pair_label)
+            fig.savefig(filename)
+            plt.close(fig)
+
+    exit()
 
 # Search for pickle files in the given directory.
 search_str = str(data_dir) + '/*/pickles_{}/*fits.lzma'.format(args.suffix)
