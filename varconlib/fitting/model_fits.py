@@ -449,8 +449,8 @@ class GaussianFit(object):
         residuals = (self.fluxes - gaussian(self.wavelengths.value,
                                             *self.popt)) / self.errors
 
-        ax2.plot(self.wavelengths, residuals, color='Navy',
-                 linestyle=':', marker='+', linewidth=1.5, markersize=10)
+        ax2.plot(self.wavelengths, residuals, color='Navy', alpha=0.6,
+                 linestyle='', marker='D', linewidth=1.5, markersize=5)
 
         # Save the resultant plot.
         fig.savefig(str(context_plot_path))
