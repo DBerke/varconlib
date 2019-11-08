@@ -64,7 +64,7 @@ parser.add_argument('--create-fit-plots', action='store_true', default=False,
 
 parser.add_argument('--create-berv-plots', action='store_true',
                     help="Create plots of each pair's separation vs. the"
-                    " the BERV at the time of observation.")
+                    " BERV at the time of observation.")
 
 parser.add_argument('--create-airmass-plots', action='store_true',
                     default=False,
@@ -327,8 +327,9 @@ for pickle_file in tqdm(pickle_files):
                     tqdm.write('Creating plots at:')
                     tqdm.write(str(plot_closeup))
                     tqdm.write(str(plot_context))
-                fits_dict['_'.join(transition.label, order_num)].plotFit(
-                        plot_closeup, plot_context)
+                fits_dict['_'.join((transition.label,
+                                    str(order_num)))].plotFit(plot_closeup,
+                                                              plot_context)
 
     pairs_dict = {}
     separations_list = [obs_name, fits_list[0].dateObs.
@@ -504,6 +505,8 @@ if args.create_offset_plots:
                 ax3.axvline(label=key, **value)
 
             # Set up axis 1.
+            ax1.grid(which='major', axis='y', color='Gray', alpha=0.6,
+                     linestyle='--')
             # Plot pre-fiber change observations.
             pre_fiber_change_obs = len(offsets[:date_indices[2]])
             x_values = [x for x in range(pre_fiber_change_obs)]
@@ -547,13 +550,30 @@ if args.create_offset_plots:
 
             # Set up axis 3.
             ax3.set_xlim(**date_plot_range)
+            ax3.xaxis.set_major_locator(mdates.YearLocator(base=1,
+                                                           month=1, day=1))
+            ax3.xaxis.set_minor_locator(mdates.YearLocator(base=1,
+                                                           month=6, day=1))
+            ax3.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+            ax3.grid(which='major', axis='x', color='Gray', alpha=0.7,
+                     linestyle='--')
+            ax3.grid(which='minor', axis='x', color='LightGray', alpha=0.9,
+                     linestyle=':')
+
             ax3.errorbar(x=date_obs, y=normalized_offsets,
                          yerr=errors, **style_params_pre)
 
             # Set up axis 4.
             ax4.set_xlim(**folded_date_range)
             ax4.xaxis.set_major_locator(mdates.MonthLocator())
+            ax4.xaxis.set_minor_locator(mdates.MonthLocator(bymonthday=15))
             ax4.xaxis.set_major_formatter(mdates.DateFormatter('%m'))
+
+            ax4.grid(which='major', axis='x', color='Gray', alpha=0.7,
+                     linestyle='--')
+            ax4.grid(which='minor', axis='x', color='LightGray', alpha=1,
+                     linestyle=':')
+
             ax4.errorbar(x=folded_dates, y=normalized_offsets,
                          yerr=errors, **style_params_pre)
 
