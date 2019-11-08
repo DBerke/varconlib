@@ -88,6 +88,7 @@ def get_star_results(star1, star2, time_period):
             9) `w_mean_err1` and `w_mean_err2`, the errors on the weighted mean
                for each collection of pair separations in the given time
                period.
+
     """
 
     differences = np.empty(shape=star1.pairSeparationsArray.shape[1])
@@ -284,7 +285,7 @@ def create_pair_blend_comparison_plot(main_ax, chi_ax, star1, star2,
             pair_blends_dict[pair_label] = pair.blendTuple
             blend_tuples.add(pair.blendTuple)
 
-    sorted_blend_tuples = sorted(blend_tuples)
+    sorted_blend_tuples = [(0, 0), (0, 1), (1, 1), (0, 2), (1, 2), (2, 2)]
     print(sorted_blend_tuples)
 
     results = get_star_results(star1, star2, time_period)
@@ -302,9 +303,9 @@ def create_pair_blend_comparison_plot(main_ax, chi_ax, star1, star2,
                 sorted_differences.append(results['differences']
                                           [star1._p_label(key)])
                 sorted_errors.append(results['errors'][star1._p_label(key)])
-                sorted_chi_squared1.append(results['reduced_chi_squared1'][
+                sorted_chi_squared1.append(results['chi_squared1'][
                         star1._p_label(key)])
-                sorted_chi_squared2.append(results['reduced_chi_squared2'][
+                sorted_chi_squared2.append(results['chi_squared2'][
                         star1._p_label(key)])
         divisions.append(total)
 
@@ -356,15 +357,13 @@ def create_pair_separations_plot(ax, star1, star2,
 
     Parameters
     ----------
-    main_ax : `matplotlib.Axes` object
+    ax : `matplotlib.Axes` object
         The axis to plot the pair average offsets on.
-    chi_ax :  `matplotlib.Axes` object
-        The smaller axis to plot the chi-squared values of each pair on
+    star1, star2 : `varconlib.star.Star` objects
+        Two instances of the Star class to be compared.
     time_period : str
         Possible values are 'pre' and 'post' for the time periods before and
         after the HARPS fiber change in 2015. Passed to `get_star_results`.
-    star1, star2 : `varconlib.star.Star` objects
-        Two instances of the Star class to be compared.
     params : dict
         A dictionary of parameter values to pass to `matplotlib.errorbar`.
 
@@ -377,21 +376,60 @@ def create_pair_separations_plot(ax, star1, star2,
         for j in (-1, 1):
             ax.axhline(y=i * j * results['standard_deviation'],
                        color=color, linestyle='--')
+    ax.grid(which='major', axis='x', color='Black', linestyle='-')
 
     ax.errorbar(x=results['w_means1'].to(u.km/u.s), y=results['differences'],
                 xerr=results['w_mean_err1'], yerr=results['errors'],
                 marker=params['marker'], color=params['color'],
-                ecolor=params['ecolor'],
+                ecolor=params['ecolor'], alpha=params['alpha'],
                 markeredgecolor=params['markeredgecolor'],
-                linestyle='', markersize=8)
-    ax.errorbar(x=results['w_means2'].to(u.km/u.s), y=results['differences'],
-                xerr=results['w_mean_err2'], yerr=results['errors'],
-                marker='D', color='Gainsboro',
-                markeredgecolor='LightSlateGray', linestyle='',
-                markersize=4)
+                linestyle='', markersize=5,
+                label=f'{star1.name.replace("_", " ")}:'
+                f' {results["num_obs1"]} observations\n'
+                f'{star2.name.replace("_", " ")}:'
+                f' {results["num_obs2"]} observations')
+#    ax.errorbar(x=results['w_means2'].to(u.km/u.s), y=results['differences'],
+#                xerr=results['w_mean_err2'], yerr=results['errors'],
+#                marker='D', color='Gainsboro',
+#                markeredgecolor='LightSlateGray', linestyle='',
+#                markersize=4)
 #    for w_mean, w_err in zip(results['w_means1'], results['w_means2']),\
 #                         zip(results['w_mean_err1'], results['w_mean_err2']):
 #        ax.plot(w_mean, w_err, marker='', linestyle='', color='Black')
+
+    binned_means, binned_diffs, binned_errs = [], [], []
+    left, right = 0, 100
+    while right <= 800:
+        bin_means, bin_diffs, bin_errs = [], [], []
+        for mean, diff, err in zip(results['w_means1'],
+                                   results['differences'],
+                                   results['errors']):
+            if left < mean.to(u.km/u.s) < right:
+                bin_means.append(mean)
+                bin_diffs.append(diff)
+                bin_errs.append(err)
+        bin_weighted_mean = np.mean(bin_means)
+        bin_weighted_diff, sum_weights = np.average(bin_diffs,
+                                                    weights=1/np.array(
+                                                            bin_errs)**2,
+                                                    returned=True)
+        weighted_err_mean = 1 / np.sqrt(sum_weights ** 2)
+        binned_means.append(bin_weighted_mean)
+        binned_diffs.append(bin_weighted_diff)
+        binned_errs.append(weighted_err_mean)
+        left += 100
+        right += 100
+
+    binned_means *= u.m / u.s
+    binned_diffs *= u.m / u.s
+    binned_errs *= u.m / u.s
+
+    marker_color = 'LightPink' if time_period == 'pre' else 'LightGreen'
+    ax.errorbar(x=binned_means.to(u.km/u.s), y=binned_diffs, yerr=binned_errs,
+                color='SeaGreen', markerfacecolor=marker_color, marker='D',
+                linestyle='-', markersize=6)
+
+    ax.legend(loc='upper right')
 
 
 if __name__ == '__main__':
@@ -524,6 +562,7 @@ if __name__ == '__main__':
                 temp_filename = '/Users/dberke/Pictures/' +\
                                 f'{star1.name}-{star2.name}_blend_sorted.png'
                 fig.savefig(temp_filename)
+                plt.close(fig)
 
     elif args.pair_separations:
         tqdm.write('Creating plot...')
@@ -538,15 +577,24 @@ if __name__ == '__main__':
             ax2.set_ylabel('Post-fiber change\n pair separations (m/s)')
             ax2.set_xlabel('Absolute pair separation (km/s)')
 
-#            ax1.set_xlim(left=-2,
-#                         right=star1.pairSeparationsArray.shape[1]+2)
+            ax1.set_xlim(left=0, right=800)
 
-#            base_tick_major = 10
-#            base_tick_minor = 2
+            base_tick_major = 100
+            base_tick_minor = 25
+
+            for ax in (ax1, ax2):
+                ax.xaxis.set_major_locator(ticker.MultipleLocator(
+                        base=base_tick_major))
+                ax.xaxis.set_minor_locator(ticker.MultipleLocator(
+                        base=base_tick_minor))
 
             create_pair_separations_plot(ax1, star1, star2,
                                          'pre', style_params_pre)
             create_pair_separations_plot(ax2, star1, star2,
                                          'post', style_params_post)
 
-            plt.show()
+            temp_filename = '/Users/dberke/Pictures/' +\
+                f'{star1.name}-{star2.name}_by_separation.png'
+            tqdm.write(f'Saving plot to {temp_filename}.')
+            fig.savefig(temp_filename)
+            plt.close(fig)
