@@ -6,7 +6,7 @@ Created on Wed Apr 18 16:28:13 2018
 @author: dberke
 
 A module meant as a catch-all for certain functions and data potentially useful
-across ultiple scripts, but which don't really have any commonality.
+across multiple scripts, but which don't really have any commonality.
 """
 
 
@@ -18,7 +18,6 @@ from pathlib import Path
 from bidict import bidict
 import numpy as np
 from scipy.special import erf
-import unyt
 import unyt as u
 
 import varconlib as vcl
@@ -63,7 +62,6 @@ def wavelength2index(wavelength, wavelength_array, reverse=False):
         The wavelength to find the associated index for. If given as a
         unyt_quantity, the wavelength_array given should be a unyt_array with
         the same dimensions of length.
-
     wavelength_array : array-like, or unyt_array
         An iterable object containing a sequence of wavelengths, by default *in
         increasing order*. If a unyt_array is given, it should have dimensions
@@ -83,7 +81,7 @@ def wavelength2index(wavelength, wavelength_array, reverse=False):
 
     """
 
-    assert isinstance(wavelength, unyt.array.unyt_quantity),\
+    assert isinstance(wavelength, u.array.unyt_quantity),\
         f'Given wavelength "{wavelength}" is not a unyt_quantity.'
 
     # For cases where the wavelength is given in descending wavelength order,
