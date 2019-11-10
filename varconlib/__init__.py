@@ -29,6 +29,8 @@ masks_dir = data_dir / 'masks'
 
 pickle_dir = data_dir / 'pickles'
 
+spectra_dir = data_dir / 'spectra'
+
 pixel_geom_files_dir = data_dir / 'pixel_geom_files'
 
 # The pickle file containing the final selection of transitions to use.
