@@ -792,8 +792,8 @@ if __name__ == '__main__':
     no_CCD_bounds_file = masks_dir / 'unusable_spectrum_noCCDbounds.txt'
     # Path('data/unusable_spectrum_noCCDbounds.txt')
 
-    mask_CCD_bounds = vcl.parse_spectral_mask_file(CCD_bounds_file)
-    mask_no_CCD_bounds = vcl.parse_spectral_mask_file(no_CCD_bounds_file)
+    mask_CCD_bounds = parse_spectral_mask_file(CCD_bounds_file)
+    mask_no_CCD_bounds = parse_spectral_mask_file(no_CCD_bounds_file)
 
     if args.match_lines:
         tqdm.write('Reading BRASS line list...')
