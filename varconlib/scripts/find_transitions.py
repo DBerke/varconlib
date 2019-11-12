@@ -19,6 +19,7 @@ import pickle
 
 from adjustText import adjust_text
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticks
 import numpy as np
 from tqdm import tqdm
 
@@ -246,12 +247,17 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
 
         ax.set_xlim(left=0, right=4097)
         ax.set_ylim(bottom=16, top=73)
+        ax.xaxis.set_major_locator(ticks.MultipleLocator(base=512))
+        ax.xaxis.set_minor_locator(ticks.MultipleLocator(base=64))
+
+        ax.grid(which='major', axis='x', color='Gray', alpha=0.8)
+        ax.grid(which='minor', axis='x', color='LightGray', alpha=0.9)
 
         for i in range(17, 73, 1):
             ax.axhline(i, linestyle='--', color='Gray', alpha=0.7)
 
-        for j in edges:
-            ax.axvline(j, linestyle='-', color='SlateGray', alpha=0.8)
+#        for j in edges:
+#            ax.axvline(j, linestyle='-', color='SlateGray', alpha=0.8)
 
         ax.axhline(46.5, linestyle='-.', color='Peru', alpha=0.6)
 
