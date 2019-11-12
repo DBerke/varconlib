@@ -18,6 +18,53 @@ from tqdm import tqdm, trange
 from adjustText import adjust_text
 
 
+def pix_order_to_wavelength(pixel, order, coeffs_dict):
+    """
+    Returns the wavelength measured on the given pixel in the given order.
+
+    Parameters
+    ----------
+    pixel : int, Range: 0 to 4095
+        The pixel in the dispersion direction where the wavelength will be
+        measured.
+    order : int, Range: 0 to 71
+        The spectral order to measure the wavelength in.
+    coeff_dict: dict
+        A dictionary containing wavelength solution coefficients in the form
+        *ESO DRS CAL TH COEFF LLX*, where *X* ranges from 0 to 287.
+
+    Returns
+    -------
+    float
+        The wavelength observed at the given pixel and order in nanometers.
+
+    Notes
+    -----
+    The algorithm used is derived from Dumusque 2018 [1]_.
+
+    References
+    ----------
+    [1] Dumusque, X. "Measuring precise radial velocities on individual
+    spectral lines I. Validation of the method and application to mitigate
+    stellar activity", Astronomy & Astrophysics, 2018
+
+    """
+
+    if not (0 <= pixel <= 4095):
+        print('pixel = {}, must be between 0 and 4095.'.format(pixel))
+        raise ValueError
+    if not (0 <= order <= 71):
+        print('order = {}, must be between 0 and 71.'.format(order))
+        raise ValueError
+
+    wavelength = 0.
+    for k in range(0, 4, 1):
+        dict_key = 'ESO DRS CAL TH COEFF LL{0}'.format((4 * order) + k)
+        wavelength += coeffs_dict[dict_key] * (pixel ** k)
+
+    return wavelength / 10.
+
+
 def find_telluric_lines(wavelength, flux, smallwindow, largewindow, threshold,
                         start=None, end=None):
     """Steps through a spectrum returning pixels likely to be part of telluric
@@ -140,7 +187,7 @@ def find_CCD_boundaries(proximity, blueformat, redformat,
             if any([distx <= proximity for distx in x_distances]) or\
                any([disty <= proximity for disty in y_distances]):
 
-                wl = vcl.pix_order_to_wavelength(xpos, order, coeffs_dict)
+                wl = pix_order_to_wavelength(xpos, order, coeffs_dict)
 
                 if (wl < fsrmin) or (wl > fsrmax):
                     continue
