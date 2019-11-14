@@ -11,10 +11,11 @@ various observations taken of it.
 
 """
 
+from bidict import namedbidict
 import datetime as dt
 from glob import glob
 import lzma
-from os import unlink
+import os
 from pathlib import Path
 import pickle
 
@@ -44,6 +45,12 @@ class Star(object):
                   'pairSeparationsArray',
                   'pairSepErrorsArray',
                   'bervArray')
+    bidict_path_name = ('/obs_date_bidict',
+                        '/transition_bidict',
+                        '/pair_bidict')
+    bidict_names = ('_obs_date_bidict',
+                    '_transition_bidict',
+                    '_pair_bidict')
 
     # Date of fiber change in HARPS:
     fiber_change_date = dt.datetime(year=2015, month=6, day=1,
@@ -90,7 +97,8 @@ class Star(object):
         self.name = name
 
         # Initialize some attributes to be filled later.
-        self._obs_date_dict = {}
+        DateMap = namedbidict('ObservationDateMap', 'date', 'index')
+        self._obs_date_bidict = DateMap()
         self.bervArray = None
         self.fitMeansArray = None
         self.fitErrorsArray = None
@@ -145,6 +153,11 @@ class Star(object):
 
         """
 
+        # Define some named bidicts for mapping pair and transitions labels
+        # to their index numbers in arrays.
+        TransitionMap = namedbidict('TransitionMap', 'label', 'index')
+        PairMap = namedbidict('PairMap', 'label', 'index')
+
         # Check that the given directory exists.
         if not star_dir.exists():
             print(star_dir)
@@ -170,7 +183,8 @@ class Star(object):
                 fits_list = pickle.loads(f.read())
 
             # Save the observation date.
-            self._obs_date_dict[fits_list[0].dateObs.isoformat(
+            # ??? Maybe save as datetime objects rather than strings?
+            self._obs_date_bidict[fits_list[0].dateObs.isoformat(
                                timespec='milliseconds')] = obs_num
             # Save the BERV.
             self.bervArray[obs_num] = fits_list[0].BERV
@@ -204,12 +218,12 @@ class Star(object):
             for order_num in pair.ordersToMeasureIn:
                 pair_labels.append('_'.join((pair.label, str(order_num))))
 
-        self._pair_label_dict = {pair_label: num for num,
-                                 pair_label in
-                                 enumerate(pair_labels)}
-        self._transition_label_dict = {transition_label: num for
-                                       num, transition_label in
-                                       enumerate(transition_labels)}
+        self._pair_bidict = PairMap({pair_label: num for num,
+                                     pair_label in
+                                     enumerate(pair_labels)})
+        self._transition_bidict = TransitionMap({transition_label: num
+                                                 for num, transition_label in
+                                                 enumerate(transition_labels)})
 
     def getPairSeparations(self):
         """Create attributes containing pair separations and associated errors.
@@ -220,10 +234,10 @@ class Star(object):
         """
 
         # Set up the arrays for pair separations and errors
-        pairSeparationsArray = np.empty([len(self._obs_date_dict),
-                                         len(self._pair_label_dict)])
-        pairSepErrorsArray = np.empty([len(self._obs_date_dict),
-                                       len(self._pair_label_dict)])
+        pairSeparationsArray = np.empty([len(self._obs_date_bidict),
+                                         len(self._pair_bidict)])
+        pairSepErrorsArray = np.empty([len(self._obs_date_bidict),
+                                       len(self._pair_bidict)])
 
         for pair in self.pairsList:
             for order_num in pair.ordersToMeasureIn:
@@ -233,16 +247,16 @@ class Star(object):
                 label2 = '_'.join((pair._lowerEnergyTransition.label,
                                    str(order_num)))
 
-                pairSeparationsArray[:, self._p_label(pair_label)]\
-                    = wave2vel(self.fitMeansArray[:, self._t_label(label1)],
-                               self.fitMeansArray[:, self._t_label(label2)])
+                pairSeparationsArray[:, self.p_index(pair_label)]\
+                    = wave2vel(self.fitMeansArray[:, self.t_index(label1)],
+                               self.fitMeansArray[:, self.t_index(label2)])
 
                 self.pairSeparationsArray = u.unyt_array(pairSeparationsArray,
                                                          units='m/s')
 
-                pairSepErrorsArray[:, self._p_label(pair_label)]\
-                    = np.sqrt(self.fitErrorsArray[:, self._t_label(label1)]**2,
-                              self.fitErrorsArray[:, self._t_label(label2)]**2)
+                pairSepErrorsArray[:, self.p_index(pair_label)]\
+                    = np.sqrt(self.fitErrorsArray[:, self.t_index(label1)]**2,
+                              self.fitErrorsArray[:, self.t_index(label2)]**2)
 
                 self.pairSepErrorsArray = u.unyt_array(pairSepErrorsArray,
                                                        units='m/s')
@@ -261,18 +275,17 @@ class Star(object):
         """
 
         if file_path.exists():
-            unlink(file_path)
+            backup_path = file_path.with_name(file_path.stem + ".bak")
+            os.replace(file_path, backup_path)
         with h5py.File(file_path, mode='a') as f:
 
             for dataset_name, attr_name in zip(self.dataset_names,
                                                self.attr_names):
                 getattr(self, attr_name).write_hdf5(file_path,
                                                     dataset_name=dataset_name)
-            hickle.dump(self._obs_date_dict, f, path='/obs_date_dict')
-            hickle.dump(self._transition_label_dict, f,
-                        path='/transition_label_dict')
-            hickle.dump(self._pair_label_dict, f,
-                        path='/pair_label_dict')
+            for path_name, attr_name in zip(self.bidict_path_name,
+                                            self.bidict_names):
+                hickle.dump(getattr(self, attr_name), f, path=path_name)
 
     def constructFromHDF5(self, filename):
         """Retrieve datasets from HDF5 file.
@@ -294,10 +307,10 @@ class Star(object):
                 dataset = u.unyt_array.from_hdf5(filename,
                                                  dataset_name=dataset_name)
                 setattr(self, attr_name, dataset)
-            self._obs_date_dict = hickle.load(f, path='/obs_date_dict')
-            self._transition_label_dict = hickle.load(f, path='/transition_'
-                                                      'label_dict')
-            self._pair_label_dict = hickle.load(f, path='/pair_label_dict')
+
+            for path_name, attr_name in zip(self.bidict_path_name,
+                                            self.bidict_names):
+                setattr(self, attr_name, hickle.load(f, path=path_name))
 
     @property
     def transitionsList(self):
@@ -367,7 +380,7 @@ class Star(object):
         """
 
         dates = [dt.datetime.fromisoformat(s) for s in
-                 sorted(self._obs_date_dict.keys())]
+                 sorted(self._obs_date_bidict.keys())]
 
         for index, date in enumerate(dates):
             if date > self.fiber_change_date:
@@ -376,7 +389,7 @@ class Star(object):
         # Else if no observation dates are after the fiber change:
         return None
 
-    def _p_label(self, label):
+    def p_index(self, label):
         """Return the index number of the column associated with this pair
         label.
 
@@ -391,17 +404,31 @@ class Star(object):
         -------
         int
             The index number of the column corresponding to the given pair
-            label in `self._pair_label_dict`.
+            label in `self._pair_bidict`.
 
         """
 
-        if not hasattr(self, '_pair_label_dict'):
-            raise AttributeError('self._pair_label_dict not yet instantiated')
+        return self._pair_bidict.index_for[label]
 
-        else:
-            return self._pair_label_dict[label]
+    def p_label(self, index):
+        """Return the pair label associated with this index number.
 
-    def _t_label(self, label):
+        Parameters
+        ----------
+        index : int
+            An index number found in `self._pair_bidict.values()`.
+
+        Returns
+        -------
+        str
+            The pair label corresponding to the given index number in
+            `self._pair_bidict.keys()`.
+
+        """
+
+        return self._pair_bidict.label_for[index]
+
+    def t_index(self, label):
         """Return the index number of the column associated with this
         transition label.
 
@@ -415,17 +442,30 @@ class Star(object):
         -------
         int
             The index number of the column corresponding to the given
-            transition label in `self._transition_label_dict`.
+            transition label in `self._transition_bidict.keys()`.
 
         """
 
-        if not hasattr(self, '_transition_label_dict'):
-            raise AttributeError('self._transition_label_dict not yet'
-                                 ' instantiated')
-        else:
-            return self._transition_label_dict[label]
+        return self._transition_bidict.index_for[label]
 
-    def _o_label(self, observation_date):
+    def t_label(self, index):
+        """Return the transition label associated with this index number.
+
+        Parameters
+        ----------
+        index : int
+            An index number found in `self._transition_bidict.values()`.
+
+        Returns
+        -------
+        str
+            The transition label corresponding to the given index number.
+
+        """
+
+        return self._transition_bidict.label_for[index]
+
+    def od_index(self, observation_date):
         """Return the index of the row associated with a given observation date
         (either as a `datetime.datetime` object or an ISO-formatted string.)
 
@@ -440,18 +480,31 @@ class Star(object):
         -------
         int
             The index number of the row corresponding to the given observation
-            time in `self._obs_date_dict`.
+            time in `self._obs_date_bidict`.
 
         """
 
         if isinstance(observation_date, str):
-            return self._obs_date_dict[observation_date]
+            return self._obs_date_bidict.index_for[observation_date]
 
         elif isinstance(observation_date, dt.datetime):
-            try:
-                return self._obs_date_dict[observation_date.isoformat(
+            return self._obs_date_bidict.index_for[observation_date.isoformat(
                                            timespec='milliseconds')]
-            except KeyError:
-                raise KeyError('self._obs_date_dict does not have a key'
-                               ' corresponding to the ISO-formatted string'
-                               ' from the given datetime')
+
+    def od_date(self, index):
+        """Return the observation datetime associated with this index number.
+
+        Parameters
+        ----------
+        index : int
+            An index number in `self._obs_date_bidict.values()`.
+
+        Returns
+        -------
+        str
+            The observation date corresponding to the given index number in
+            ISO-standard format.
+
+        """
+
+        return self._obs_date_bidict.date_for[index]
