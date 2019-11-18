@@ -13,6 +13,7 @@ import argparse
 import csv
 import datetime as dt
 from glob import glob
+from itertools import tee
 import lzma
 import os
 from pathlib import Path
@@ -24,6 +25,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 import numpy as np
+from tabulate import tabulate
 from tqdm import tqdm
 import unyt as u
 
@@ -33,166 +35,207 @@ from varconlib.miscellaneous import date2index
 from varconlib.star import Star
 
 
-# Where the analysis results live:
-output_dir = Path(vcl.config['PATHS']['output_dir'])
+def pairwise(iterable):
+    """Take a sequence and return pairs of successive values from it.
+    s -> (s[0], s[1]), (s[1], s[2]),...,(s[-2], s[-1])
 
-# Set up CL arguments.
-desc = """A script to analyze fitted absorption features.
-          Requires a directory where results for an object are stored to be
-          given, and the suffix to use."""
-parser = argparse.ArgumentParser(description=desc)
+    Parameters
+    ----------
+    iterable : iterable
+        Any iterable item to be iterated over
 
-parser.add_argument('object_dir', action='store', type=str,
-                    help='Object directory to search in')
+    Yields
+    ------
+    tuple
+        A length-2 tuple of successive, overlapping pairs of values from
+        `iterable`.
 
-parser.add_argument('suffix', action='store', type=str,
-                    help='Suffix to add to directory names to search for.')
+    """
 
-parser.add_argument('--use-tex', action='store_true', default=False,
-                    help='Use TeX rendering for fonts in plots (slow!).')
-
-parser.add_argument('--create-transition-plots', action='store_true',
-                    help='Create plots of the distributions of each individual'
-                    'transition for a star.')
-
-parser.add_argument('--create-offset-plots',
-                    action='store_true', default=False,
-                    help='Create plots of the offsets for each pair.')
-
-parser.add_argument('--create-fit-plots', action='store_true', default=False,
-                    help='Create plots of the fits for each transition.')
-
-parser.add_argument('--create-berv-plots', action='store_true',
-                    help="Create plots of each pair's separation vs. the"
-                    " BERV at the time of observation.")
-
-parser.add_argument('--create-airmass-plots', action='store_true',
-                    default=False,
-                    help="Plot transitions' scatter as a function of airmass.")
-
-parser.add_argument('--link-fit-plots', action='store_true', default=False,
-                    help='Hard-link fit plots by transition into new folders.')
-
-parser.add_argument('--write-csv', action='store_true', default=False,
-                    help='Create a CSV file of offsets for each pair.')
-
-parser.add_argument('--recreate-star', action='store_true', default=False,
-                    help='Force the star to be recreated from directories'
-                    ' rather than be read in from saved data.')
-
-parser.add_argument('-v', '--verbose', action='store_true', default=False,
-                    help='Print more information about the process.')
-
-args = parser.parse_args()
-
-if args.use_tex or args.create_offset_plots:
-    plt.rc('text', usetex=True)
-
-# Define some important dates for plots.
-# Define some dates when various changes were made to HARPS.
-dates_of_change = {"Secondary mirror unit changed":
-                   {'x': dt.date(year=2004, month=8, day=8),
-                    'color': 'MediumSeaGreen', 'linestyle': '--'},
-                   "Flat field lamp changed":
-                   {'x': dt.date(year=2008, month=8, day=22),
-                    'color': 'OliveDrab', 'linestyle': '-'},
-                   "Fibers changed":
-                   {'x': dt.date(year=2015, month=6, day=1),
-                    'color': 'SeaGreen', 'linestyle': '-.'}}
-
-date_plot_range = {'left': dt.date(year=2003, month=10, day=1),
-                   'right': dt.date(year=2017, month=6, day=1)}
-folded_date_range = {'left': dt.date(year=2000, month=1, day=1),
-                     'right': dt.date(year=2000, month=12, day=31)}
-
-style_params_pre = {'marker': 'o', 'color': 'Chocolate',
-                    'markeredgecolor': 'Black', 'ecolor': 'BurlyWood',
-                    'linestyle': '', 'alpha': 0.7, 'markersize': 6}
-
-style_params_post = {'marker': 'o', 'color': 'CornFlowerBlue',
-                     'markeredgecolor': 'Black', 'ecolor': 'LightSkyBlue',
-                     'linestyle': '', 'alpha': 0.7, 'markersize': 6}
-
-weighted_mean_params = {'color': 'RoyalBlue', 'linestyle': '--'}
-weighted_err_params = {'color': 'SteelBlue', 'linestyle': ':'}
+    a, b = tee(iterable)
+    next(b, None)
+    return zip(a, b)
 
 
-# Find the data in the given directory.
-data_dir = Path(args.object_dir)
-if not data_dir.exists():
-    print(data_dir)
-    raise RuntimeError('The given directory does not exist.')
+def link_fit_plots(transition_plots_dir):
 
-# Read the list of chosen transitions.
-with open(vcl.final_selection_file, 'r+b') as f:
-    transitions_list = pickle.load(f)
+    for transition in tqdm(transitions_list):
 
-tqdm.write(f'Found {len(transitions_list)} individual transitions.')
+        wavelength_str = transition.label
+        transition_dir = transition_plots_dir / wavelength_str
+        close_up_dir = transition_dir / 'close_up'
+        context_dir = transition_dir / 'context'
 
-# Read the list of chosen pairs.
-with open(vcl.final_pair_selection_file, 'r+b') as f:
-    pairs_list = pickle.load(f)
+        for directory in (transition_dir, close_up_dir, context_dir):
+            if not directory.exists():
+                os.mkdir(directory)
 
-tqdm.write(f'Found {len(pairs_list)} transition pairs (total) in list.')
+        for plot_type, directory in zip(('close_up', 'context'),
+                                        (close_up_dir, context_dir)):
 
-# Read or create a Star object for this star.
-obj_name = data_dir.stem
-if args.recreate_star:
-    load_data = False
-else:
-    load_data = True
-star = Star(obj_name, data_dir, suffix=args.suffix, load_data=load_data)
+            search_str = str(data_dir) +\
+                '/HARPS*/plots_{}/{}/*{}*.png'.format(args.suffix,
+                                                      plot_type,
+                                                      wavelength_str)
+            tqdm.write(search_str)
 
-if args.create_transition_plots:
+            files_to_link = [Path(path) for path in glob(search_str)]
+            for file_to_link in files_to_link:
+                dest_name = directory / file_to_link.name
+                if not dest_name.exists():
+                    os.link(file_to_link, dest_name)
+
+
+def create_transition_offset_plots(plots_dir):
+    """Create plots of the offsets for each transition in the given star.
+
+    Parameters
+    ----------
+    plots_dir : `pathlib.Path`
+        The directory to save the output plots to.
+
+    """
+
+    def layout_plots(offset_ax, chi_ax, vs_ax, params):
+        """Perform the plotting on the given axes.
+
+        Parameters
+        ----------
+        offset_ax : `matplotlib.axes.Axes` object
+            The axis to plot the transition offset from expected position vs.
+            observation index number on.
+        chi_axi : `matplotlib.axes.Axes` object
+            The axis to plot the reduced chi² value of each fit vs. observation
+            index number on.
+        vs_ax : `matplotlib.axes.Axes` object
+            The axis on which to plot the two previous quantities against each
+            other (offset vs. chi²).
+        params : dict
+            A dictionary of parameters for passing to plotting functions, such
+            as 'color', 'linestyle', etc.
+
+        """
+
+        # Set up the offset axis with grids.
+        offset_ax.set_ylabel('Offset from expected position (m/s)')
+        offset_ax.xaxis.set_major_locator(ticker.MultipleLocator(base=10))
+        offset_ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=2))
+
+        offset_ax.xaxis.grid(which='major', color='Gray', alpha=0.7,
+                             linestyle='-')
+        offset_ax.xaxis.grid(which='minor', color='Gray', alpha=0.6,
+                             linestyle='--')
+        offset_ax.yaxis.grid(which='major', color='Gray', alpha=0.4,
+                             linestyle='--')
+
+        offset_ax.axhline(w_mean, color='Black')
+        offset_ax.axhline(y=w_mean + std_dev, color='DimGray', linestyle='-.')
+        offset_ax.axhline(y=w_mean - std_dev, color='DimGray', linestyle='-.')
+
+        # Plot the values.
+        indices = range(len(offsets))
+        offset_ax.errorbar(x=indices, y=offsets, yerr=errors,
+                           label=f'Mean: {w_mean:.2f}$\\pm${std_dev:.2f}\n'
+                           f'Absolute mean: {mean_measured:.4f}\n'
+                           fr'$\chi^2_\nu=${reduced_chi_squared.value:.3f}',
+                           **params)
+
+        offset_ax.legend(loc='lower right')
+
+        # Plot the chi-squared values for the fits.
+        chi_ax.set_xlabel('Index number')
+        chi_ax.set_ylabel(r'$\chi^2_\nu$')
+
+        chi_ax.axhline(y=1, color=params['color'], linestyle='-.')
+        chi_ax.yaxis.set_major_locator(ticker.MultipleLocator(base=2))
+        chi_ax.yaxis.grid(which='major', color='Gray', alpha=0.6)
+        chi_ax.xaxis.grid(which='major', color='Gray', alpha=0.8,
+                          linestyle='-')
+        chi_ax.xaxis.grid(which='minor', color='Gray', alpha=0.7,
+                          linestyle='--')
+
+        chi_ax.plot(indices, fit_chis, color='Black',
+                    linestyle='-', marker='o', markersize=3)
+
+        # Create the plot of chi-squared vs. offset.
+        vs_ax.set_xlabel(r'$\chi^2_\nu$')
+        vs_ax.set_ylabel('Offset from expected position (m/s)')
+
+        vs_ax.axhline(w_mean, color='Black', alpha=0.7)
+        vs_ax.axvline(1, color=params['color'], linestyle='-.')
+        vs_ax.axhline(y=w_mean + std_dev, color='DimGray', linestyle='-.',
+                      alpha=0.6)
+        vs_ax.axhline(y=w_mean - std_dev, color='DimGray', linestyle='-.',
+                      alpha=0.6)
+
+        vs_ax.yaxis.grid(which='major', color='Gray', linestyle='--',
+                         alpha=0.6)
+        vs_ax.xaxis.grid(which='major', color='Gray', linestyle='--',
+                         alpha=0.6)
+
+        vs_ax.errorbar(x=fit_chis, y=offsets, yerr=errors,
+                       **params)
+
     for transition in tqdm(star.transitionsList):
         for order in transition.ordersToFitIn:
             transition_label = '_'.join((transition.label, str(order)))
+            column_index = star.t_index(transition_label)
 
-            fig = plt.figure(figsize=(6, 6), tight_layout=True)
             if star.fiberSplitIndex not in (0, None):
-                gs = GridSpec(nrows=2, ncols=1, figure=fig,
-                              height_ratios=[1, 1], hspace=0)
-                ax1 = fig.add_subplot(gs[0])
-                ax2 = fig.add_subplot(gs[1])
-                ax1.set_ylabel('Offset from expected position (m/s)')
-                ax2.set_ylabel('Offset from expected position (m/s)')
-                ax2.set_xlabel('Index number')
+                fig = plt.figure(figsize=(11, 8), tight_layout=True)
+                gs = GridSpec(nrows=5, ncols=2, figure=fig, hspace=0,
+                              height_ratios=[11, 3, 3, 11, 3],
+                              width_ratios=[1, 1])
 
-                offsets = star.fitOffsetsArray[:star.fiberSplitIndex,
-                                               star._t_label(transition_label)]
-                errors = star.fitErrorsArray[:star.fiberSplitIndex,
-                                             star._t_label(transition_label)]
-                w_mean, weight_sum = np.average(offsets, weights=(1/errors**2),
-                                                returned=True)
-                w_mean_err = 1 / np.sqrt(weight_sum)
-                ax1.axhline(w_mean, color=style_params_pre['color'])
+                offset_ax1 = fig.add_subplot(gs[0, 0])
+                offset_ax2 = fig.add_subplot(gs[3, 0])
 
-                indices = range(len(offsets))
-                ax1.errorbar(x=indices,
-                             y=offsets,
-                             yerr=errors,
-                             label=f'Mean: {w_mean:.2f}$\\pm${w_mean_err:.2f}',
-                             **style_params_pre)
-                ax1.legend(loc='lower right')
+                chi_ax1 = fig.add_subplot(gs[1, 0], sharex=offset_ax1)
+                chi_ax2 = fig.add_subplot(gs[4, 0], sharex=offset_ax2,
+                                          sharey=chi_ax1)
 
-                offsets = star.fitOffsetsArray[star.fiberSplitIndex:,
-                                               star._t_label(transition_label)]
-                errors = star.fitErrorsArray[star.fiberSplitIndex:,
-                                             star._t_label(transition_label)]
-                w_mean, weight_sum = np.average(offsets, weights=(1/errors**2),
-                                                returned=True)
-                w_mean_err = 1 / np.sqrt(weight_sum)
-                ax2.axhline(w_mean, color=style_params_post['color'])
+                vs_ax1 = fig.add_subplot(gs[0:1, 1], sharey=offset_ax1)
+                vs_ax2 = fig.add_subplot(gs[3:4, 1], sharex=vs_ax1,
+                                         sharey=offset_ax2)
 
-                indices = range(len(offsets))
-                ax2.errorbar(x=indices,
-                             y=offsets,
-                             yerr=errors,
-                             label=f'Mean: {w_mean:.2f}$\\pm${w_mean_err:.2f}',
-                             **style_params_post)
-                ax2.legend(loc='lower right')
+                axes1 = (offset_ax1, chi_ax1, vs_ax1)
+                axes2 = (offset_ax2, chi_ax2, vs_ax2)
+
+                pre_slice = slice(None, star.fiberSplitIndex)
+                post_slice = slice(star.fiberSplitIndex, None)
+
+                for axes, time_slice, params in zip((axes1, axes2),
+                                                    (pre_slice, post_slice),
+                                                    (style_params_pre,
+                                                     style_params_post)):
+
+                    offsets = star.fitOffsetsArray[time_slice,
+                                                   column_index]
+                    errors = star.fitErrorsArray[time_slice,
+                                                 column_index]
+                    fit_chis = star.chiSquaredNuArray[time_slice,
+                                                      column_index]
+                    mean_measured = np.average(star.
+                                               fitMeansArray[time_slice,
+                                                             column_index],
+                                               weights=(1/errors**2)).to(
+                                                       u.angstrom)
+                    w_mean, weight_sum = np.average(offsets,
+                                                    weights=(1/errors**2),
+                                                    returned=True)
+                    w_mean_err = 1 / np.sqrt(weight_sum)
+
+                    chi_squared = np.sum(((offsets - w_mean) / errors) ** 2)
+                    reduced_chi_squared = chi_squared / (len(offsets) - 1)
+                    std_dev = np.std(offsets)
+
+                    layout_plots(*axes, params)
 
             else:
+                # TODO: This needs to be harmonized with the section above,
+                # so that the function can seamlessly cover stars with
+                # observation before and after the fiber change.
+                fig = plt.figure(figsize=(7, 7), tight_layout=True)
                 ax = fig.add_subplot(1, 1, 1)
                 if star.fiberSplitIndex == 0:
                     params = style_params_post
@@ -200,32 +243,33 @@ if args.create_transition_plots:
                     params = style_params_pre
 
                 offsets = star.fitOffsetsArray[:,
-                                               star._t_label(transition_label)]
+                                               star.t_index(transition_label)]
                 errors = star.fitErrorsArray[:,
-                                             star._t_label(transition_label)]
+                                             star.t_index(transition_label)]
                 w_mean, weight_sum = np.average(offsets, weights=(1/errors**2),
                                                 returned=True)
                 w_mean_err = 1 / np.sqrt(weight_sum)
-                ax1.axhline(w_mean, color=style_params_post['color'])
+                std_dev = np.std(offsets)
+                ax.axhline(w_mean, color=style_params_post['color'])
 
                 indices = range(len(offsets))
 
                 ax.errorbar(x=indices,
                             y=offsets,
                             yerr=errors,
-                            label=f'Mean: {w_mean:.2f}$\\pm${w_mean_err:.2f}',
+                            label=f'Mean: {w_mean:.2f}$\\pm${std_dev:.2f}',
                             **params)
+                ax.axhline(y=w_mean + std_dev, color='Black')
+                ax.axhline(y=w_mean - std_dev, color='Black')
                 ax.legend(loc='lower right')
 
-            plots_dir = data_dir / 'transition_offset_plots'
-            if not plots_dir.exists():
-                os.mkdir(plots_dir)
             filename = plots_dir / '{}_{}.png'.format(
                     obj_name, transition_label)
             fig.savefig(filename)
             plt.close(fig)
 
-if args.create_berv_plots:
+
+def create_BERV_plots():
     for pair_label in tqdm(star._pair_label_dict.keys()):
         fig = plt.figure(figsize=(6, 6), tight_layout=True)
         if star.fiberSplitIndex not in (0, None):
@@ -242,12 +286,13 @@ if args.create_berv_plots:
             ax1.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.2f}'))
             ax2.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.2f}'))
 
+            # Gather the pre-fiber change observations.
             separations = star.pairSeparationsArray[:star.fiberSplitIndex,
-                                                    star._p_label(
+                                                    star.p_index(
                                                             pair_label)].to(
                                                                 u.km/u.s)
             errors = star.pairSepErrorsArray[:star.fiberSplitIndex,
-                                             star._p_label(pair_label)]
+                                             star.p_index(pair_label)]
 
             velocities = star.bervArray[:star.fiberSplitIndex] +\
                 star.radialVelocity
@@ -255,12 +300,41 @@ if args.create_berv_plots:
             ax1.errorbar(x=velocities, y=separations, yerr=errors,
                          **style_params_pre)
 
+            vel_lower = velocities.min()
+            vel_upper = velocities.max()
+            bin_lims = np.linspace(vel_lower, vel_upper, num=6)
+            binned_seps = []
+            binned_chi_squareds = []
+            for limits in pairwise(bin_lims):
+                bin_seps = []
+                bin_errs = []
+                for vel, sep, err in zip(velocities, separations, errors):
+                    if limits[0] < vel < limits[1]:
+                        bin_seps.append(sep.to(u.m/u.s))
+                        bin_errs.append(err.to(u.m/u.s))
+
+                bin_errs = np.array(bin_errs)
+                bin_mean = np.average(bin_seps,
+                                      weights=1/bin_errs**2)
+                chi_squared = np.sum(((bin_seps - bin_mean) / bin_errs) ** 2)
+                if len(bin_seps) > 1:
+                    reduced_chi_squared = chi_squared / (len(bin_seps) - 1)
+                    binned_chi_squareds.append(reduced_chi_squared)
+                else:
+                    binned_chi_squareds.append(chi_squared)
+
+                binned_seps.append(bin_mean)
+
+            tqdm.write(str(tabulate(zip(binned_seps, binned_chi_squareds),
+                           headers=["Separation (km/s)", "Reduced χ²"])))
+
+            # Gather the post-fiber change observations.
             separations = star.pairSeparationsArray[star.fiberSplitIndex:,
-                                                    star._p_label(
+                                                    star.p_index(
                                                             pair_label)].to(
                                                                 u.km/u.s)
             errors = star.pairSepErrorsArray[star.fiberSplitIndex:,
-                                             star._p_label(pair_label)]
+                                             star.p_index(pair_label)]
 
             velocities = star.bervArray[star.fiberSplitIndex:] +\
                 star.radialVelocity
@@ -274,117 +348,44 @@ if args.create_berv_plots:
             filename = plots_dir / '{}_{}.png'.format(
                     obj_name, pair_label)
             fig.savefig(filename)
-            plt.close(fig)
-
-    exit()
-
-# Search for pickle files in the given directory.
-search_str = str(data_dir) + '/*/pickles_{}/*fits.lzma'.format(args.suffix)
-tqdm.write(search_str)
-pickle_files = [Path(path) for path in glob(search_str)]
+        plt.close(fig)
 
 
-# dictionary with entries per observation
-# entries consist of dictionary with entries of pairs made from fits
+def create_expected_offset_plots(star):
+    """Create a plot for this star showing the average offset in the measured
+    wavelength of a transition compared to its laboratory expected value.
 
-# Set up the master dictionary to contain sub-entries per observation.
-master_star_dict = {}
+    Parameters
+    ----------
+    star : `star.Star`
+        The star object to get data from.
 
-obs_name_re = re.compile('HARPS.*_e2ds_A')
+    """
 
-# Create some lists to hold all the results for saving out as a CSV file:
-master_star_list = []
-master_fits_list = []
-for pickle_file in tqdm(pickle_files):
+    fig = plt.figure()
+    if star.fiberSplitIndex not in (0, None):
+        gs = GridSpec(nrows=2, ncols=1, figure=fig,
+                      height_ratios=[1, 1], hspace=0)
+        ax1 = fig.add_subplot(gs[0])
+        ax2 = fig.add_subplot(gs[1], sharex=ax1)
 
-    # Match the part of the pickle filename that is the observation name.
-    obs_name = obs_name_re.match(pickle_file.stem).group()
+        pre_slice = slice(None, star.fiberSplitIndex)
+        post_slice = slice(star.fiberSplitIndex, None)
 
-    tqdm.write('Analyzing results from {}'.format(obs_name))
-    with lzma.open(pickle_file, 'rb') as f:
-        fits_list = pickle.loads(f.read())
+        for ax, params in zip((ax1, ax2),
+                              (style_params_pre, style_params_post)):
+            pass
 
-    # Set up a dictionary to map fits in this observation to transitions:
-    fits_dict = {fit.label: fit for fit in fits_list}
-    master_fits_list.append(fits_dict)
-
-    # This can be used to remake plots for individual fits without rerunning
-    # the fitting process in case the plot visual format changes.
-    if args.create_fit_plots:
-        closeup_dir = data_dir /\
-            '{}/plots_{}/close_up'.format(obs_name, args.suffix)
-        context_dir = data_dir /\
-            '{}/plots_{}/context'.format(obs_name, args.suffix)
-        tqdm.write('Creating plots of fits.')
-
-        for transition in tqdm(transitions_list):
-            for order_num in transition.ordersToFitIn:
-                plot_closeup = closeup_dir / '{}_{}_{}_close.png'.format(
-                        obs_name, transition.label, order_num)
-                plot_context = context_dir / '{}_{}_{}_context.png'.format(
-                        obs_name, transition.label, order_num)
-                if args.verbose:
-                    tqdm.write('Creating plots at:')
-                    tqdm.write(str(plot_closeup))
-                    tqdm.write(str(plot_context))
-                fits_dict['_'.join((transition.label,
-                                    str(order_num)))].plotFit(plot_closeup,
-                                                              plot_context)
-
-    pairs_dict = {}
-    separations_list = [obs_name, fits_list[0].dateObs.
-                        isoformat(timespec='milliseconds')]
-
-    column_names = ['Observation', 'Time']
-    for pair in pairs_list:
-        for order_num in pair.ordersToMeasureIn:
-            pair_label = '_'.join((pair.label, str(order_num)))
-            column_names.extend([pair_label, pair_label + '_err'])
-            try:
-                fits_pair = [fits_dict['_'.join((pair._higherEnergyTransition.
-                                                label, str(order_num)))],
-                             fits_dict['_'.join((pair._lowerEnergyTransition.
-                                                label, str(order_num)))]]
-            except KeyError:
-                # Measurement of one or the other transition doesn't exist, so
-                # skip it (but fill in the list to prevent getting out of sync)
-                separations_list.extend(['N/A', ' N/A'])
-                continue
-
-            assert fits_pair[0].order == fits_pair[1].order,\
-                f"Orders don't match for {fits_pair}"
-            if np.isnan(fits_pair[0].meanErrVel) or \
-               np.isnan(fits_pair[1].meanErrVel):
-                # Similar to above, fill in list with placeholder value.
-                tqdm.write('{} in {} has a NaN velocity offset!'.format(
-                        pair.label, obs_name))
-                tqdm.write(str(fits_pair[0].meanErrVel))
-                tqdm.write(str(fits_pair[1].meanErrVel))
-                separations_list.extend(['NaN', ' NaN'])
-                continue
-
-            pairs_dict[pair_label] = fits_pair
-
-            velocity_separation = wave2vel(fits_pair[0].mean,
-                                           fits_pair[1].mean)
-            error = np.sqrt(fits_pair[0].meanErrVel ** 2 +
-                            fits_pair[1].meanErrVel ** 2)
-            separations_list.extend([velocity_separation.value, error.value])
-
-    # This is for the script to use.
-    master_star_dict[obs_name] = pairs_dict
-    if args.write_csv:
-        # This is to be written out.
-        master_star_list.append(separations_list)
 
 # Write out a CSV file containing the pair separation values for all
 # observations of this star.
 # TODO: update
-if args.write_csv:
+def write_csv(column_names):
+
     csv_filename = data_dir / 'pair_separations_{}.csv'.format(data_dir.stem)
     if args.verbose:
-        tqdm.write(f'Creating CSV file of separations for {data_dir.stem} '
-                   f'at {csv_filename}')
+        tqdm.write(f'Creating CSV file of separations for {data_dir.stem}'
+                   f' at {csv_filename}')
 
     assert len(master_star_list[0]) == len(column_names)
 
@@ -396,11 +397,11 @@ if args.write_csv:
 
     # Write out a series of CSV files containing information on the fits of
     # individual transitions for each star.
-    column_names = ['ObsDate', 'Amplitude', 'Amplitude_err (A)', 'Mean (A)',
-                    'Mean_err (A)', 'Mean_err_vel (m/s)', 'Sigma (A)',
-                    'Sigma_err (A)', 'Offset (m/s)', 'Offset_err (m/s)',
-                    'FWHM (m/s)', 'FWHM_err (m/s)', 'Chi-squared-nu',
-                    'Order', 'Mean_airmass']
+    column_headers = ['ObsDate', 'Amplitude', 'Amplitude_err (A)', 'Mean (A)',
+                      'Mean_err (A)', 'Mean_err_vel (m/s)', 'Sigma (A)',
+                      'Sigma_err (A)', 'Offset (m/s)', 'Offset_err (m/s)',
+                      'FWHM (m/s)', 'FWHM_err (m/s)', 'Chi-squared-nu',
+                      'Order', 'Mean_airmass']
 
     csv_fits_dir = data_dir / 'fits_info_csv'
     if not csv_fits_dir.exists():
@@ -414,14 +415,23 @@ if args.write_csv:
 
         with open(csv_filename, 'w') as csvfile:
             csv_writer = csv.writer(csvfile, delimiter=',')
-            csv_writer.writerow(column_names)
+            csv_writer.writerow(column_headers)
             for fits_dict in master_fits_list:
                 csv_writer.writerow(fits_dict[transition.label].
                                     getFitInformation())
 
 
-# Create the plots for each pair of transitions
-if args.create_offset_plots:
+def create_pair_offset_plots(plot_dir):
+    """Create plots showing the pair separations for all observations in the
+    given star.
+
+    Parameters
+    ----------
+    plot_dir : `pathlib.Path`
+        The directory where the output plots should be saved.
+
+    """
+
     for pair in tqdm(pairs_list):
         for order_num in pair.ordersToMeasureIn:
             pair_label = '_'.join((pair.label, str(order_num)))
@@ -463,7 +473,7 @@ if args.create_offset_plots:
                            weighted_mean))
 
             normalized_offsets = offsets - weighted_mean
-            chi_squared = sum((normalized_offsets / errors) ** 2)
+#            chi_squared = sum((normalized_offsets / errors) ** 2)
 
             weighted_mean_err = 1 / np.sqrt(sum(weights))
 
@@ -483,9 +493,6 @@ if args.create_offset_plots:
             chi_squared_nu_post = chi_squared_post /\
                 (len(normalized_offsets[date_indices[2]:]) - 1)
 
-            plot_dir = data_dir / 'offset_plots'
-            if not plot_dir.exists():
-                os.mkdir(plot_dir)
             plot_name = plot_dir / '{}.png'.format(pair_label)
 
             fig, axes = plt.subplots(ncols=2, nrows=2,
@@ -505,9 +512,17 @@ if args.create_offset_plots:
                 ax3.axvline(label=key, **value)
 
             # Set up axis 1.
+            ax1.xaxis.set_major_locator(ticker.MultipleLocator(base=10))
+            ax1.xaxis.set_minor_locator(ticker.MultipleLocator(base=2))
             ax1.grid(which='major', axis='y', color='Gray', alpha=0.6,
                      linestyle='--')
+            ax1.grid(which='major', axis='x', color='Gray', alpha=0.6,
+                     linestyle='-')
+            ax1.grid(which='minor', axis='x', color='Gray', alpha=0.6,
+                     linestyle=':')
             # Plot pre-fiber change observations.
+            # TODO: This all needs to take into account the three possible
+            # cases for pre-/post-fiber change distributions.
             pre_fiber_change_obs = len(offsets[:date_indices[2]])
             x_values = [x for x in range(pre_fiber_change_obs)]
             ax1.errorbar(x=x_values,
@@ -523,8 +538,10 @@ if args.create_offset_plots:
                 ax1.errorbar(x=x_values,
                              y=normalized_offsets[date_indices[2]:],
                              yerr=errors[date_indices[2]:],
-                             label=r'$\chi^2_\nu=${:.3f}'.format(
-                                     chi_squared_nu_post.value),
+                             label=r'$\chi^2_\nu=${:.3f},'
+                                   r' $\mu=${:.2f}'.format(
+                                     chi_squared_nu_post.value,
+                                     ),
                              **style_params_post)
 
             for index, key in zip(date_indices, dates_of_change.keys()):
@@ -580,45 +597,18 @@ if args.create_offset_plots:
             fig.savefig(str(plot_name))
             plt.close(fig)
 
-if args.link_fit_plots or args.create_airmass_plots:
-    transition_plots_dir = data_dir / 'plots_by_transition'
-    if not transition_plots_dir.exists():
-        os.mkdir(transition_plots_dir)
 
+def create_airmass_plots(transition_plots_dir):
+    """Create plots of the velocity offsets of each transition vs. the airmass
+    of the observation.
 
-# Create hard links to all the fit plots by transition (across star) in their
-# own directory, to make it easier to compare transitions across observations.
-if args.link_fit_plots:
+    Parameters
+    ----------
+    transition_plots_dir : `pathlib.Path`
+        The directory to use as the parent for the plots created by this
+        function.
 
-    tqdm.write('Linking fit plots to cross-observation directories.')
-
-    for transition in tqdm(transitions_list):
-
-        wavelength_str = transition.label
-        transition_dir = transition_plots_dir / wavelength_str
-        close_up_dir = transition_dir / 'close_up'
-        context_dir = transition_dir / 'context'
-
-        if args.link_fit_plots:
-            for directory in (transition_dir, close_up_dir, context_dir):
-                if not directory.exists():
-                    os.mkdir(directory)
-
-            for plot_type, directory in zip(('close_up', 'context'),
-                                            (close_up_dir, context_dir)):
-
-                search_str = str(data_dir) +\
-                    '/HARPS*/plots_{}/{}/*{}*.png'.format(args.suffix,
-                                                          plot_type,
-                                                          wavelength_str)
-
-                files_to_link = [Path(path) for path in glob(search_str)]
-                for file_to_link in files_to_link:
-                    dest_name = directory / file_to_link.name
-                    if not dest_name.exists():
-                        os.link(file_to_link, dest_name)
-
-if args.create_airmass_plots:
+    """
 
     tqdm.write('Creating plots of airmass vs. dispersion for transitions.')
     airmass_dir = transition_plots_dir / 'airmass_plots'
@@ -684,3 +674,299 @@ if args.create_airmass_plots:
 
             fig.savefig(str(filename))
             plt.close(fig)
+
+
+def create_transition_dir_if_necessary():
+    """Return the directory to put transitions-speciic plots in, and create it
+    if it doesn't exist.
+
+    Returns
+    -------
+    `pathlib.Path`
+        The directory to put transition-specific plots in.
+
+    """
+
+    transition_plots_dir = data_dir / 'plots_by_transition'
+
+    if not transition_plots_dir.exists():
+        os.mkdir(transition_plots_dir)
+
+    return transition_plots_dir
+
+
+if __name__ == '__main__':
+
+    # Where the analysis results live:
+    output_dir = Path(vcl.config['PATHS']['output_dir'])
+
+    # Set up CL arguments.
+    desc = """A script to analyze fitted absorption features.
+              Requires a directory where results for an object are stored to be
+              given, and the suffix to use."""
+    parser = argparse.ArgumentParser(description=desc)
+
+    parser.add_argument('object_dir', action='store', type=str,
+                        help='Object directory to search in')
+
+    parser.add_argument('suffix', action='store', type=str,
+                        help='Suffix to add to directory names to search for.')
+
+    parser.add_argument('--use-tex', action='store_true', default=False,
+                        help='Use TeX rendering for fonts in plots (slow!).')
+
+    parser.add_argument('--create-transition-offset-plots',
+                        action='store_true',
+                        help='Create plots of the distributions of each'
+                        ' individual  transition for a star.')
+
+    parser.add_argument('--create-pair-offset-plots',
+                        action='store_true',
+                        help='Create plots of the offsets for each pair.')
+
+    parser.add_argument('--create-fit-plots', action='store_true',
+                        help='Create plots of the fits for each transition.')
+
+    parser.add_argument('--create-berv-plots', action='store_true',
+                        help="Create plots of each pair's separation vs. the"
+                        ' BERV at the time of observation.')
+
+    parser.add_argument('--create-airmass-plots', action='store_true',
+                        help="Plot transitions' scatter as a function of"
+                        ' airmass.')
+
+    parser.add_argument('--create-expected-offset-plots', action='store_true',
+                        help='Create a plot of the average offset for all'
+                        'transitions from their expected laboratory position.')
+
+    parser.add_argument('--link-fit-plots', action='store_true', default=False,
+                        help='Hard-link fit plots by transition into new'
+                        ' individual folders for each transition.')
+
+    parser.add_argument('--write-csv', action='store_true', default=False,
+                        help='Create a CSV file of offsets for each pair.')
+
+    parser.add_argument('--recreate-star', action='store_true', default=False,
+                        help='Force the star to be recreated from directories'
+                        ' rather than be read in from saved data.')
+
+    parser.add_argument('-v', '--verbose', action='store_true', default=False,
+                        help='Print more information about the process.')
+
+    args = parser.parse_args()
+
+    if args.use_tex or args.create_pair_offset_plots:
+        plt.rc('text', usetex=True)
+
+    # Define some important dates for plots.
+    # Define some dates when various changes were made to HARPS.
+    dates_of_change = {"Secondary mirror unit changed":
+                       {'x': dt.date(year=2004, month=8, day=8),
+                        'color': 'MediumSeaGreen', 'linestyle': '--'},
+                       "Flat field lamp changed":
+                       {'x': dt.date(year=2008, month=8, day=22),
+                        'color': 'OliveDrab', 'linestyle': '-'},
+                       "Fibers changed":
+                       {'x': dt.date(year=2015, month=6, day=1),
+                        'color': 'SeaGreen', 'linestyle': '-.'}}
+
+    date_plot_range = {'left': dt.date(year=2003, month=10, day=1),
+                       'right': dt.date(year=2017, month=6, day=1)}
+    folded_date_range = {'left': dt.date(year=2000, month=1, day=1),
+                         'right': dt.date(year=2000, month=12, day=31)}
+
+    style_params_pre = {'marker': 'o', 'color': 'Chocolate',
+                        'markeredgecolor': 'Black', 'ecolor': 'BurlyWood',
+                        'linestyle': '', 'alpha': 0.7, 'markersize': 6}
+
+    style_params_post = {'marker': 'o', 'color': 'CornFlowerBlue',
+                         'markeredgecolor': 'Black', 'ecolor': 'LightSkyBlue',
+                         'linestyle': '', 'alpha': 0.7, 'markersize': 6}
+
+    weighted_mean_params = {'color': 'RoyalBlue', 'linestyle': '--'}
+    weighted_err_params = {'color': 'SteelBlue', 'linestyle': ':'}
+
+    # Find the data in the given directory.
+    data_dir = Path(args.object_dir)
+    if not data_dir.exists():
+        print(data_dir)
+        raise RuntimeError('The given directory does not exist.')
+
+    # Read the list of chosen transitions.
+    with open(vcl.final_selection_file, 'r+b') as f:
+        transitions_list = pickle.load(f)
+
+    tqdm.write(f'Found {len(transitions_list)} individual transitions.')
+
+    # Read the list of chosen pairs.
+    with open(vcl.final_pair_selection_file, 'r+b') as f:
+        pairs_list = pickle.load(f)
+
+    tqdm.write(f'Found {len(pairs_list)} transition pairs (total) in list.')
+
+    ###############
+    # Stuff that needs a Star.
+
+    if args.create_transition_offset_plots or args.create_berv_plots\
+            or args.create_expected_offset_plots:
+
+        # Read or create a Star object for this star.
+        obj_name = data_dir.stem
+        if args.recreate_star:
+            load_data = False
+        else:
+            load_data = True
+        star = Star(obj_name, data_dir, suffix=args.suffix,
+                    load_data=load_data)
+
+        if args.create_transition_offset_plots:
+            transition_plots_dir = data_dir / 'transition_offset_plots'
+            if not transition_plots_dir.exists():
+                os.mkdir(transition_plots_dir)
+            create_transition_offset_plots(transition_plots_dir)
+
+        if args.create_berv_plots:
+            create_BERV_plots()
+
+        if args.create_expected_offset_plots:
+            pass
+
+    # Stuff that needs analysis of pickle files.
+    if args.write_csv or args.create_pair_offset_plots\
+            or args.create_airmass_plots or args.create_fit_plots:
+
+        # Search for pickle files in the given directory.
+        search_str = str(data_dir) + '/*/pickles_{}/*fits.lzma'.format(args.
+                                                                       suffix)
+        tqdm.write(search_str)
+        pickle_files = [Path(path) for path in glob(search_str)]
+
+        # dictionary with entries per observation
+        # entries consist of dictionary with entries of pairs made from fits
+
+        # Set up the master dictionary to contain sub-entries per observation.
+        master_star_dict = {}
+
+        obs_name_re = re.compile('HARPS.*_e2ds_A')
+
+        # Create some lists to hold all the results for saving out as a CSV
+        # file:
+        master_star_list = []
+        master_fits_list = []
+        for pickle_file in tqdm(pickle_files):
+
+            # Match the part of the pickle filename that is the observation
+            # name.
+            obs_name = obs_name_re.match(pickle_file.stem).group()
+
+            tqdm.write('Analyzing results from {}'.format(obs_name))
+            with lzma.open(pickle_file, 'rb') as f:
+                fits_list = pickle.loads(f.read())
+
+            # Set up a dictionary to map fits in this observation to
+            # transitions:
+            fits_dict = {fit.label: fit for fit in fits_list}
+            master_fits_list.append(fits_dict)
+
+            # This can be used to remake plots for individual fits without
+            # rerunning the fitting process in case the plot visual format
+            # changes.
+            if args.create_fit_plots:
+                closeup_dir = data_dir /\
+                    '{}/plots_{}/close_up'.format(obs_name, args.suffix)
+                context_dir = data_dir /\
+                    '{}/plots_{}/context'.format(obs_name, args.suffix)
+                tqdm.write('Creating plots of fits.')
+
+                for transition in tqdm(transitions_list):
+                    for order_num in transition.ordersToFitIn:
+                        plot_closeup = closeup_dir /\
+                            f'{obs_name}_{transition.label}'\
+                            f'_{order_num}_close.png'
+                        plot_context = context_dir /\
+                            f'{obs_name}_{transition.label}'\
+                            f'_{order_num}_context.png'
+                        if args.verbose:
+                            tqdm.write('Creating plots at:')
+                            tqdm.write(str(plot_closeup))
+                            tqdm.write(str(plot_context))
+                        fits_dict['_'.join((transition.label,
+                                            str(order_num)))].plotFit(
+                                                                plot_closeup,
+                                                                plot_context)
+
+            pairs_dict = {}
+            separations_list = [obs_name, fits_list[0].dateObs.
+                                isoformat(timespec='milliseconds')]
+
+            column_names = ['Observation', 'Time']
+            for pair in pairs_list:
+                for order_num in pair.ordersToMeasureIn:
+                    pair_label = '_'.join((pair.label, str(order_num)))
+                    column_names.extend([pair_label, pair_label + '_err'])
+                    try:
+                        fits_pair = [fits_dict['_'.join((
+                                            pair._higherEnergyTransition.
+                                            label, str(order_num)))],
+                                     fits_dict['_'.join((
+                                            pair._lowerEnergyTransition.
+                                            label, str(order_num)))]]
+                    except KeyError:
+                        # Measurement of one or the other transition doesn't
+                        # exist, so skip it (but fill in the list to prevent
+                        # getting out of sync)
+                        separations_list.extend(['N/A', ' N/A'])
+                        continue
+
+                    assert fits_pair[0].order == fits_pair[1].order,\
+                        f"Orders don't match for {fits_pair}"
+                    if np.isnan(fits_pair[0].meanErrVel) or \
+                       np.isnan(fits_pair[1].meanErrVel):
+                        # Similar to above, fill in list with placeholder
+                        # value.
+                        tqdm.write(f'{pair.label} in {obs_name} has a NaN'
+                                   ' velocity offset!')
+                        tqdm.write(str(fits_pair[0].meanErrVel))
+                        tqdm.write(str(fits_pair[1].meanErrVel))
+                        separations_list.extend(['NaN', ' NaN'])
+                        continue
+
+                    pairs_dict[pair_label] = fits_pair
+
+                    velocity_separation = wave2vel(fits_pair[0].mean,
+                                                   fits_pair[1].mean)
+                    error = np.sqrt(fits_pair[0].meanErrVel ** 2 +
+                                    fits_pair[1].meanErrVel ** 2)
+                    separations_list.extend([velocity_separation.value,
+                                             error.value])
+
+            # This is for the script to use.
+            master_star_dict[obs_name] = pairs_dict
+            if args.write_csv:
+                # This is to be written out.
+                master_star_list.append(separations_list)
+
+    if args.write_csv:
+        write_csv(column_names)
+
+    if args.create_pair_offset_plots:
+        # Create the plots for each pair of transitions
+        pair_plots_dir = data_dir / 'pair_offset_plots'
+        if not pair_plots_dir.exists():
+            os.mkdir(pair_plots_dir)
+        create_pair_offset_plots(pair_plots_dir)
+
+    if args.create_airmass_plots:
+        t_plots_dir = create_transition_dir_if_necessary()
+        create_airmass_plots(t_plots_dir)
+
+    ################
+    # Stuff that doesn't need a Star or analysis of pickle files.
+
+    # Create hard links to all the fit plots by transition (across star) in
+    # their own directory, to make it easier to compare transitions across
+    # observations.
+    if args.link_fit_plots:
+        t_plots_dir = create_transition_dir_if_necessary()
+        tqdm.write('Linking fit plots to cross-observation directories.')
+        link_fit_plots(t_plots_dir)
