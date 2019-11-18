@@ -19,6 +19,7 @@ from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
+from tabulate import tabulate
 from tqdm import tqdm
 import unyt as u
 
@@ -286,20 +287,23 @@ def create_pair_blend_comparison_plot(main_ax, chi_ax, star1, star2,
             blend_tuples.add(pair.blendTuple)
 
     sorted_blend_tuples = [(0, 0), (0, 1), (1, 1), (0, 2), (1, 2), (2, 2)]
-    print(sorted_blend_tuples)
+#    print(sorted_blend_tuples)
 
     results = get_star_results(star1, star2, time_period)
 
-    sorted_differences = []
-    sorted_errors = []
-    sorted_chi_squared1 = []
-    sorted_chi_squared2 = []
+    sorted_differences, sorted_errors = [], []
+    sorted_chi_squared1, sorted_chi_squared2 = [], []
     divisions = []
+    binned_stds, binned_chi_squareds = [], []
     total = 0
     for blend_tuple in sorted_blend_tuples:
+        bin_diffs, bin_errs = [], []
         for key, value in pair_blends_dict.items():
             if blend_tuple == value:
                 total += 1
+                bin_diffs.append(results['differences']
+                                 [star1._p_label(key)])
+                bin_errs.append(results['errors'][star1._p_label(key)])
                 sorted_differences.append(results['differences']
                                           [star1._p_label(key)])
                 sorted_errors.append(results['errors'][star1._p_label(key)])
@@ -308,9 +312,23 @@ def create_pair_blend_comparison_plot(main_ax, chi_ax, star1, star2,
                 sorted_chi_squared2.append(results['chi_squared2'][
                         star1._p_label(key)])
         divisions.append(total)
+        binned_stds.append(np.std(bin_diffs))
+        chi_squared = np.sum(np.square((bin_diffs - np.mean(bin_diffs)) /
+                                       bin_errs)) / (len(bin_diffs) - 1)
+        binned_chi_squareds.append(chi_squared)
+        if chi_squared < 0:
+            print(bin_diffs)
+            print(np.mean(bin_diffs))
+            print(bin_errs)
+            print(len(bin_diffs))
 
-    print(len(sorted_differences))
-    print(len(sorted_errors))
+    print(f'For {time_period}-fiber change:')
+    print(tabulate(zip(binned_stds, binned_chi_squareds),
+                   headers=["Std.Dev.", "Reduced χ²"]))
+    print()
+
+#    print(len(sorted_differences))
+#    print(len(sorted_errors))
 
     for div, b_tuple in zip(divisions, sorted_blend_tuples):
         main_ax.axvline(x=div, color='DarkSlateGray', alpha=0.8)
@@ -377,6 +395,7 @@ def create_pair_separations_plot(ax, star1, star2,
             ax.axhline(y=i * j * results['standard_deviation'],
                        color=color, linestyle='--')
     ax.grid(which='major', axis='x', color='Black', linestyle='-')
+    ax.yaxis.set_minor_locator(ticker.MultipleLocator(base=10))
 
     ax.errorbar(x=results['w_means1'].to(u.km/u.s), y=results['differences'],
                 xerr=results['w_mean_err1'], yerr=results['errors'],
@@ -397,7 +416,8 @@ def create_pair_separations_plot(ax, star1, star2,
 #                         zip(results['w_mean_err1'], results['w_mean_err2']):
 #        ax.plot(w_mean, w_err, marker='', linestyle='', color='Black')
 
-    binned_means, binned_diffs, binned_errs = [], [], []
+    binned_means, binned_diffs, binned_errs, binned_sigmas = [], [], [], []
+    chi_squares = []
     left, right = 0, 100
     while right <= 800:
         bin_means, bin_diffs, bin_errs = [], [], []
@@ -417,16 +437,29 @@ def create_pair_separations_plot(ax, star1, star2,
         binned_means.append(bin_weighted_mean)
         binned_diffs.append(bin_weighted_diff)
         binned_errs.append(weighted_err_mean)
+        binned_sigmas.append(np.std(bin_diffs))
+        chi_squares.append(np.sum(((bin_diffs - np.mean(bin_diffs)) /
+                                  bin_errs) ** 2) / (len(bin_diffs) - 1))
         left += 100
         right += 100
 
     binned_means *= u.m / u.s
     binned_diffs *= u.m / u.s
     binned_errs *= u.m / u.s
+    binned_sigmas *= u.m / u.s
 
-    marker_color = 'LightPink' if time_period == 'pre' else 'LightGreen'
-    ax.errorbar(x=binned_means.to(u.km/u.s), y=binned_diffs, yerr=binned_errs,
-                color='SeaGreen', markerfacecolor=marker_color, marker='D',
+    print(f"Results for {time_period}-fiber change are:")
+    print(tabulate(zip(binned_diffs, binned_sigmas, chi_squares),
+          headers=["Weighted mean (m/s)", "Std.Dev. (m/s)", "Reduced χ²"]))
+#    print('Binned difference values:')
+#    print(binned_diffs)
+#    print('chi-squared values for bins:')
+#    print(chi_squares)
+    print()
+    marker_color = "YellowGreen"
+    ax.errorbar(x=binned_means.to(u.km/u.s), y=binned_diffs,
+                yerr=binned_sigmas,
+                color='OrangeRed', markerfacecolor=marker_color, marker='D',
                 linestyle='-', markersize=6)
 
     ax.legend(loc='upper right')
@@ -453,13 +486,13 @@ if __name__ == '__main__':
     plot_group = parser.add_mutually_exclusive_group()
     plot_group.add_argument('--compare-pairs', action='store_true',
                             help='Create plots comparing all pairs in the two'
-                            'stars together.')
+                            ' stars together.')
     plot_group.add_argument('--sort-blended', action='store_true',
                             help='Create plots of pairs sorted by the'
                             ' blendedness of their component transitions.')
     plot_group.add_argument('--pair-separations', action='store_true',
                             help='Create plots of pairs plotted by their'
-                            ' absolution separation values.')
+                            ' absolute separation values.')
 
     parser.add_argument('--recreate-stars', action='store_false', default=True,
                         help='Force the stars to be recreated from directories'
