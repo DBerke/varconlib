@@ -196,8 +196,9 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
     for transition in tqdm(transitions_list):
         for order_num in transition.ordersToFitIn:
             total_transitions += 1
-            tqdm.write('Attempting fit of {} in order {}'.format(transition,
-                       order_num))
+            if args.verbose:
+                tqdm.write(f'Attempting fit of {transition} in order'
+                           ' {order_num}')
             plot_closeup = closeup_dir / '{}_{}_{}_close.png'.format(
                     obs_path.stem, transition.label, order_num)
             plot_context = context_dir / '{}_{}_{}_context.png'.format(
