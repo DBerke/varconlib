@@ -18,8 +18,7 @@ from scipy.optimize import curve_fit, OptimizeWarning
 from tqdm import tqdm
 import unyt as u
 
-from varconlib.exceptions import (PositiveAmplitudeError,
-                                  WavelengthNotFoundInArrayError)
+from varconlib.exceptions import PositiveAmplitudeError
 from varconlib.miscellaneous import (shift_wavelength, velocity2wavelength,
                                      wavelength2index, gaussian,
                                      integrated_gaussian, wavelength2velocity)
@@ -127,8 +126,8 @@ class GaussianFit(object):
         search_range = velocity2wavelength(search_range_vel,
                                            self.correctedWavelength)
 
-        continuum_range = velocity2wavelength(continuum_range_vel,
-                                              self.correctedWavelength)
+        self.continuumRange = velocity2wavelength(continuum_range_vel,
+                                                  self.correctedWavelength)
 
         low_search_index = wavelength2index(self.correctedWavelength -
                                             search_range,
@@ -139,10 +138,10 @@ class GaussianFit(object):
                                              self.baryArray)
 
         self.lowContinuumIndex = wavelength2index(self.correctedWavelength
-                                                  - continuum_range,
+                                                  - self.continuumRange,
                                                   self.baryArray)
         self.highContinuumIndex = wavelength2index(self.correctedWavelength
-                                                   + continuum_range,
+                                                   + self.continuumRange,
                                                    self.baryArray)
         self.centralIndex = low_search_index + \
             self.fluxArray[low_search_index:high_search_index].argmin()
@@ -272,9 +271,11 @@ class GaussianFit(object):
 
     @property
     def chiSquared(self):
-        residuals = self.fluxes - gaussian(self.wavelengths.value,
-                                           *self.popt)
-        return sum((residuals / self.errors) ** 2)
+        if not hasattr(self, '_chiSquared'):
+            residuals = self.fluxes - gaussian(self.wavelengths.value,
+                                               *self.popt)
+            self._chiSquared = sum((residuals / self.errors) ** 2)
+        return self._chiSquared
 
     @property
     def chiSquaredNu(self):
@@ -388,8 +389,10 @@ class GaussianFit(object):
         ax2.set_ylabel('Residuals\n($\\sigma$)')
 
         ax1.xaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.2f}'))
-        ax1.set_xlim(left=self.baryArray[self.lowContinuumIndex],
-                     right=self.baryArray[self.highContinuumIndex - 1])
+        ax1.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:>7.1e}'))
+        plt.xticks(horizontalalignment='right')
+        ax1.set_xlim(left=self.correctedWavelength - self.continuumRange,
+                     right=self.correctedWavelength + self.continuumRange)
         # Set y-limits so a fit doesn't balloon the plot scale out.
         ax1.set_ylim(top=self.continuumLevel * 1.25,
                      bottom=self.fluxMinimum * 0.93)
@@ -410,12 +413,12 @@ class GaussianFit(object):
                         linestyle='-')
 
         # Plot the actual data.
-        ax1.errorbar(self.baryArray[self.lowContinuumIndex:
-                                    self.highContinuumIndex],
-                     self.fluxArray[self.lowContinuumIndex:
-                                    self.highContinuumIndex],
-                     yerr=self.errorArray[self.lowContinuumIndex:
-                                          self.highContinuumIndex],
+        ax1.errorbar(self.baryArray[self.lowContinuumIndex - 1:
+                                    self.highContinuumIndex + 1],
+                     self.fluxArray[self.lowContinuumIndex - 1:
+                                    self.highContinuumIndex + 1],
+                     yerr=self.errorArray[self.lowContinuumIndex - 1:
+                                          self.highContinuumIndex + 1],
                      color='SandyBrown', ecolor='Sienna',
                      label='Flux', barsabove=True)
 
