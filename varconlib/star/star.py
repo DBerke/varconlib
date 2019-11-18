@@ -30,6 +30,72 @@ from varconlib.miscellaneous import wavelength2velocity as wave2vel
 
 
 class Star(object):
+    """A class to hold information gathered from analysis of (potentially many)
+    observations of a single star.
+
+    The `Star` class is intended to hold information relating to a single
+    star: both information intrinsic to the star (absolute magnitude,
+    metallicity, color, etc.) and information about the fits of given
+    transitions in the spectra of observations of that star.
+
+    Parameters
+    ----------
+    name : str
+        A name for the star to identify it.
+
+    Optional
+    --------
+    star_dir : `pathlib.Path`
+        A Path object specifying the root directory to look in for fits of
+        the star's spectra. If given, will be passed to the
+        `initializeFromFits` method.
+    suffix : str, Default: 'int'
+        A string to be added to the subdirectory names to distinguish
+        between different reduction methods. Must be given if `star_dir` is
+        given. Defaults to 'int' for 'integrated Gaussian' fits.
+    transitions_list : list
+        A list of `transition_line.Transition` objects. If `star_dir` is
+        given, will be passed to `initializeFromFits`, otherwise no effect.
+    pairs_list : list
+        A list of `transition_pair.TransitionPair` objects. If `star_dir`
+        is given, will be passed to `initializeFromFits`, otherwise no
+        effect.
+    load_data : bool, Default : True
+        Controls whether to attempt to read a file containing data for the
+        star.
+
+    Attributes
+    ----------
+    fitMeansArray : `unyt.unyt_array`
+        A two-dimensional array holding the mean of the fit for each absorption
+        feature in each observation of the star. Rows correspond to
+        observations, columns to transitions.
+    fitErrorsArray : `unyt.unyt_array`
+        A two-diemsional array holding the standard deviation of the measured
+        mean of the fit for each absorption feature of each observation of the
+        star. Rows correspond to observations, columns to transitions.
+    fitOffsetsArray : `unyt.unyt_array`
+        A two-dimensional array holding the offset from the expect wavelength
+        of the measured mean of each absorption feature in each observation of
+        the star. Rows correspond to observations, columns to transitions.
+    pairSeparationsArray : `unyt.unyt_array`
+        A two-dimensional array holding the velocity separation values for each
+        pair of transitions for each observation of the star. Rows correspond
+        to observations, columns to pairs.
+    pairSepErrorsArray : `unyt.unyt_array`
+        A two-dimensional array holding the standard deviation of the velocity
+        separation values for each pair of transitions for each observation of
+        the star. Rows correspond to observations, columns to pairs.
+    bervArray : `unyt.unyt_array`
+        A one-dimensional array holding the barycentric Earth radial velocity
+        (BERV) for each observation of the star. Index number corresponds to
+        row numbers in the two-dimensional arrays
+    chiSquaredNuArray : `unyt.unyt_array`
+        A two-dimensional array holding the reduced chi-squared value of the
+        Gaussian fit to each transition for each observation of the star.
+        Rows correspond to observations, columns to transitions.
+
+    """
 
     # Define dataset names and corresponding attribute names to be saved
     # and loaded when dumping star data.
@@ -38,13 +104,15 @@ class Star(object):
                      'offsets',
                      'pair_separations',
                      'pair_separation_errors',
-                     'BERV_array')
+                     'BERV_array',
+                     'reduced_chi_squareds')
     attr_names = ('fitMeansArray',
                   'fitErrorsArray',
                   'fitOffsetsArray',
                   'pairSeparationsArray',
                   'pairSepErrorsArray',
-                  'bervArray')
+                  'bervArray',
+                  'chiSquaredNuArray')
     bidict_path_name = ('/obs_date_bidict',
                         '/transition_bidict',
                         '/pair_bidict')
@@ -59,38 +127,7 @@ class Star(object):
     def __init__(self, name, star_dir=None, suffix='int',
                  transitions_list=None, pairs_list=None,
                  load_data=True):
-        """Instantiate a Star object.
-
-        The `Star` class is intended to hold information relating to a single
-        star: both information intrinsic to the star (absolute magnitude,
-        metallicity, color, etc.) and information about the fits of given
-        transitions in the spectra of observations of that star.
-
-        Parameters
-        ----------
-        name : str
-            A name for the star to identify it.
-
-        Optional
-        --------
-        star_dir : `pathlib.Path`
-            A Path object specifying the root directory to look in for fits of
-            the star's spectra. If given, will be passed to the
-            `initializeFromFits` method.
-        suffix : str, Default: 'int'
-            A string to be added to the subdirectory names to distinguish
-            between different reduction methods. Must be given if `star_dir` is
-            given. Defaults to 'int' for 'integrated Gaussian' fits.
-        transitions_list : list
-            A list of `transition_line.Transition` objects. If `star_dir` is
-            given, will be passed to `initializeFromFits`, otherwise no effect.
-        pairs_list : list
-            A list of `transition_pair.TransitionPair` objects. If `star_dir`
-            is given, will be passed to `initializeFromFits`, otherwise no
-            effect.
-        load_data : bool, Default : True
-            Controls whether to attempt to read a file containing data for the
-            star.
+        """Instantiate a `star.Star` object.
 
         """
 
@@ -171,14 +208,12 @@ class Star(object):
         means_list = []
         errors_list = []
         offsets_list = []
+        chi_squared_list = []
         self.bervArray = np.empty(len(pickle_files))
 
         # For each pickle file:
         for obs_num, pickle_file in enumerate(tqdm(pickle_files[:])):
 
-            # Import it, read the list of fits inside, save their means to
-            # a Series with index made up of the fit labels, and their errors
-            # to a similar Series.
             with lzma.open(pickle_file, 'rb') as f:
                 fits_list = pickle.loads(f.read())
 
@@ -197,6 +232,8 @@ class Star(object):
             offsets_list.append(np.array([fit.velocityOffset.to(u.m/u.s).value
                                          for fit in fits_list]))
             offsets_units = fits_list[0].velocityOffset.units
+            chi_squared_list.append(np.array([fit.chiSquaredNu for fit
+                                              in fits_list]))
 
         means_array = np.array(means_list)
         errors_array = np.array(errors_list)
@@ -206,6 +243,7 @@ class Star(object):
         self.fitErrorsArray = errors_array * errors_units
         self.fitOffsetsArray = offsets_array * offsets_units
         self.bervArray *= u.km / u.s
+        self.chiSquaredNuArray = u.unyt_array(np.array(chi_squared_list))
 
         transition_labels = []
         for transition in self.transitionsList:
@@ -358,7 +396,7 @@ class Star(object):
                     print(f"{self.name} not found in rv_dict")
                     return None
         return self._radialVelocity
-
+# TODO: Add an exposure time array?
     @property
     def fiberSplitIndex(self):
         if not hasattr(self, '_fiberSplitIndex'):
