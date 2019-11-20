@@ -196,10 +196,10 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        if type(FITSfile) is str:
-            self._filename = Path(FITSfile)
-        else:
+        if isinstance(FITSfile, Path):
             self._filename = FITSfile
+        else:
+            self._filename = Path(FITSfile)
 
         if not self._filename.exists():
             tqdm.write(str(self._filename))
@@ -516,74 +516,6 @@ class HARPSFile2DScience(HARPSFile2D):
 
         return blaze_file_path
 
-    def getPixelPositionGeomFile(self):
-        """Return the path ot the pixel position geometry file.
-
-        The pixel sizes in the HARPS CCDs are not entirely uniform across their
-        widths, as shown in Coffinet et al. 2019 [1]_. This leads to systematic
-        erros in the wavelength calibration, which by default assumes perfectly
-        regular pixel sizes at all locations. This method retrieves information
-        on the pixel center positions across the CCDs [2]_ in the form of a
-        72x4096 array corresponding to the shape of an exracted 2D spectrum.
-
-        Returns
-        -------
-        `pathlib.Path` object
-            A `Path` object pointing to the pixel position geometry file
-            provided by C. Lovis.
-
-        References
-        ----------
-        [1] A. Coffinet, C. Lovis, X. Dumusque, F. Pepe, "New wavelength
-        calibration of the HARPS spectrograph", Astronomy & Astrophysics, 2019
-
-        [2] C. Lovis, private communication.
-
-        """
-
-        pixel_pos_file_path = pixel_geom_files_dir /\
-            'pixel_geom_pos_HARPS_2004_A.fits'
-
-        if not pixel_pos_file_path.exists():
-            tqdm.write(str(pixel_pos_file_path))
-            raise FileNotFoundError("Pixel positions file doesn't exist!")
-
-        return pixel_pos_file_path
-
-    def getPixelSizeGeomFile(self):
-        """Return the path to the pixel size geometry file.
-
-        The pixel sizes in the HARPS CCDs are not entirely uniform across their
-        widths, as shown in Coffinet et al. 2019 [1]_. This leads to systematic
-        erros in the wavelength calibration, which by default assumes perfectly
-        regular pixel sizes at all locations. This method retrieves information
-        on the pixel sizes across the CCDs [2]_ in the form of a 72x4096 array
-        corresponding to the shape of an exracted 2D spectrum.
-
-        Returns
-        -------
-        `pathlib.Path` object
-            A `Path` object pinting to the pixel size geometry file
-            provided by C. Lovis.
-
-        References
-        ----------
-        [1] A. Coffinet, C. Lovis, X. Dumusque, F. Pepe, "New wavelength
-        calibration of the HARPS spectrograph", Astronomy & Astrophysics, 2019
-
-        [2] C. Lovis, private communication.
-
-        """
-
-        pixel_size_file_path = pixel_geom_files_dir /\
-            'pixel_geom_size_HARPS_2004_A.fits'
-
-        if not pixel_size_file_path.exists():
-            tqdm.write(str(pixel_size_file_path))
-            raise FileNotFoundError("Pixel size file doesn't exist!")
-
-        return pixel_size_file_path
-
     def getWavelengthCalibrationFile(self):
         """Return the path to the wavelength calibration file associated with
         this observation from its header keyword.
@@ -679,13 +611,10 @@ class HARPSFile2DScience(HARPSFile2D):
             coeffs_file = self
 
         if isinstance(use_pixel_positions, np.ndarray):
-            if use_pixel_positions.shape == (72, 4096):
-                pixel_positions = use_pixel_positions
-                tqdm.write('Using provided pixel positions.')
-            else:
-                raise RuntimeError('Provided pixel positions array wrong'
-                                   ' size: {}'.format(
-                                           use_pixel_positions.shape))
+            assert use_pixel_positions.shape == (72, 4096), 'Provided pixel'
+            f'array wrong shape: {use_pixel_positions.shape}'
+            pixel_positions = use_pixel_positions
+            tqdm.write('Using provided pixel positions.')
         elif use_pixel_positions is True:
             # Use the new pixel positions file provided.
             pixel_positions = self.pixelPosArray
@@ -1043,8 +972,8 @@ class HARPSFile2DScience(HARPSFile2D):
                 elif len(orders_wavelength_found_in) == 2:
                     break
 
-        if len(orders_wavelength_found_in) == 0:
-            raise WavelengthNotFoundInArrayError(err_str)
+        assert len(orders_wavelength_found_in) > 0, 'Wavelength not found'
+        ' in array.'
 
         if mid_most:
             # If only one array: great, return it.

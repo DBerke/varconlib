@@ -16,6 +16,7 @@ import pytest
 import unyt as u
 
 import varconlib
+from varconlib.exceptions import WavelengthNotFoundInArrayError
 from varconlib.miscellaneous import wavelength2index
 from varconlib.obs2d import HARPSFile2D, HARPSFile2DScience
 
@@ -37,6 +38,17 @@ def generic_test_file(tmpdir_factory):
     shutil.copy(str(base_test_file), str(test_file))
 
     return test_file
+
+
+#@pytest.fixture(scope='function')
+#def temporary_generic_test_file(tmpdir):
+#    # Find the pristine test file to clone for use in the tests.
+#
+#    test_file = Path(tmpdir) / 'test_fits_file.fits'
+#
+#    shutil.copy(str(base_test_file), str(test_file))
+#
+#    return test_file
 
 
 class TestGeneric2DFile(object):
@@ -72,9 +84,21 @@ class TestScience2DFile(object):
                                   new_coefficients=False,
                                   pixel_positions=False)
 
+#    @pytest.fixture(scope='function')
+#    def s2(self, temporary_generic_test_file, array):
+#
+#        return HARPSFile2DScience(temporary_generic_test_file,
+#                                  update=[array])
+
     def testNonExistentFilename(self):
         with pytest.raises(FileNotFoundError):
             HARPSFile2DScience('nonexistent/filename')
+
+#    @pytest.mark.parametrize('array', ['WAVE', 'BARY', 'PIXLOWER', 'PIXUPPER',
+#                                       'FLUX', 'ERR', 'BLAZE'])
+#    def testUpdateNewFile(self, s2, array):
+#        with pytest.raises(RuntimeError):
+#            a = s2(array)
 
     def testObsFileRead(self, s):
         assert s.getHeaderCard('INSTRUME') == 'HARPS'
@@ -142,13 +166,20 @@ class TestScience2DFile(object):
     def testFindWavelengthInOneOrder(self, s):
         assert s.findWavelength(5039 * u.angstrom, s.barycentricArray,
                                 mid_most=True) == 40
+        with pytest.raises(WavelengthNotFoundInArrayError):
+            assert s.findWavelength(8000 * u.angstrom, s.barycentricArray,
+                                    mid_most=True)
+        assert s.findWavelength(6600 * u.angstrom, s.barycentricArray,
+                                mid_most=True) == 67
 
-    def testFineWavelengthInTwoOrders(self, s):
+    def testFindWavelengthInTwoOrders(self, s):
         assert s.findWavelength(5039 * u.angstrom, s.barycentricArray,
                                 mid_most=False) == (39, 40)
         index1 = wavelength2index(5039 * u.angstrom, s.barycentricArray[39])
         index2 = wavelength2index(5039 * u.angstrom, s.barycentricArray[40])
         assert abs(index1 - 2047.5) > abs(index2 - 2047.5)
+        assert s.findWavelength(5034 * u.angstrom, s.barycentricArray,
+                                mid_most=False) == (39, 40)
 
     def testUpdateFile(self, generic_test_file):
         a = HARPSFile2DScience(generic_test_file)
