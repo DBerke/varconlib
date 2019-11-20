@@ -259,9 +259,10 @@ def q_alpha_shift(omega, q_coefficient, delta_alpha):
         The wavenumber, wavelength, or energy of the transition to calculate
         the shift for. Assuming the units are correct this parameter will be
         converted to a wavenumber if necessary internally.
-    q_coefficient : float
-        The *q*-coefficient for the transition. This is a float, in units of
-        reciprocal centimeters.
+    q_coefficient : float or `unyt.uniyt_quantity`
+        The *q*-coefficient for the transition. This can be given as a float
+        (in which case it is assumed to be in units of reciprocal centimeters),
+        or as a `unyt_quantity` with those dimensions.
     delta_alpha : float
         A fractional change in the value of alpha to use for the calculation.
 
@@ -281,6 +282,8 @@ def q_alpha_shift(omega, q_coefficient, delta_alpha):
     """
 
     original_value = omega.to_equivalent(u.cm ** -1, equivalence='spectral')
+    if isinstance(q_coefficient, (float, int)):
+        q_coefficient *= u.cm ** -1
 
     new_value = original_value + q_coefficient * (delta_alpha ** 2 - 1)
 

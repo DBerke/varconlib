@@ -136,6 +136,14 @@ class TestQCoefficientShifts(object):
                                  500 * u.cm ** -1, 1.000001) ==\
             pytest.approx(-14.98963 * u.m / u.s)
 
+    def testQCoefficient(self, transition):
+        assert vcl.q_alpha_shift(500 * u.nm, 500, 1.000001) ==\
+            pytest.approx(u.unyt_quantity(-14.98962999, 'm/s'))
+        assert vcl.q_alpha_shift(500 * u.nm, 500., 1.000001) ==\
+            pytest.approx(u.unyt_quantity(-14.98962999, 'm/s'))
+        assert vcl.q_alpha_shift(500 * u.nm, 500 * u.cm ** -1, 1.000001) ==\
+            pytest.approx(u.unyt_quantity(-14.98962999, 'm/s'))
+
 
 class TestShiftWavelength(object):
 
