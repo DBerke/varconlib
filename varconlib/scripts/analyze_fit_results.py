@@ -96,25 +96,30 @@ def create_transition_offset_plots(plots_dir):
 
     """
 
-    def layout_plots(offset_ax, chi_ax, vs_ax, params):
-        """Perform the plotting on the given axes.
-
-        Parameters
-        ----------
-        offset_ax : `matplotlib.axes.Axes` object
-            The axis to plot the transition offset from expected position vs.
-            observation index number on.
-        chi_axi : `matplotlib.axes.Axes` object
-            The axis to plot the reduced chi² value of each fit vs. observation
-            index number on.
-        vs_ax : `matplotlib.axes.Axes` object
-            The axis on which to plot the two previous quantities against each
-            other (offset vs. chi²).
-        params : dict
-            A dictionary of parameters for passing to plotting functions, such
-            as 'color', 'linestyle', etc.
+    def layout_plots():
+        """Collect data from the star and layout the plots onto axes.
 
         """
+
+        offsets = star.fitOffsetsArray[time_slice,
+                                       column_index]
+        errors = star.fitErrorsArray[time_slice,
+                                     column_index]
+        fit_chis = star.chiSquaredNuArray[time_slice,
+                                          column_index]
+        mean_measured = np.average(star.
+                                   fitMeansArray[time_slice,
+                                                 column_index],
+                                   weights=(1/errors**2)).to(
+                                           u.angstrom)
+        w_mean, weight_sum = np.average(offsets,
+                                        weights=(1/errors**2),
+                                        returned=True)
+#        w_mean_err = 1 / np.sqrt(weight_sum)
+
+        chi_squared = np.sum(((offsets - w_mean) / errors) ** 2)
+        reduced_chi_squared = chi_squared / (len(offsets) - 1)
+        std_dev = np.std(offsets)
 
         # Set up the offset axis with grids.
         offset_ax.set_ylabel('Offset from expected position (m/s)')
@@ -129,15 +134,18 @@ def create_transition_offset_plots(plots_dir):
                              linestyle='--')
 
         offset_ax.axhline(w_mean, color='Black')
-        offset_ax.axhline(y=w_mean + std_dev, color='DimGray', linestyle='-.')
-        offset_ax.axhline(y=w_mean - std_dev, color='DimGray', linestyle='-.')
+        offset_ax.axhline(y=w_mean + std_dev, color='DimGray',
+                          linestyle='-.')
+        offset_ax.axhline(y=w_mean - std_dev, color='DimGray',
+                          linestyle='-.')
 
         # Plot the values.
         indices = range(len(offsets))
         offset_ax.errorbar(x=indices, y=offsets, yerr=errors,
                            label=f'Mean: {w_mean:.2f}$\\pm${std_dev:.2f}\n'
                            f'Absolute mean: {mean_measured:.4f}\n'
-                           fr'$\chi^2_\nu=${reduced_chi_squared.value:.3f}',
+                           r'$\chi^2_\nu=$'
+                           f'{reduced_chi_squared.value:.3f}',
                            **params)
 
         offset_ax.legend(loc='lower right')
@@ -176,6 +184,10 @@ def create_transition_offset_plots(plots_dir):
         vs_ax.errorbar(x=fit_chis, y=offsets, yerr=errors,
                        **params)
 
+    # Define slice objects to capture time periods.
+    pre_slice = slice(None, star.fiberSplitIndex)
+    post_slice = slice(star.fiberSplitIndex, None)
+
     for transition in tqdm(star.transitionsList):
         for order in transition.ordersToFitIn:
             transition_label = '_'.join((transition.label, str(order)))
@@ -201,67 +213,31 @@ def create_transition_offset_plots(plots_dir):
                 axes1 = (offset_ax1, chi_ax1, vs_ax1)
                 axes2 = (offset_ax2, chi_ax2, vs_ax2)
 
-                pre_slice = slice(None, star.fiberSplitIndex)
-                post_slice = slice(star.fiberSplitIndex, None)
-
                 for axes, time_slice, params in zip((axes1, axes2),
                                                     (pre_slice, post_slice),
                                                     (style_params_pre,
                                                      style_params_post)):
-
-                    offsets = star.fitOffsetsArray[time_slice,
-                                                   column_index]
-                    errors = star.fitErrorsArray[time_slice,
-                                                 column_index]
-                    fit_chis = star.chiSquaredNuArray[time_slice,
-                                                      column_index]
-                    mean_measured = np.average(star.
-                                               fitMeansArray[time_slice,
-                                                             column_index],
-                                               weights=(1/errors**2)).to(
-                                                       u.angstrom)
-                    w_mean, weight_sum = np.average(offsets,
-                                                    weights=(1/errors**2),
-                                                    returned=True)
-                    w_mean_err = 1 / np.sqrt(weight_sum)
-
-                    chi_squared = np.sum(((offsets - w_mean) / errors) ** 2)
-                    reduced_chi_squared = chi_squared / (len(offsets) - 1)
-                    std_dev = np.std(offsets)
-
-                    layout_plots(*axes, params)
+                    offset_ax, chi_ax, vs_ax = axes
+                    # Do the statistics and create the plots.
+                    layout_plots()
 
             else:
-                # TODO: This needs to be harmonized with the section above,
-                # so that the function can seamlessly cover stars with
-                # observation before and after the fiber change.
-                fig = plt.figure(figsize=(7, 7), tight_layout=True)
-                ax = fig.add_subplot(1, 1, 1)
+                fig = plt.figure(figsize=(9, 5), tight_layout=True)
+                gs = GridSpec(nrows=2, ncols=2, figure=fig, hspace=0,
+                              height_ratios=[11, 3],
+                              width_ratios=[1, 1])
+                offset_ax = fig.add_subplot(gs[0, 0])
+                chi_ax = fig.add_subplot(gs[1, 0])
+                vs_ax = fig.add_subplot(gs[0, 1])
+
                 if star.fiberSplitIndex == 0:
                     params = style_params_post
                 else:
                     params = style_params_pre
+                time_slice = slice(None, None)
 
-                offsets = star.fitOffsetsArray[:,
-                                               star.t_index(transition_label)]
-                errors = star.fitErrorsArray[:,
-                                             star.t_index(transition_label)]
-                w_mean, weight_sum = np.average(offsets, weights=(1/errors**2),
-                                                returned=True)
-                w_mean_err = 1 / np.sqrt(weight_sum)
-                std_dev = np.std(offsets)
-                ax.axhline(w_mean, color=style_params_post['color'])
-
-                indices = range(len(offsets))
-
-                ax.errorbar(x=indices,
-                            y=offsets,
-                            yerr=errors,
-                            label=f'Mean: {w_mean:.2f}$\\pm${std_dev:.2f}',
-                            **params)
-                ax.axhline(y=w_mean + std_dev, color='Black')
-                ax.axhline(y=w_mean - std_dev, color='Black')
-                ax.legend(loc='lower right')
+                # Do the statistics and create the plots.
+                layout_plots()
 
             filename = plots_dir / '{}_{}.png'.format(
                     obj_name, transition_label)
@@ -270,36 +246,35 @@ def create_transition_offset_plots(plots_dir):
 
 
 def create_BERV_plots():
-    for pair_label in tqdm(star._pair_label_dict.keys()):
-        fig = plt.figure(figsize=(6, 6), tight_layout=True)
-        if star.fiberSplitIndex not in (0, None):
-            gs = GridSpec(nrows=2, ncols=1, figure=fig,
-                          height_ratios=[1, 1], hspace=0)
-            ax1 = fig.add_subplot(gs[0])
-            ax2 = fig.add_subplot(gs[1], sharex=ax1)
-            ax1.set_ylabel('Pair separation pre-change (km/s)')
-            ax2.set_ylabel('Pair separation post-change (km/s)')
-            ax2.set_xlabel('Radial velocity (km/s)')
+    """Create plots of pair offset vs. the BERV at the time of the observation.
 
-            ax1.set_xlim(left=-100, right=100)
-            ax1.tick_params(labelbottom=False)
-            ax1.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.2f}'))
-            ax2.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.2f}'))
+    """
 
-            # Gather the pre-fiber change observations.
-            separations = star.pairSeparationsArray[:star.fiberSplitIndex,
-                                                    star.p_index(
-                                                            pair_label)].to(
-                                                                u.km/u.s)
-            errors = star.pairSepErrorsArray[:star.fiberSplitIndex,
-                                             star.p_index(pair_label)]
+    def layout_data(ax, time_slice, params):
+        """Actually layout data onto plots.
 
-            velocities = star.bervArray[:star.fiberSplitIndex] +\
-                star.radialVelocity
+        Parameters
+        ----------
+        ax : `matplotlib.axes.Axes` object
+            An axis to plot the data onto.
+        time_slice : slice object
+            A slice objects indicating how many row of the various star arrays
+            to use.
+        params : dict
+            A dictionary of plotting params to pass to `matplotlib.errorbar`.
 
-            ax1.errorbar(x=velocities, y=separations, yerr=errors,
-                         **style_params_pre)
+        """
 
+        # Gather the observations for the given time slice.
+        separations = star.pairSeparationsArray[time_slice,
+                                                column_index].to(u.km/u.s)
+        errors = star.pairSepErrorsArray[time_slice, column_index]
+
+        velocities = star.bervArray[time_slice] + star.radialVelocity
+        velocities.convert_to_units('km/s')
+
+        if args.verbose:
+            # Generate some binned data to print out.
             vel_lower = velocities.min()
             vel_upper = velocities.max()
             bin_lims = np.linspace(vel_lower, vel_upper, num=6)
@@ -328,30 +303,63 @@ def create_BERV_plots():
             tqdm.write(str(tabulate(zip(binned_seps, binned_chi_squareds),
                            headers=["Separation (km/s)", "Reduced χ²"])))
 
-            # Gather the post-fiber change observations.
-            separations = star.pairSeparationsArray[star.fiberSplitIndex:,
-                                                    star.p_index(
-                                                            pair_label)].to(
-                                                                u.km/u.s)
-            errors = star.pairSepErrorsArray[star.fiberSplitIndex:,
-                                             star.p_index(pair_label)]
+        ax.set_xlim(left=-100, right=100)
+        ax.yaxis.grid(which='major', color='Gray', alpha=0.6, linestyle='--')
+        ax.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:.2f}'))
+        ax.axhline(y=np.mean(separations), color='DimGray', linestyle='-')
+        ax.errorbar(x=velocities, y=separations, yerr=errors,
+                    **params)
 
-            velocities = star.bervArray[star.fiberSplitIndex:] +\
-                star.radialVelocity
+    # Define slice objects to capture time periods.
+    pre_slice = slice(None, star.fiberSplitIndex)
+    post_slice = slice(star.fiberSplitIndex, None)
 
-            ax2.errorbar(x=velocities, y=separations, yerr=errors,
-                         **style_params_post)
+    for pair_label in tqdm(star._pair_bidict.keys()):
+        column_index = star.p_index(pair_label)
 
-            plots_dir = data_dir / 'BERV_plots'
-            if not plots_dir.exists():
-                os.mkdir(plots_dir)
-            filename = plots_dir / '{}_{}.png'.format(
-                    obj_name, pair_label)
-            fig.savefig(filename)
+        if star.fiberSplitIndex not in (0, None):
+            fig = plt.figure(figsize=(6, 6), tight_layout=True)
+            gs = GridSpec(nrows=2, ncols=1, figure=fig,
+                          height_ratios=[1, 1], hspace=0)
+            ax1 = fig.add_subplot(gs[0])
+            ax2 = fig.add_subplot(gs[1], sharex=ax1)
+            ax1.set_ylabel('Pair separation pre-change (km/s)')
+            ax2.set_ylabel('Pair separation post-change (km/s)')
+            ax2.set_xlabel('Radial velocity (km/s)')
+
+            ax1.tick_params(labelbottom=False)
+
+            for axis, time_slice, params in zip((ax1, ax2),
+                                                (pre_slice, post_slice),
+                                                (style_params_pre,
+                                                 style_params_post)):
+
+                layout_data(axis, time_slice, params)
+
+        else:
+            fig = plt.figure(figsize=(6, 3), tight_layout=True)
+            ax = fig.add_subplot(1, 1, 1)
+
+            ax.set_ylabel('Pair separation post-change (km/s)')
+            ax.set_xlabel('Radial velocity (km/s)')
+
+            if star.fiberSplitIndex == 0:
+                params = style_params_post
+            else:
+                params = style_params_pre
+
+            layout_data(ax, slice(None, None), params)
+
+        plots_dir = data_dir / 'BERV_plots'
+        if not plots_dir.exists():
+            os.mkdir(plots_dir)
+        filename = plots_dir / '{}_{}.png'.format(
+                obj_name, pair_label)
+        fig.savefig(filename)
         plt.close(fig)
 
 
-def create_expected_offset_plots(star):
+def create_offset_plot(star):
     """Create a plot for this star showing the average offset in the measured
     wavelength of a transition compared to its laboratory expected value.
 
@@ -362,8 +370,67 @@ def create_expected_offset_plots(star):
 
     """
 
-    fig = plt.figure()
+    def layout_plots(time_slice):
+        """Layout data onto the current axis.
+
+        """
+
+        ax.axhline(y=0, color='DimGray')
+        ax.yaxis.set_minor_locator(ticker.MultipleLocator(base=100))
+        ax.yaxis.grid(which='major', color='Gray', alpha=0.7,
+                      linestyle='--')
+        ax.yaxis.grid(which='minor', color='Gray', alpha=0.6,
+                      linestyle='-.')
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(base=10))
+        ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=2))
+        ax.xaxis.grid(which='major', color='Gray', alpha=0.7,
+                      linestyle='--')
+        ax.xaxis.grid(which='minor', color='Gray', alpha=0.6,
+                      linestyle=':')
+
+        pattern, errors = get_stellar_offset_pattern(star, time_slice)
+        indices = range(len(pattern))
+        ax.errorbar(x=indices, y=pattern, yerr=errors,
+                    **params)
+        ax.set_xlabel('Index number')
+        ax.set_ylabel('Offset from expected position (m/s)')
+
+    def get_stellar_offset_pattern(star, array_slice=slice(None, None)):
+        """Return an array of the offset from expected wavelength for each
+        transition in the given star.
+
+        Parameters
+        ----------
+        star : `star.Star` object
+            The star to evaluate.
+        array_slice : `slice` object
+            The slice over rows in the star's array of fit means to evaluate.
+            If not given defaults to using the entire array. If looking for
+            the pre- or post-fiber change values only, can be given as:
+            pre  :  slice(None, star.fiberSplitIndex)
+            post :  slice(star.fiberSplitIndex, None)
+
+        Returns
+        -------
+        2-tuple of `unyt.unyt_array`
+            A length-2 tuple of `unyt_array` objects, containing the mean
+            measured offset from the expected wavelength and the standard
+            deviation in the offsets for each transition in the star.
+        """
+
+        pattern = []
+        errors = []
+
+        for key in star._transition_bidict.keys():
+            offsets = star.fitOffsetsArray[array_slice, star.t_index(key)]
+            pattern.append(np.mean(offsets))
+            errors.append(np.std(offsets))
+        return (u.unyt_array(pattern), u.unyt_array(errors))
+
+    plot_name = data_dir / f'{data_dir.stem}_offset_pattern.png'
+
     if star.fiberSplitIndex not in (0, None):
+        fig = plt.figure(figsize=(8, 6), tight_layout=True)
         gs = GridSpec(nrows=2, ncols=1, figure=fig,
                       height_ratios=[1, 1], hspace=0)
         ax1 = fig.add_subplot(gs[0])
@@ -372,9 +439,28 @@ def create_expected_offset_plots(star):
         pre_slice = slice(None, star.fiberSplitIndex)
         post_slice = slice(star.fiberSplitIndex, None)
 
-        for ax, params in zip((ax1, ax2),
-                              (style_params_pre, style_params_post)):
-            pass
+        for ax, params, time_slice in zip((ax1, ax2),
+                                          (style_params_pre,
+                                           style_params_post),
+                                          (pre_slice, post_slice)):
+            layout_plots()
+
+        ax1.tick_params(labelbottom=False)
+
+    else:
+        fig = plt.figure(figsize=(8, 4), tight_layout=True)
+        if star.fiberSplitIndex == 0:
+            params = style_params_post
+        else:
+            params = style_params_pre
+        time_slice = slice(None, None)
+
+        ax = fig.add_subplot(1, 1, 1)
+
+        layout_plots(time_slice)
+
+    fig.savefig(str(plot_name))
+    plt.close(fig)
 
 
 # Write out a CSV file containing the pair separation values for all
@@ -610,70 +696,89 @@ def create_airmass_plots(transition_plots_dir):
 
     """
 
-    tqdm.write('Creating plots of airmass vs. dispersion for transitions.')
+    def get_airmasses(time_slice):
+        """Get the airmasses for a given time slice.
+
+        Parameters
+        ----------
+        time_slice : slice
+            A slice object representing the time period to get airmasses from
+            observations in.
+
+        """
+
+        return star.airmassArray[time_slice]
+
+    def get_offsets(time_slice):
+        """Get the offsets from expected position for a given time_slice.
+
+        """
+
+        return star.fitOffsetsArray[time_slice, column_index]
+
     airmass_dir = transition_plots_dir / 'airmass_plots'
     if not airmass_dir.exists():
         os.mkdir(airmass_dir)
 
-    for transition in tqdm(transitions_list):
-        for order_num in transition.ordersToFitIn:
-            transition_label = '_'.join((transition.label, str(order_num)))
-            filename = airmass_dir / 'Airmass_dispersion_{}.png'.format(
-                    transition_label)
+    for transition_label in tqdm(star._transition_bidict.keys()):
+        column_index = star.t_index(transition_label)
+        filename = airmass_dir / 'Airmass_dispersion_{}.png'.format(
+                transition_label)
 
-            # Get a list of all the observation dates.
-            date_obs = []
-            for fits_dict in master_fits_list:
-                date_obs.append(fits_dict[transition_label].dateObs)
+        pre_slice = slice(None, star.fiberSplitIndex)
+        post_slice = slice(star.fiberSplitIndex, None)
 
-            date_indices = []
-            for value in dates_of_change.values():
-                date_indices.append(date2index(value['x'], date_obs))
+        fig = plt.figure(figsize=(7, 7), tight_layout=True)
+        ax = fig.add_subplot(1, 1, 1)
 
-            offsets_pre_list = []
-            airmass_pre_list = []
-            offsets_post_list = []
-            airmass_post_list = []
+        ax.set_xlabel('Airmass')
+        ax.set_ylabel('Offset from expected wavelength (m/s)')
 
-            for fits_dict in master_fits_list[:date_indices[2]]:
-                fit = fits_dict[transition_label]
-                offsets_pre_list.append(fit.velocityOffset)
-                airmass_pre_list.append(fit.airmass)
+        if star.fiberSplitIndex not in (0, None):
 
-            for fits_dict in master_fits_list[date_indices[2]:]:
-                fit = fits_dict[transition_label]
-                offsets_post_list.append(fit.velocityOffset)
-                airmass_post_list.append(fit.airmass)
+            for time_slice, params, time in zip((pre_slice, post_slice),
+                                                (style_params_pre,
+                                                style_params_post),
+                                                ('pre', 'post')):
+                airmasses = get_airmasses(time_slice)
+                offsets = get_offsets(time_slice)
 
-            fig = plt.figure(figsize=(7, 7), tight_layout=True)
-            ax = fig.add_subplot(1, 1, 1)
+                ax.axhline(y=np.mean(offsets),
+                           label=f'Mean ({time}-fiber change)',
+                           color=params['color'],
+                           linestyle='--')
 
-            ax.set_xlabel('Airmass')
-            ax.set_ylabel('Offset from expected wavelength (m/s)')
-            ax.axhline(y=np.mean(offsets_pre_list),
-                       label='Mean (pre-fiber change)',
-                       color=style_params_pre['color'],
+                ax.scatter(airmasses, offsets, s=32,
+                           c=params['color'],
+                           alpha=params['alpha'],
+                           edgecolor=params['markeredgecolor'])
+
+        else:
+            if star.fiberSplitIndex == 0:
+                params = style_params_post
+                time = 'post'
+            else:
+                params = style_params_pre
+                time = 'pre'
+            time_slice = slice(None, None)
+
+            airmasses = get_airmasses(time_slice)
+            offsets = get_offsets(time_slice)
+
+            ax.axhline(y=np.mean(offsets),
+                       label=f'Mean ({time}-fiber change)',
+                       color=params['color'],
                        linestyle='--')
-            ax.axhline(y=np.mean(offsets_post_list),
-                       label='Mean (post-fiber change)',
-                       color=style_params_post['color'],
-                       linestyle='--')
 
-            # Plot the pre-change points...
-            ax.scatter(airmass_pre_list, offsets_pre_list, s=32,
-                       c=style_params_pre['color'],
-                       alpha=style_params_pre['alpha'],
-                       edgecolor=style_params_pre['markeredgecolor'])
-            # ...and the post-change ones.
-            ax.scatter(airmass_post_list, offsets_post_list, s=32,
-                       c=style_params_post['color'],
-                       alpha=style_params_post['alpha'],
-                       edgecolor=style_params_post['markeredgecolor'])
+            ax.scatter(airmasses, offsets, s=32,
+                       c=params['color'],
+                       alpha=params['alpha'],
+                       edgecolor=params['markeredgecolor'])
 
-            ax.legend(framealpha=0.6)
+        ax.legend(framealpha=0.6)
 
-            fig.savefig(str(filename))
-            plt.close(fig)
+        fig.savefig(str(filename))
+        plt.close(fig)
 
 
 def create_transition_dir_if_necessary():
@@ -735,7 +840,7 @@ if __name__ == '__main__':
                         help="Plot transitions' scatter as a function of"
                         ' airmass.')
 
-    parser.add_argument('--create-expected-offset-plots', action='store_true',
+    parser.add_argument('--create-offset-plot', action='store_true',
                         help='Create a plot of the average offset for all'
                         'transitions from their expected laboratory position.')
 
@@ -808,7 +913,7 @@ if __name__ == '__main__':
     # Stuff that needs a Star.
 
     if args.create_transition_offset_plots or args.create_berv_plots\
-            or args.create_expected_offset_plots:
+            or args.create_offset_plot or args.create_airmass_plots:
 
         # Read or create a Star object for this star.
         obj_name = data_dir.stem
@@ -820,20 +925,28 @@ if __name__ == '__main__':
                     load_data=load_data)
 
         if args.create_transition_offset_plots:
+            tqdm.write('Creating transition offset plots.')
             transition_plots_dir = data_dir / 'transition_offset_plots'
             if not transition_plots_dir.exists():
                 os.mkdir(transition_plots_dir)
             create_transition_offset_plots(transition_plots_dir)
 
         if args.create_berv_plots:
+            tqdm.write('Creating plots of pair offsets vs. BERV.')
             create_BERV_plots()
 
-        if args.create_expected_offset_plots:
-            pass
+        if args.create_offset_plot:
+            tqdm.write('Creating plot of mean fit offsets.')
+            create_offset_plot(star)
+
+        if args.create_airmass_plots:
+            tqdm.write('Creating plots of offsets vs. airmass.')
+            t_plots_dir = create_transition_dir_if_necessary()
+            create_airmass_plots(t_plots_dir)
 
     # Stuff that needs analysis of pickle files.
     if args.write_csv or args.create_pair_offset_plots\
-            or args.create_airmass_plots or args.create_fit_plots:
+            or args.create_fit_plots:
 
         # Search for pickle files in the given directory.
         search_str = str(data_dir) + '/*/pickles_{}/*fits.lzma'.format(args.
@@ -947,6 +1060,7 @@ if __name__ == '__main__':
                 master_star_list.append(separations_list)
 
     if args.write_csv:
+        tqdm.write('Writing out CSV files.')
         write_csv(column_names)
 
     if args.create_pair_offset_plots:
@@ -955,10 +1069,6 @@ if __name__ == '__main__':
         if not pair_plots_dir.exists():
             os.mkdir(pair_plots_dir)
         create_pair_offset_plots(pair_plots_dir)
-
-    if args.create_airmass_plots:
-        t_plots_dir = create_transition_dir_if_necessary()
-        create_airmass_plots(t_plots_dir)
 
     ################
     # Stuff that doesn't need a Star or analysis of pickle files.
