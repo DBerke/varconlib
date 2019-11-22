@@ -75,7 +75,7 @@ class Star(object):
         mean of the fit for each absorption feature of each observation of the
         star. Rows correspond to observations, columns to transitions.
     fitOffsetsArray : `unyt.unyt_array`
-        A two-dimensional array holding the offset from the expect wavelength
+        A two-dimensional array holding the offset from the expected wavelength
         of the measured mean of each absorption feature in each observation of
         the star. Rows correspond to observations, columns to transitions.
     pairSeparationsArray : `unyt.unyt_array`
@@ -94,6 +94,17 @@ class Star(object):
         A two-dimensional array holding the reduced chi-squared value of the
         Gaussian fit to each transition for each observation of the star.
         Rows correspond to observations, columns to transitions.
+    _obs_date_bidict : `bidict_named.namedbidict`
+        A custom `namedbidict` with attribute 'date_for' and 'index_for' which
+        can be used to get the date for a given index, and vice versa.
+    _transition_bidict : `bidict_named.namedbidict`
+        A custom `namedbidict` with attributes 'label_for' and 'index_for'
+        which can be used to get the transition label for a given index, and
+        vice versa.
+    _pair_bidict : `bidict_named.namedbidict`
+        A custom `namedbidict` with attributes 'label_for' and 'index_for'
+        which can be used to get the pair label for a given index, and vice
+        versa.
 
     """
 
@@ -120,6 +131,11 @@ class Star(object):
                     '_transition_bidict',
                     '_pair_bidict')
 
+    # Define some custom namedbidict objects which can be
+    DateMap = namedbidict('ObservationDateMap', 'date', 'index')
+    TransitionMap = namedbidict('TransitionMap', 'label', 'index')
+    PairMap = namedbidict('PairMap', 'label', 'index')
+
     # Date of fiber change in HARPS:
     fiber_change_date = dt.datetime(year=2015, month=6, day=1,
                                     hour=0, minute=0, second=0)
@@ -134,8 +150,9 @@ class Star(object):
         self.name = name
 
         # Initialize some attributes to be filled later.
-        DateMap = namedbidict('ObservationDateMap', 'date', 'index')
-        self._obs_date_bidict = DateMap()
+        self._obs_date_bidict = self.DateMap()
+        self._transition_bidict = self.TransitionMap()
+        self._pair_bidict = self.PairMap()
         self.bervArray = None
         self.fitMeansArray = None
         self.fitErrorsArray = None
@@ -189,11 +206,6 @@ class Star(object):
             but this will be slower.
 
         """
-
-        # Define some named bidicts for mapping pair and transitions labels
-        # to their index numbers in arrays.
-        TransitionMap = namedbidict('TransitionMap', 'label', 'index')
-        PairMap = namedbidict('PairMap', 'label', 'index')
 
         # Check that the given directory exists.
         if not star_dir.exists():
@@ -256,12 +268,13 @@ class Star(object):
             for order_num in pair.ordersToMeasureIn:
                 pair_labels.append('_'.join((pair.label, str(order_num))))
 
-        self._pair_bidict = PairMap({pair_label: num for num,
-                                     pair_label in
-                                     enumerate(pair_labels)})
-        self._transition_bidict = TransitionMap({transition_label: num
-                                                 for num, transition_label in
-                                                 enumerate(transition_labels)})
+        self._pair_bidict = self.PairMap({pair_label: num for num,
+                                          pair_label in
+                                          enumerate(pair_labels)})
+        self._transition_bidict = self.TransitionMap({transition_label: num
+                                                      for num, transition_label
+                                                      in enumerate(
+                                                          transition_labels)})
 
     def getPairSeparations(self):
         """Create attributes containing pair separations and associated errors.

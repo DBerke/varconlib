@@ -58,18 +58,18 @@ class TestStar(object):
 
     def testIndexMethods(self):
         s = Star('HD1111')
-        with pytest.raises(AttributeError):
+        with pytest.raises(KeyError):
             s.p_index('')
-        with pytest.raises(AttributeError):
+        with pytest.raises(KeyError):
             s.t_index('')
         with pytest.raises(KeyError):
             s.od_index('')
 
     def testLabelMethods(self):
         s = Star('HD1111')
-        with pytest.raises(AttributeError):
+        with pytest.raises(KeyError):
             s.p_label('')
-        with pytest.raises(AttributeError):
+        with pytest.raises(KeyError):
             s.t_label('')
         with pytest.raises(KeyError):
             s.od_date('')
