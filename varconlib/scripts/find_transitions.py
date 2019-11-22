@@ -34,7 +34,7 @@ from varconlib.miscellaneous import (wavelength2index, blueCCDpath,
 
 desc = ("Fit absorption features in spectra.\n\n"
         "Example usage:\n"
-        "find_transitions.py /Volumes/External\ Storage/HARPS/HD117618/"
+        r"find_transitions.py /Volumes/External\ Storage/HARPS/HD117618/"
         " HD117618 --pixel-positions --new-coefficients --integrated-gaussian"
         " --create-plots")
 
@@ -48,7 +48,7 @@ parser.add_argument('object_name', action='store',
 
 parser.add_argument('--start', type=int, action='store', default=0,
                     help='Start position in the list of observations.')
-parser.add_argument('--end', type=int, action='store', default=-1,
+parser.add_argument('--end', type=int, action='store', default=None,
                     help='End position in the list of observations.')
 
 parser.add_argument('--pixel-positions', action='store_true',
@@ -64,13 +64,19 @@ parser.add_argument('--update', action='store', metavar='HDU-name',
                     nargs='+', default=[],
                     help='Which HDUs to update (WAVE, BARY, PIXLOWER, PIXUPPER'
                     ' FLUX, ERR, BLAZE, or ALL)')
+
 parser.add_argument('--create-plots', action='store_true', default=False,
-                    help='Create plots for each observation and transition.')
+                    help='Create plots of the fit for each transition.')
+parser.add_argument('--create-ccd-plots', action='store_true',
+                    help='Create plots of the CCD positions of each transiton'
+                    'for each observation.')
 
 parser.add_argument('--verbose', action='store_true', default=False,
                     help='Print out additional information while running.')
 
 args = parser.parse_args()
+
+assert args.start >= 0, '--start must be a non-negative integer.'
 
 observations_dir = Path(args.object_dir)
 # Check that the path given exists:
@@ -92,9 +98,16 @@ glob_search_string = str(observations_dir) + '/*/*e2ds_A.fits'
 # Get a list of all the data files in the data directory:
 data_files = [Path(string) for string in sorted(glob(glob_search_string))]
 
-tqdm.write('Found {} observations in the directory.'.format(len(data_files)))
+files_to_work_on = slice(args.start, args.end)
 
-# output_dir = /Users/dberke/data_output
+tqdm.write('=' * 25)
+tqdm.write('Found {} observations in the directory, working on:'.format(
+        len(data_files)))
+for file in data_files[files_to_work_on]:
+    tqdm.write(str(file.name))
+
+tqdm.write('=' * 40)
+
 output_dir = Path(vcl.config['PATHS']['output_dir'])
 data_dir = output_dir / args.object_name
 if not data_dir.exists():
@@ -137,8 +150,11 @@ elif args.pixel_positions and args.new_coefficients:
     else:
         suffix = 'new'
 
-for obs_path in tqdm(data_files[args.start:args.end]) if\
-  len(data_files) > 1 else data_files:
+total = len(data_files) - args.start
+
+for obs_path in tqdm(data_files[files_to_work_on], initial=args.start,
+                     total=total) if\
+                     len(data_files) > 1 else data_files:
     tqdm.write('-' * 40)
     tqdm.write('Fitting {}...'.format(obs_path.name))
     try:
@@ -210,18 +226,15 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
                                   close_up_plot_path=plot_closeup,
                                   context_plot_path=plot_context)
             except (RuntimeError, PositiveAmplitudeError):
-                tqdm.write('Warning! Unable to fit {}!'.format(transition))
+                tqdm.write('   Warning! Unable to fit {}!'.format(transition))
+                # Fit is plotted automatically upon failing.
                 continue
 
             # Assuming the fit didn't fail, continue on:
             fits_list.append(fit)
             if args.create_plots:
+                # Plot the fit.
                 fit.plotFit(plot_closeup, plot_context)
-#                y = obs.findWavelength(fit.correctedWavelength,
-#                                       obs.barycentricArray,
-#                                       mid_most=True, verbose=False)
-#                x = wavelength2index(fit.correctedWavelength,
-#                                     obs.barycentricArray[y])
                 transitions_y.append(fit.order + 1)
                 transitions_x.append(wavelength2index(fit.correctedWavelength,
                                      obs.barycentricArray[order_num]))
@@ -241,7 +254,7 @@ for obs_path in tqdm(data_files[args.start:args.end]) if\
 
     # Create a plot to show locations of transitions on the CCD for this
     # observation.
-    if args.create_plots:
+    if args.create_ccd_plots:
         tqdm.write('Creating plot of transition CCD locations...')
         fig = plt.figure(figsize=(15, 10), tight_layout=True)
         ax = fig.add_subplot(1, 1, 1)
