@@ -344,7 +344,7 @@ class HARPSFile2DScience(HARPSFile2D):
             if ('ALL' in update) or ('BLAZE' in update):
                 raise RuntimeError(err_str)
             self.writeBlazeHDU(hdulist, verify_action=verify_action)
-            tqdm.write('Writing new blaze HDU')
+            tqdm.write('Writing new blaze HDU.')
         # If we're updating the file, overwrite the existing uncertainties.
         if ('ALL' in update) or ('BLAZE' in update):
             tqdm.write('Overwriting blaze array HDU.')
