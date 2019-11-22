@@ -118,7 +118,7 @@ class TestStar(object):
         test_star.dumpDataToDisk(tmp_file_path)
         new_star = Star(star_name, tmp_dir)
 
-        for name in test_star.attr_names:
+        for name in test_star.unyt_arrays.values():
             assert u.array.allclose_units(getattr(new_star, name),
                                           getattr(test_star, name))
             assert getattr(new_star, name).units == getattr(test_star,

@@ -94,6 +94,9 @@ class Star(object):
         A two-dimensional array holding the reduced chi-squared value of the
         Gaussian fit to each transition for each observation of the star.
         Rows correspond to observations, columns to transitions.
+    airmassArray : `np.ndarray`
+        A one-dimensional array holding the airmass for each observation of the
+        star.
     _obs_date_bidict : `bidict_named.namedbidict`
         A custom `namedbidict` with attribute 'date_for' and 'index_for' which
         can be used to get the date for a given index, and vice versa.
@@ -110,26 +113,18 @@ class Star(object):
 
     # Define dataset names and corresponding attribute names to be saved
     # and loaded when dumping star data.
-    dataset_names = ('transition_means',
-                     'transition_errors',
-                     'offsets',
-                     'pair_separations',
-                     'pair_separation_errors',
-                     'BERV_array',
-                     'reduced_chi_squareds')
-    attr_names = ('fitMeansArray',
-                  'fitErrorsArray',
-                  'fitOffsetsArray',
-                  'pairSeparationsArray',
-                  'pairSepErrorsArray',
-                  'bervArray',
-                  'chiSquaredNuArray')
-    bidict_path_name = ('/obs_date_bidict',
-                        '/transition_bidict',
-                        '/pair_bidict')
-    bidict_names = ('_obs_date_bidict',
-                    '_transition_bidict',
-                    '_pair_bidict')
+    unyt_arrays = {'transition_means': 'fitMeansArray',
+                   'transition_errors': 'fitErrorsArray',
+                   'offsets': 'fitOffsetsArray',
+                   'pair_separations': 'pairSeparationsArray',
+                   'pair_separation_errors': 'pairSepErrorsArray',
+                   'BERV_array': 'bervArray'}
+
+    other_attributes = {'reduced_chi_squareds': 'chiSquaredNuArray',
+                        'airmasses': 'airmassArray',
+                        '/obs_date_bidict': '_obs_date_bidict',
+                        '/transition_bidict': '_transition_bidict',
+                        '/pair_bidict': '_pair_bidict'}
 
     # Define some custom namedbidict objects which can be
     DateMap = namedbidict('ObservationDateMap', 'date', 'index')
@@ -154,6 +149,7 @@ class Star(object):
         self._transition_bidict = self.TransitionMap()
         self._pair_bidict = self.PairMap()
         self.bervArray = None
+        self.airmassArray = None
         self.fitMeansArray = None
         self.fitErrorsArray = None
         self.fitOffsetsArray = None
@@ -222,6 +218,7 @@ class Star(object):
         offsets_list = []
         chi_squared_list = []
         self.bervArray = np.empty(len(pickle_files))
+        self.airmassArray = np.empty(len(pickle_files))
 
         # For each pickle file:
         for obs_num, pickle_file in enumerate(tqdm(pickle_files[:])):
@@ -233,19 +230,26 @@ class Star(object):
             # ??? Maybe save as datetime objects rather than strings?
             self._obs_date_bidict[fits_list[0].dateObs.isoformat(
                                timespec='milliseconds')] = obs_num
-            # Save the BERV.
+            # Save the BERV and airmass.
             self.bervArray[obs_num] = fits_list[0].BERV
+            self.airmassArray[obs_num] = fits_list[0].airmass
+
             means_list.append(np.array([fit.mean.to(u.angstrom).value for
                                         fit in fits_list]))
-            means_units = fits_list[0].mean.units
+
             errors_list.append(np.array([fit.meanErrVel.to(u.m/u.s).value for
                                          fit in fits_list]))
-            errors_units = fits_list[0].meanErrVel.units
+
             offsets_list.append(np.array([fit.velocityOffset.to(u.m/u.s).value
                                          for fit in fits_list]))
-            offsets_units = fits_list[0].velocityOffset.units
+
             chi_squared_list.append(np.array([fit.chiSquaredNu for fit
                                               in fits_list]))
+
+        means_units = fits_list[0].mean.units
+        errors_units = fits_list[0].meanErrVel.units
+        offsets_units = fits_list[0].velocityOffset.units
+        berv_units = fits_list[0].BERV.units
 
         means_array = np.array(means_list)
         errors_array = np.array(errors_list)
@@ -254,8 +258,8 @@ class Star(object):
         self.fitMeansArray = means_array * means_units
         self.fitErrorsArray = errors_array * errors_units
         self.fitOffsetsArray = offsets_array * offsets_units
-        self.bervArray *= u.km / u.s
-        self.chiSquaredNuArray = u.unyt_array(np.array(chi_squared_list))
+        self.bervArray *= berv_units
+        self.chiSquaredNuArray = np.array(chi_squared_list)
 
         transition_labels = []
         for transition in self.transitionsList:
@@ -330,12 +334,10 @@ class Star(object):
             os.replace(file_path, backup_path)
         with h5py.File(file_path, mode='a') as f:
 
-            for dataset_name, attr_name in zip(self.dataset_names,
-                                               self.attr_names):
+            for dataset_name, attr_name in self.unyt_arrays.items():
                 getattr(self, attr_name).write_hdf5(file_path,
                                                     dataset_name=dataset_name)
-            for path_name, attr_name in zip(self.bidict_path_name,
-                                            self.bidict_names):
+            for path_name, attr_name in self.other_attributes.items():
                 hickle.dump(getattr(self, attr_name), f, path=path_name)
 
     def constructFromHDF5(self, filename):
@@ -353,14 +355,12 @@ class Star(object):
 
         with h5py.File(filename, mode='r') as f:
 
-            for dataset_name, attr_name in zip(self.dataset_names,
-                                               self.attr_names):
+            for dataset_name, attr_name in self.unyt_arrays.items():
                 dataset = u.unyt_array.from_hdf5(filename,
                                                  dataset_name=dataset_name)
                 setattr(self, attr_name, dataset)
 
-            for path_name, attr_name in zip(self.bidict_path_name,
-                                            self.bidict_names):
+            for path_name, attr_name in self.other_attributes.items():
                 setattr(self, attr_name, hickle.load(f, path=path_name))
 
     @property
