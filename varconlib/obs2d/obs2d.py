@@ -221,6 +221,10 @@ class HARPSFile2DScience(HARPSFile2D):
             # been opened previously
             err_str = "File opened in 'update' mode but no arrays exist!"
 
+            # Define the verification level for FITS files not meeting the FITS
+            # standard.
+            verify_action = 'ignore'
+
             # Try to read the wavelength array, or create it if it doesn't
             # exist.
             try:
@@ -229,13 +233,13 @@ class HARPSFile2DScience(HARPSFile2D):
                 if ('ALL' in update) or ('WAVE' in update):
                     raise RuntimeError(err_str)
                 tqdm.write('Writing new wavelength HDU.')
-                self.writeWavelengthHDU(hdulist, verify_action='warn',
+                self.writeWavelengthHDU(hdulist, verify_action=verify_action,
                                         use_new_coefficients=new_coefficients,
                                         use_pixel_positions=pixel_positions)
             # If we're updating the file, overwrite the existing wavelengths.
             if ('ALL' in update) or ('WAVE' in update):
                 tqdm.write('Overwriting wavelength HDU.')
-                self.writeWavelengthHDU(hdulist, verify_action='warn',
+                self.writeWavelengthHDU(hdulist, verify_action=verify_action,
                                         use_new_coefficients=new_coefficients,
                                         use_pixel_positions=pixel_positions)
 
@@ -248,12 +252,12 @@ class HARPSFile2DScience(HARPSFile2D):
                     raise RuntimeError(err_str)
                 tqdm.write('Writing new barycentric wavelength HDU.')
                 self.writeBarycentricHDU(hdulist, self.barycentricArray,
-                                         'BARY', verify_action='warn')
+                                         'BARY', verify_action=verify_action)
             if ('ALL' in update) or ('BARY' in update):
                 tqdm.write('Overwriting barycentric wavelength HDU.')
                 del self._barycentricArray
                 self.writeBarycentricHDU(hdulist, self.barycentricArray,
-                                         'BARY', verify_action='warn')
+                                         'BARY', verify_action=verify_action)
 
             # Try to read the barycentric lower pixel edge array, or create it
             # if it doesn't exist yet.
@@ -269,13 +273,14 @@ class HARPSFile2DScience(HARPSFile2D):
                         raise RuntimeError(err_str)
                     tqdm.write('Writing new pixel lower edges HDU.')
                     self.writeBarycentricHDU(hdulist, self.pixelLowerArray,
-                                             'PIXLOWER', verify_action='warn')
+                                             'PIXLOWER',
+                                             verify_action=verify_action)
             if ('ALL' in update) or ('PIXLOWER' in update):
                 tqdm.write('Overwriting lower pixel wavelength HDU.')
                 del self._pixelLowerArray
                 pixel_array = self.pixelLowerArray
                 self.writeBarycentricHDU(hdulist, pixel_array, 'PIXLOWER',
-                                         verify_action='warn')
+                                         verify_action=verify_action)
 
             # Try to read the barycentric upper pixel edge array, or create it
             # if it doesn't exist yet.
@@ -291,13 +296,14 @@ class HARPSFile2DScience(HARPSFile2D):
                         raise RuntimeError(err_str)
                     tqdm.write('Writing new pixel upper edges HDU.')
                     self.writeBarycentricHDU(hdulist, self.pixelUpperArray,
-                                             'PIXUPPER', verify_action='warn')
+                                             'PIXUPPER',
+                                             verify_action=verify_action)
             if ('ALL' in update) or ('PIXUPPER' in update):
                 tqdm.write('Overwriting lower pixel wavelength HDU.')
                 del self._pixelUpperArray
                 pixel_array = self.pixelUpperArray
                 self.writeBarycentricHDU(hdulist, pixel_array, 'PIXUPPER',
-                                         verify_action='warn')
+                                         verify_action=verify_action)
 
             # Try to read the flux array, or create it if it doesn't exist.
             try:
@@ -305,12 +311,12 @@ class HARPSFile2DScience(HARPSFile2D):
             except KeyError:
                 if ('ALL' in update) or ('FLUX' in update):
                     raise RuntimeError(err_str)
-                self.writePhotonFluxHDU(hdulist, verify_action='warn')
+                self.writePhotonFluxHDU(hdulist, verify_action=verify_action)
                 tqdm.write('Writing new photon flux HDU.')
             # If we're updating the file, overwrite the existing fluxes.
             if ('ALL' in update) or ('FLUX' in update):
                 tqdm.write('Overwriting photon flux HDU.')
-                self.writePhotonFluxHDU(hdulist, verify_action='warn')
+                self.writePhotonFluxHDU(hdulist, verify_action=verify_action)
 
             # Try to read the error array, or create it if it doesn't exist.
             try:
@@ -318,12 +324,12 @@ class HARPSFile2DScience(HARPSFile2D):
             except KeyError:
                 if ('ALL' in update) or ('ERR' in update):
                     raise RuntimeError(err_str)
-                self.writeErrorHDU(hdulist, verify_action='warn')
+                self.writeErrorHDU(hdulist, verify_action=verify_action)
                 tqdm.write('Writing new error HDU.')
             # If we're updating the file, overwrite the existing uncertainties.
             if ('ALL' in update) or ('ERR' in update):
                 tqdm.write('Overwriting error array HDU.')
-                self.writeErrorHDU(hdulist, verify_action='warn')
+                self.writeErrorHDU(hdulist, verify_action=verify_action)
 
             # Try to read the blaze array, or create it if it doesn't exist.
             try:
@@ -331,12 +337,12 @@ class HARPSFile2DScience(HARPSFile2D):
             except KeyError:
                 if ('ALL' in update) or ('BLAZE' in update):
                     raise RuntimeError(err_str)
-                self.writeBlazeHDU(hdulist, verify_action='warn')
+                self.writeBlazeHDU(hdulist, verify_action=verify_action)
                 tqdm.write('Writing new blaze HDU')
             # If we're updating the file, overwrite the existing uncertainties.
             if ('ALL' in update) or ('BLAZE' in update):
                 tqdm.write('Overwriting blaze array HDU.')
-                self.writeBlazeHDU(hdulist, verify_action='warn')
+                self.writeBlazeHDU(hdulist, verify_action=verify_action)
 
     @property
     def wavelengthArray(self):
@@ -404,7 +410,6 @@ class HARPSFile2DScience(HARPSFile2D):
     def pixelPosArray(self):
         if not hasattr(self, '_pixelPosArray'):
             self._pixelPosArray = HARPSFile2D(pixel_pos_file)._rawData
-            print(self._pixelPosArray.shape)
         return self._pixelPosArray
 
     @property
@@ -816,7 +821,6 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        self._photonFluxArray = self.getPhotonFluxArray()
         # Create an HDU for the photon flux array.
         photon_flux_HDU = fits.ImageHDU(data=self.photonFluxArray, name='FLUX')
         try:
@@ -844,7 +848,6 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        self._errorArray = self.getErrorArray()
         # Create an HDU for the error array.
         error_HDU = fits.ImageHDU(data=self.errorArray, name='ERR')
         try:
@@ -872,7 +875,6 @@ class HARPSFile2DScience(HARPSFile2D):
 
         """
 
-        self._blazeArray = self.getBlazeArray()
         blaze_HDU = fits.ImageHDU(data=self.blazeArray, name='BLAZE')
 
         try:
