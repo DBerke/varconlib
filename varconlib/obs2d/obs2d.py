@@ -210,139 +210,147 @@ class HARPSFile2DScience(HARPSFile2D):
         else:
             file_open_mode = 'append'
 
-        with fits.open(self._filename, mode=file_open_mode) as hdulist:
-            self._header = hdulist[0].header
-            data = hdulist[0].data
-            self._rawData = self._reshape_if_necessary(data)
-            self._rawFluxArray = copy(self._rawData)
-            self._blazeFile = None
+#        with fits.open(self._filename, mode=file_open_mode) as hdulist:
+        # Note: using a with block doesn't currently work because the __exit__
+        # method for fits.open always uses an output_verify value of
+        # 'exception', making it impossible to use more lenient options within
+        # the block.
+        hdulist = fits.open(self._filename, mode=file_open_mode)
 
-            # Define an error string for trying to update a file that hasn't
-            # been opened previously
-            err_str = "File opened in 'update' mode but no arrays exist!"
+        self._header = hdulist[0].header
+        data = hdulist[0].data
+        self._rawData = self._reshape_if_necessary(data)
+        self._rawFluxArray = copy(self._rawData)
+        self._blazeFile = None
 
-            # Define the verification level for FITS files not meeting the FITS
-            # standard.
-            verify_action = 'ignore'
+        # Define an error string for trying to update a file that hasn't
+        # been opened previously
+        err_str = "File opened in 'update' mode but no arrays exist!"
 
-            # Try to read the wavelength array, or create it if it doesn't
-            # exist.
-            try:
-                self._wavelengthArray = hdulist['WAVE'].data * u.angstrom
-            except KeyError:
-                if ('ALL' in update) or ('WAVE' in update):
-                    raise RuntimeError(err_str)
-                tqdm.write('Writing new wavelength HDU.')
-                self.writeWavelengthHDU(hdulist, verify_action=verify_action,
-                                        use_new_coefficients=new_coefficients,
-                                        use_pixel_positions=pixel_positions)
-            # If we're updating the file, overwrite the existing wavelengths.
+        # Define the verification level for FITS files not meeting the FITS
+        # standard.
+        verify_action = 'warn'
+
+        # Try to read the wavelength array, or create it if it doesn't
+        # exist.
+        try:
+            self._wavelengthArray = hdulist['WAVE'].data * u.angstrom
+        except KeyError:
             if ('ALL' in update) or ('WAVE' in update):
-                tqdm.write('Overwriting wavelength HDU.')
-                self.writeWavelengthHDU(hdulist, verify_action=verify_action,
-                                        use_new_coefficients=new_coefficients,
-                                        use_pixel_positions=pixel_positions)
+                raise RuntimeError(err_str)
+            tqdm.write('Writing new wavelength HDU.')
+            self.writeWavelengthHDU(hdulist, verify_action=verify_action,
+                                    use_new_coefficients=new_coefficients,
+                                    use_pixel_positions=pixel_positions)
+        # If we're updating the file, overwrite the existing wavelengths.
+        if ('ALL' in update) or ('WAVE' in update):
+            tqdm.write('Overwriting wavelength HDU.')
+            self.writeWavelengthHDU(hdulist, verify_action=verify_action,
+                                    use_new_coefficients=new_coefficients,
+                                    use_pixel_positions=pixel_positions)
 
-            # Try to read the barycentric-vacuum wavelength array or create it
-            # if if doesn't exist yet.
-            try:
-                self._barycentricArray = hdulist['BARY'].data * u.angstrom
-            except KeyError:
-                if ('ALL' in update) or ('BARY' in update):
-                    raise RuntimeError(err_str)
-                tqdm.write('Writing new barycentric wavelength HDU.')
-                self.writeBarycentricHDU(hdulist, self.barycentricArray,
-                                         'BARY', verify_action=verify_action)
+        # Try to read the barycentric-vacuum wavelength array or create it
+        # if if doesn't exist yet.
+        try:
+            self._barycentricArray = hdulist['BARY'].data * u.angstrom
+        except KeyError:
             if ('ALL' in update) or ('BARY' in update):
-                tqdm.write('Overwriting barycentric wavelength HDU.')
-                del self._barycentricArray
-                self.writeBarycentricHDU(hdulist, self.barycentricArray,
-                                         'BARY', verify_action=verify_action)
+                raise RuntimeError(err_str)
+            tqdm.write('Writing new barycentric wavelength HDU.')
+            self.writeBarycentricHDU(hdulist, self.barycentricArray,
+                                     'BARY', verify_action=verify_action)
+        if ('ALL' in update) or ('BARY' in update):
+            tqdm.write('Overwriting barycentric wavelength HDU.')
+            del self._barycentricArray
+            self.writeBarycentricHDU(hdulist, self.barycentricArray,
+                                     'BARY', verify_action=verify_action)
 
-            # Try to read the barycentric lower pixel edge array, or create it
-            # if it doesn't exist yet.
+        # Try to read the barycentric lower pixel edge array, or create it
+        # if it doesn't exist yet.
+        try:
+            self._pixelLowerArray = hdulist['PIXLOWER'].data * u.angstrom
+        except KeyError:
             try:
-                self._pixelLowerArray = hdulist['PIXLOWER'].data * u.angstrom
-            except KeyError:
-                try:
-                    pixel_array = self.pixelLowerArray
-                except NewCoefficientsNotFoundError:
-                    tqdm.write('No new coefficients file, not writing array.')
-                else:
-                    if ('ALL' in update) or ('PIXLOWER' in update):
-                        raise RuntimeError(err_str)
-                    tqdm.write('Writing new pixel lower edges HDU.')
-                    self.writeBarycentricHDU(hdulist, self.pixelLowerArray,
-                                             'PIXLOWER',
-                                             verify_action=verify_action)
-            if ('ALL' in update) or ('PIXLOWER' in update):
-                tqdm.write('Overwriting lower pixel wavelength HDU.')
-                del self._pixelLowerArray
                 pixel_array = self.pixelLowerArray
-                self.writeBarycentricHDU(hdulist, pixel_array, 'PIXLOWER',
+            except NewCoefficientsNotFoundError:
+                tqdm.write('No new coefficients file, not writing array.')
+            else:
+                if ('ALL' in update) or ('PIXLOWER' in update):
+                    raise RuntimeError(err_str)
+                tqdm.write('Writing new pixel lower edges HDU.')
+                self.writeBarycentricHDU(hdulist, self.pixelLowerArray,
+                                         'PIXLOWER',
                                          verify_action=verify_action)
+        if ('ALL' in update) or ('PIXLOWER' in update):
+            tqdm.write('Overwriting lower pixel wavelength HDU.')
+            del self._pixelLowerArray
+            pixel_array = self.pixelLowerArray
+            self.writeBarycentricHDU(hdulist, pixel_array, 'PIXLOWER',
+                                     verify_action=verify_action)
 
-            # Try to read the barycentric upper pixel edge array, or create it
-            # if it doesn't exist yet.
+        # Try to read the barycentric upper pixel edge array, or create it
+        # if it doesn't exist yet.
+        try:
+            self._pixelUpperArray = hdulist['PIXUPPER'].data * u.angstrom
+        except KeyError:
             try:
-                self._pixelUpperArray = hdulist['PIXUPPER'].data * u.angstrom
-            except KeyError:
-                try:
-                    pixel_array = self.pixelUpperArray
-                except NewCoefficientsNotFoundError:
-                    tqdm.write('No new coefficients file, not writing array.')
-                else:
-                    if ('ALL' in update) or ('PIXUPPER' in update):
-                        raise RuntimeError(err_str)
-                    tqdm.write('Writing new pixel upper edges HDU.')
-                    self.writeBarycentricHDU(hdulist, self.pixelUpperArray,
-                                             'PIXUPPER',
-                                             verify_action=verify_action)
-            if ('ALL' in update) or ('PIXUPPER' in update):
-                tqdm.write('Overwriting lower pixel wavelength HDU.')
-                del self._pixelUpperArray
                 pixel_array = self.pixelUpperArray
-                self.writeBarycentricHDU(hdulist, pixel_array, 'PIXUPPER',
+            except NewCoefficientsNotFoundError:
+                tqdm.write('No new coefficients file, not writing array.')
+            else:
+                if ('ALL' in update) or ('PIXUPPER' in update):
+                    raise RuntimeError(err_str)
+                tqdm.write('Writing new pixel upper edges HDU.')
+                self.writeBarycentricHDU(hdulist, self.pixelUpperArray,
+                                         'PIXUPPER',
                                          verify_action=verify_action)
+        if ('ALL' in update) or ('PIXUPPER' in update):
+            tqdm.write('Overwriting lower pixel wavelength HDU.')
+            del self._pixelUpperArray
+            pixel_array = self.pixelUpperArray
+            self.writeBarycentricHDU(hdulist, pixel_array, 'PIXUPPER',
+                                     verify_action=verify_action)
 
-            # Try to read the flux array, or create it if it doesn't exist.
-            try:
-                self._photonFluxArray = hdulist['FLUX'].data
-            except KeyError:
-                if ('ALL' in update) or ('FLUX' in update):
-                    raise RuntimeError(err_str)
-                self.writePhotonFluxHDU(hdulist, verify_action=verify_action)
-                tqdm.write('Writing new photon flux HDU.')
-            # If we're updating the file, overwrite the existing fluxes.
+        # Try to read the flux array, or create it if it doesn't exist.
+        try:
+            self._photonFluxArray = hdulist['FLUX'].data
+        except KeyError:
             if ('ALL' in update) or ('FLUX' in update):
-                tqdm.write('Overwriting photon flux HDU.')
-                self.writePhotonFluxHDU(hdulist, verify_action=verify_action)
+                raise RuntimeError(err_str)
+            self.writePhotonFluxHDU(hdulist, verify_action=verify_action)
+            tqdm.write('Writing new photon flux HDU.')
+        # If we're updating the file, overwrite the existing fluxes.
+        if ('ALL' in update) or ('FLUX' in update):
+            tqdm.write('Overwriting photon flux HDU.')
+            self.writePhotonFluxHDU(hdulist, verify_action=verify_action)
 
-            # Try to read the error array, or create it if it doesn't exist.
-            try:
-                self._errorArray = hdulist['ERR'].data
-            except KeyError:
-                if ('ALL' in update) or ('ERR' in update):
-                    raise RuntimeError(err_str)
-                self.writeErrorHDU(hdulist, verify_action=verify_action)
-                tqdm.write('Writing new error HDU.')
-            # If we're updating the file, overwrite the existing uncertainties.
+        # Try to read the error array, or create it if it doesn't exist.
+        try:
+            self._errorArray = hdulist['ERR'].data
+        except KeyError:
             if ('ALL' in update) or ('ERR' in update):
-                tqdm.write('Overwriting error array HDU.')
-                self.writeErrorHDU(hdulist, verify_action=verify_action)
+                raise RuntimeError(err_str)
+            self.writeErrorHDU(hdulist, verify_action=verify_action)
+            tqdm.write('Writing new error HDU.')
+        # If we're updating the file, overwrite the existing uncertainties.
+        if ('ALL' in update) or ('ERR' in update):
+            tqdm.write('Overwriting error array HDU.')
+            self.writeErrorHDU(hdulist, verify_action=verify_action)
 
-            # Try to read the blaze array, or create it if it doesn't exist.
-            try:
-                self._blazeArray = hdulist['BLAZE'].data
-            except KeyError:
-                if ('ALL' in update) or ('BLAZE' in update):
-                    raise RuntimeError(err_str)
-                self.writeBlazeHDU(hdulist, verify_action=verify_action)
-                tqdm.write('Writing new blaze HDU')
-            # If we're updating the file, overwrite the existing uncertainties.
+        # Try to read the blaze array, or create it if it doesn't exist.
+        try:
+            self._blazeArray = hdulist['BLAZE'].data
+        except KeyError:
             if ('ALL' in update) or ('BLAZE' in update):
-                tqdm.write('Overwriting blaze array HDU.')
-                self.writeBlazeHDU(hdulist, verify_action=verify_action)
+                raise RuntimeError(err_str)
+            self.writeBlazeHDU(hdulist, verify_action=verify_action)
+            tqdm.write('Writing new blaze HDU')
+        # If we're updating the file, overwrite the existing uncertainties.
+        if ('ALL' in update) or ('BLAZE' in update):
+            tqdm.write('Overwriting blaze array HDU.')
+            self.writeBlazeHDU(hdulist, verify_action=verify_action)
+
+        hdulist.close(output_verify='warn')
 
     @property
     def wavelengthArray(self):
@@ -742,10 +750,7 @@ class HARPSFile2DScience(HARPSFile2D):
         ----------
         hdulist : an astropy HDUList object
             The HDU list of the file to modify.
-
-        Optional
-        --------
-        verify_action : str
+        verify_action : str, optional
             One of either ``'exception'``, ``'ignore'``, ``'fix'``,
             ``'silentfix'``, or ``'warn'``.
             `<http://docs.astropy.org/en/stable/io/fits/api/verification.html
@@ -762,7 +767,7 @@ class HARPSFile2DScience(HARPSFile2D):
             hdulist['WAVE'] = wavelength_HDU
         except KeyError:
             hdulist.append(wavelength_HDU)
-        hdulist.flush(output_verify=verify_action, verbose=True)
+        hdulist.flush(output_verify=verify_action, verbose=False)
 
     def writeBarycentricHDU(self, hdulist, array, array_name,
                             verify_action='warn'):
@@ -779,10 +784,7 @@ class HARPSFile2DScience(HARPSFile2D):
         array_name : str
             The name corresponding to the array pased. Should be 'BARY',
             'PIXLOWER', or 'PIXUPPER', respectively.
-
-        Optional
-        --------
-        verify_action : str
+        verify_action : str, optional
             One of either ``'exception'``, ``'ignore'``, ``'fix'``,
             ``'silentfix'``, or ``'warn'``.
             `<http://docs.astropy.org/en/stable/io/fits/api/verification.html
@@ -798,7 +800,7 @@ class HARPSFile2DScience(HARPSFile2D):
         except KeyError:
             hdulist.append(hdu)
 
-        hdulist.flush(output_verify=verify_action, verbose=True)
+        hdulist.flush(output_verify=verify_action, verbose=False)
 
     def writePhotonFluxHDU(self, hdulist, verify_action='warn'):
         """Write out a photon flux array HDU to the currently opened file.
@@ -807,11 +809,7 @@ class HARPSFile2DScience(HARPSFile2D):
         ----------
         hdulist : an astropy HDUList object
             The HDU list of the file to modify.
-
-
-        Optional
-        --------
-        verify_action : str
+        verify_action : str, optional
             One of either ``'exception'``, ``'ignore'``, ``'fix'``,
             ``'silentfix'``, or ``'warn'``.
             `<http://docs.astropy.org/en/stable/io/fits/api/verification.html
@@ -827,7 +825,7 @@ class HARPSFile2DScience(HARPSFile2D):
             hdulist['FLUX'] = photon_flux_HDU
         except KeyError:
             hdulist.append(photon_flux_HDU)
-        hdulist.flush(output_verify=verify_action, verbose=True)
+        hdulist.flush(output_verify=verify_action, verbose=False)
 
     def writeErrorHDU(self, hdulist, verify_action='warn'):
         """Write out an error array HDU to the currently opened file.
@@ -836,8 +834,7 @@ class HARPSFile2DScience(HARPSFile2D):
         ----------
         hdulist : an astropy HDUList object
             The HDU list of the file to modify.
-
-        verify_action : str
+        verify_action : str, optional
             One of either ``'exception'``, ``'ignore'``, ``'fix'``,
             ``'silentfix'``, or ``'warn'``.
             More information can be found in the Astropy `documentation.
@@ -854,7 +851,7 @@ class HARPSFile2DScience(HARPSFile2D):
             hdulist['ERR'] = error_HDU
         except KeyError:
             hdulist.append(error_HDU)
-        hdulist.flush(output_verify=verify_action, verbose=True)
+        hdulist.flush(output_verify=verify_action, verbose=False)
 
     def writeBlazeHDU(self, hdulist, verify_action='warn'):
         """Write out a blaze function array to the currently opened file.
@@ -863,8 +860,7 @@ class HARPSFile2DScience(HARPSFile2D):
         ----------
         hdulist : an astropy HDUList object
             The HDU list of the file to modify.
-
-        verify_action : str
+        verify_action : str, optional
             One of either ``'exception'``, ``'ignore'``, ``'fix'``,
             ``'silentfix'``, or ``'warn'``.
             More information can be found in the Astropy `documentation.
@@ -881,7 +877,7 @@ class HARPSFile2DScience(HARPSFile2D):
             hdulist['BLAZE'] = blaze_HDU
         except KeyError:
             hdulist.append(blaze_HDU)
-        hdulist.flush(output_verify=verify_action, verbose=True)
+        hdulist.flush(output_verify=verify_action, verbose=False)
 
     def shiftWavelengthArray(self, wavelength_array, shift_velocity):
         """Doppler shift a wavelength array by an amount equivalent to a given
@@ -892,7 +888,6 @@ class HARPSFile2DScience(HARPSFile2D):
         wavelength_array : `unyt.unyt_array`
             An array containing wavelengths to be Doppler shifted. Needs units
             of dimension length.
-
         velocity : `unyt.unyt_quantity`
             A Unyt quantity with dimensions length/time to shift the wavelength
             array by.
@@ -923,10 +918,7 @@ class HARPSFile2DScience(HARPSFile2D):
         wavelength_array : `unyt.unyt_array`
             An array of wavelengths in the shape of a HARPS extracted spectrum
             (72, 4096) to be searched.
-
-        Optional
-        --------
-        mid_most : bool, Default : True
+        mid_most : bool, Default : *True*, optional
             In a 2D extracted echelle spectrograph like HARPS, a wavelength
             near the ends of an order can appear a second time in an adjacent
             order. By default `findWavelength` will return only the single
@@ -935,9 +927,6 @@ class HARPSFile2DScience(HARPSFile2D):
             ratio is highest. Setting this to *False* will allow for the
             possibility of a length-2 tuble being returned containing the
             numbers of both orders a wavelength is found in.
-        verbose : bool, Default : False
-            If *True*, the function will print out additional information such
-            as the minimum and maximum values of the array and for each order.
 
         Returns
         -------
