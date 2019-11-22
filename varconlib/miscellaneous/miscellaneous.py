@@ -144,7 +144,9 @@ def date2index(given_date, date_list):
     else:
         raise RuntimeError('given_date not date or datetime!')
 
-    if (date_to_find <= date_list[0]) or (date_to_find >= date_list[-1]):
+    if (date_to_find <= date_list[0]):
+        return 0
+    elif (date_to_find >= date_list[-1]):
         return None
 
     for i in range(0, len(date_list), 1):

@@ -91,7 +91,7 @@ class TestDate2Index(object):
     def testOutOfRangeDates(self, date_list):
         mock_date = dt.datetime(year=2001, month=1, day=1,
                                 hour=0, minute=0, second=0)
-        assert vcl.date2index(mock_date, date_list) is None
+        assert vcl.date2index(mock_date, date_list) == 0
         mock_date = dt.datetime(year=2021, month=1, day=1,
                                 hour=0, minute=0, second=0)
         assert vcl.date2index(mock_date, date_list) is None
