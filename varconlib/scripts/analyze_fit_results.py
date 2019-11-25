@@ -370,12 +370,20 @@ def create_offset_plot(star):
 
     """
 
-    def layout_plots(time_slice):
+    def layout_plots(time_slice, time_str):
         """Layout data onto the current axis.
+
+        Parameters
+        ----------
+        time_slice : slice
+            A slice object specifying the range of observations to use for this
+            axis.
+        time_str : str, {'pre', 'post'}
+            A string specifying the time period (pre- or post-fiber change).
 
         """
 
-        ax.axhline(y=0, color='DimGray')
+        ax.axhline(y=0, color='DimGray', linestyle='--')
         ax.yaxis.set_minor_locator(ticker.MultipleLocator(base=100))
         ax.yaxis.grid(which='major', color='Gray', alpha=0.7,
                       linestyle='--')
@@ -388,12 +396,23 @@ def create_offset_plot(star):
         ax.xaxis.grid(which='minor', color='Gray', alpha=0.6,
                       linestyle=':')
 
-        pattern, errors = get_stellar_offset_pattern(star, time_slice)
+        pattern, errors, number = get_stellar_offset_pattern(star, time_slice)
+        ax.set_xlim(left=-1, right=len(pattern) + 1)
+
+        weighted_mean = np.average(pattern, weights=1/errors**2)
+        tqdm.write(f'weighted_mean = {weighted_mean}')
+        tqdm.write(f'mean = {np.mean(pattern)}')
+
         indices = range(len(pattern))
-        ax.errorbar(x=indices, y=pattern, yerr=errors,
+        ax.errorbar(x=indices, y=pattern,
+                    yerr=errors,
+                    label=f'{time_str.capitalize()}-fiber change\n'
+                    f' $\\mu=${weighted_mean:.2f}\n'
+                    f'N$={number}$',
                     **params)
         ax.set_xlabel('Index number')
-        ax.set_ylabel('Offset from expected position (m/s)')
+        ax.set_ylabel(r'$\Delta\lambda_\mathrm{expected}$ (m/s)')
+        ax.legend(loc='upper center')
 
     def get_stellar_offset_pattern(star, array_slice=slice(None, None)):
         """Return an array of the offset from expected wavelength for each
@@ -420,17 +439,26 @@ def create_offset_plot(star):
 
         pattern = []
         errors = []
+        number = 0
 
         for key in star._transition_bidict.keys():
             offsets = star.fitOffsetsArray[array_slice, star.t_index(key)]
             pattern.append(np.mean(offsets))
             errors.append(np.std(offsets))
-        return (u.unyt_array(pattern), u.unyt_array(errors))
+        number = len(offsets)
+        return (u.unyt_array(pattern), u.unyt_array(errors), number)
+
+    style_params_pre['marker'] = '_'
+    style_params_post['marker'] = '_'
+    style_params_pre['markeredgecolor'] = 'Black'
+    style_params_post['markeredgecolor'] = 'Black'
+    style_params_pre['ecolor'] = 'SaddleBrown'
+    style_params_post['ecolor'] = 'MidnightBlue'
 
     plot_name = data_dir / f'{data_dir.stem}_offset_pattern.png'
 
     if star.fiberSplitIndex not in (0, None):
-        fig = plt.figure(figsize=(8, 6), tight_layout=True)
+        fig = plt.figure(figsize=(9, 7), tight_layout=True)
         gs = GridSpec(nrows=2, ncols=1, figure=fig,
                       height_ratios=[1, 1], hspace=0)
         ax1 = fig.add_subplot(gs[0])
@@ -439,11 +467,12 @@ def create_offset_plot(star):
         pre_slice = slice(None, star.fiberSplitIndex)
         post_slice = slice(star.fiberSplitIndex, None)
 
-        for ax, params, time_slice in zip((ax1, ax2),
-                                          (style_params_pre,
-                                           style_params_post),
-                                          (pre_slice, post_slice)):
-            layout_plots()
+        for ax, params, time_slice, time_str in zip((ax1, ax2),
+                                                    (style_params_pre,
+                                                     style_params_post),
+                                                    (pre_slice, post_slice),
+                                                    ('pre', 'post')):
+            layout_plots(time_slice, time_str)
 
         ax1.tick_params(labelbottom=False)
 
@@ -451,16 +480,23 @@ def create_offset_plot(star):
         fig = plt.figure(figsize=(8, 4), tight_layout=True)
         if star.fiberSplitIndex == 0:
             params = style_params_post
+            time_str = 'post'
         else:
             params = style_params_pre
+            time_str = 'pre'
         time_slice = slice(None, None)
 
         ax = fig.add_subplot(1, 1, 1)
 
-        layout_plots(time_slice)
+        layout_plots(time_slice, time_str)
 
     fig.savefig(str(plot_name))
     plt.close(fig)
+    # Link the plots to a common directory.
+    dest_name = pattern_dir / plot_name.name
+    if dest_name.exists():
+        os.unlink(dest_name)
+    os.link(plot_name, dest_name)
 
 
 # Write out a CSV file containing the pair separation values for all
@@ -781,7 +817,26 @@ def create_airmass_plots(transition_plots_dir):
         plt.close(fig)
 
 
-def create_transition_dir_if_necessary():
+def create_dir_if_necessary(func):
+    """Create a directory returned from a function if it doesn't yet exist.
+
+    """
+
+    def wrapper():
+        directory = func()
+        print(directory)
+
+        if not directory.exists():
+            print('Creating missing directory.')
+            os.mkdir(directory)
+
+        return directory
+
+    return wrapper
+
+
+@create_dir_if_necessary
+def transition_dir():
     """Return the directory to put transitions-speciic plots in, and create it
     if it doesn't exist.
 
@@ -792,12 +847,22 @@ def create_transition_dir_if_necessary():
 
     """
 
-    transition_plots_dir = data_dir / 'plots_by_transition'
+    return data_dir / 'plots_by_transition'
 
-    if not transition_plots_dir.exists():
-        os.mkdir(transition_plots_dir)
 
-    return transition_plots_dir
+@create_dir_if_necessary
+def pattern_dir():
+    """Return the directory to link star pattern plots in, creating it first if
+    necessary.
+
+    Returns
+    -------
+    `pathlib.Path`
+        The directory to hard link the pattern plots into.
+
+    """
+
+    return data_dir.parent / 'star_pattern_plots'
 
 
 if __name__ == '__main__':
@@ -860,8 +925,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    if args.use_tex or args.create_pair_offset_plots:
-        plt.rc('text', usetex=True)
+#    if args.use_tex or args.create_pair_offset_plots:
+#        plt.rc('text', usetex=True)
 
     # Define some important dates for plots.
     # Define some dates when various changes were made to HARPS.
@@ -937,11 +1002,12 @@ if __name__ == '__main__':
 
         if args.create_offset_plot:
             tqdm.write('Creating plot of mean fit offsets.')
+            pattern_dir = pattern_dir()
             create_offset_plot(star)
 
         if args.create_airmass_plots:
             tqdm.write('Creating plots of offsets vs. airmass.')
-            t_plots_dir = create_transition_dir_if_necessary()
+            t_plots_dir = transition_dir()
             create_airmass_plots(t_plots_dir)
 
     # Stuff that needs analysis of pickle files.
@@ -1077,6 +1143,6 @@ if __name__ == '__main__':
     # their own directory, to make it easier to compare transitions across
     # observations.
     if args.link_fit_plots:
-        t_plots_dir = create_transition_dir_if_necessary()
+        t_plots_dir = transition_dir()
         tqdm.write('Linking fit plots to cross-observation directories.')
         link_fit_plots(t_plots_dir)
