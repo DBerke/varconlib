@@ -67,9 +67,9 @@ class Star(object):
     Attributes
     ----------
     fitMeansArray : `unyt.unyt_array`
-        A two-dimensional array holding the mean of the fit for each absorption
-        feature in each observation of the star. Rows correspond to
-        observations, columns to transitions.
+        A two-dimensional array holding the mean of the fit (in wavelength
+        space) for each absorption feature in each observation of the star.
+        Rows correspond to observations, columns to transitions.
     fitErrorsArray : `unyt.unyt_array`
         A two-diemsional array holding the standard deviation of the measured
         mean of the fit for each absorption feature of each observation of the
@@ -156,6 +156,9 @@ class Star(object):
         self.pairSeparationsArray = None
         self.pairSepErrorsArray = None
 
+        self.hasObsPre = False
+        self.hasObsPost = False
+
         self._radialVelocity = None
 
         if transitions_list:
@@ -174,6 +177,16 @@ class Star(object):
                                       transitions_list=transitions_list)
                 self.getPairSeparations()
                 self.dumpDataToDisk(h5filename)
+
+        # Figure out when the observations for the star were taken, and set the
+        # appropriate flags.
+        if self.fiberSplitIndex is None:
+            self.hasObsPre = True
+        elif self.fiberSplitIndex == 0:
+            self.hasObsPost = True
+        else:
+            self.hasObsPre = True
+            self.hasObsPost = True
 
     def constructFromDir(self, star_dir, suffix, transitions_list=None,
                          pairs_list=None):
@@ -234,30 +247,28 @@ class Star(object):
             self.bervArray[obs_num] = fits_list[0].BERV
             self.airmassArray[obs_num] = fits_list[0].airmass
 
-            means_list.append(np.array([fit.mean.to(u.angstrom).value for
-                                        fit in fits_list]))
+            means_list.append([fit.mean.to(u.angstrom).value for
+                               fit in fits_list])
 
-            errors_list.append(np.array([fit.meanErrVel.to(u.m/u.s).value for
-                                         fit in fits_list]))
+            errors_list.append([fit.meanErrVel.to(u.m/u.s).value for
+                                fit in fits_list])
 
-            offsets_list.append(np.array([fit.velocityOffset.to(u.m/u.s).value
-                                         for fit in fits_list]))
+            offsets_list.append([fit.velocityOffset.to(u.m/u.s).value
+                                 for fit in fits_list])
 
-            chi_squared_list.append(np.array([fit.chiSquaredNu for fit
-                                              in fits_list]))
+            chi_squared_list.append([fit.chiSquaredNu for fit in fits_list])
 
         means_units = fits_list[0].mean.units
         errors_units = fits_list[0].meanErrVel.units
         offsets_units = fits_list[0].velocityOffset.units
         berv_units = fits_list[0].BERV.units
 
-        means_array = np.array(means_list)
-        errors_array = np.array(errors_list)
-        offsets_array = np.array(offsets_list)
-
-        self.fitMeansArray = means_array * means_units
-        self.fitErrorsArray = errors_array * errors_units
-        self.fitOffsetsArray = offsets_array * offsets_units
+        self.fitMeansArray = u.unyt_array(np.asarray(means_list),
+                                          means_units)
+        self.fitErrorsArray = u.unyt_array(np.asarray(errors_list),
+                                           errors_units)
+        self.fitOffsetsArray = u.unyt_array(np.asarray(offsets_list),
+                                            offsets_units)
         self.bervArray *= berv_units
         self.chiSquaredNuArray = np.array(chi_squared_list)
 
@@ -409,6 +420,7 @@ class Star(object):
                     print(f"{self.name} not found in rv_dict")
                     return None
         return self._radialVelocity
+
 # TODO: Add an exposure time array?
     @property
     def fiberSplitIndex(self):
@@ -439,6 +451,49 @@ class Star(object):
 
         # Else if no observation dates are after the fiber change:
         return None
+
+    def getNumObs(self, array_slice=slice(None, None)):
+        """Return the number of observations encompassed by the given array
+        slice.
+
+        Parameters
+        ----------
+        array_slice : slice
+            A slice object to pass through to the star. If one of the values is
+            `self.fiberSplitIndex` the number returned will be the number of
+            observations before or after the fiber change date.
+
+        Returns
+        -------
+        int
+            The number of observations found in the given slice.
+
+        """
+
+        return len(self.fitMeansArray[array_slice])
+
+    def getTransitionOffsetPattern(self, array_slice=slice(None, None)):
+        """Return the mean pattern of transition offsets from their expected
+        position for this star.
+
+        """
+
+        means, stddevs = [], []
+        for key in self._transition_bidict.keys():
+            column_index = self.t_index(key)
+            offsets = self.fitOffsetsArray[array_slice, column_index]
+            errors = self.fitErrorsArray[array_slice, column_index]
+
+            weighted_mean = np.average(offsets, weights=1/errors**2)
+            sample_std = np.std(offsets)
+
+            means.append(weighted_mean)
+            stddevs.append(sample_std)
+
+        means *= self.fitOffsetsArray.units
+        stddevs *= self.fitOffsetsArray.units
+
+        return u.unyt_array([means, stddevs])
 
     def p_index(self, label):
         """Return the index number of the column associated with this pair
