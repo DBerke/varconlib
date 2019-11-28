@@ -547,8 +547,8 @@ class HARPSFile2DScience(HARPSFile2D):
         cal_file_path = wavelength_cals_dir / cal_file_name
 
         if not cal_file_path.exists():
-            tqdm.write(str(cal_file_path))
-            raise NewCoefficientsNotFoundError("Calibration file not found.")
+            raise NewCoefficientsNotFoundError("Calibration file not found:"
+                                               f"{str(cal_file_path)}")
 
         return cal_file_path
 
