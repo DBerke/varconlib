@@ -22,6 +22,7 @@ import pickle
 import h5py
 import hickle
 import numpy as np
+import numpy.ma as ma
 from tqdm import tqdm
 import unyt as u
 
@@ -481,9 +482,16 @@ class Star(object):
         means, stddevs = [], []
         for key in self._transition_bidict.keys():
             column_index = self.t_index(key)
-            offsets = self.fitOffsetsArray[array_slice, column_index]
-            errors = self.fitErrorsArray[array_slice, column_index]
+            offsets = ma.masked_array(self.fitOffsetsArray[array_slice,
+                                                           column_index])
+            # A NaN value for an error will give a NaN value for the weighted
+            # mean for a transition, so mask out values where that's the case.
+            errors = ma.masked_invalid(self.fitErrorsArray[array_slice,
+                                                           column_index])
+            offsets.mask = errors.mask
 
+            if np.any(offsets.mask):
+                tqdm.write(f'{key} has at least one masked value.')
             weighted_mean = np.average(offsets, weights=1/errors**2)
             sample_std = np.std(offsets)
 
