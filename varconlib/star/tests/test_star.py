@@ -52,7 +52,7 @@ class TestStar(object):
                     load_data=False)
 
     def testNonExistentDir(self):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(FileNotFoundError):
             Star('HD117618', star_dir='/nonsensical_dir_that_should_not_exist',
                  suffix='int')
 
