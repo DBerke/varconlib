@@ -201,14 +201,11 @@ def velocity2wavelength(velocity_offset, wavelength, unit=None):
         The wavelength at which the function should be evaluated, since
         it's a function of wavelength. Returned in whatever units it's
         given in (should have dimensions of length).
-
-    Optional
-    --------
-    unit : `unyt.unyt_object.Unit`
+    unit : `unyt.unyt_object.Unit`, Default : None
         A valid unit with dimension of length, such as `unyt.angstrom` or
         `unyt.nm`. This is the units the returned value will be converted to.
-        If not given, the returned value will be in the same units as the input
-        `wavelength`.
+        If not given or `None`, the returned value will be in the same units as
+        the input `wavelength`.
 
     Returns
     -------
