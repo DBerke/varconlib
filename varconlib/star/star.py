@@ -189,7 +189,7 @@ class Star(object):
             self.hasObsPre = True
             self.hasObsPost = True
 
-    def constructFromDir(self, star_dir, suffix, transitions_list=None,
+    def constructFromDir(self, star_dir, suffix='int', transitions_list=None,
                          pairs_list=None):
         """
         Collect information on fits in observations of the star, and organize
@@ -197,15 +197,15 @@ class Star(object):
 
         Parameters
         ----------
-        star_dir : `pathlib.Path`
+        star_dir : `pathlib.Path` or str
             A path object representing the root directory to look in for fits
             to the star's spectra.
-        suffix : str
-            The suffix to affix to end of the sub-directories under the main
-            star directory.
 
         Optional
         --------
+        suffix : str, default "int"
+            The suffix to affix to end of the sub-directories under the main
+            star directory. The default stands for "integrated Gaussian".
         transitions_list : list
             A list of `transition_line.Transition` objects. If this is omitted
             the default list of transitions selected for use will be read, but
@@ -217,15 +217,20 @@ class Star(object):
 
         """
 
+        if isinstance(star_dir, str):
+            star_dir = Path(star_dir)
+
         # Check that the given directory exists.
         if not star_dir.exists():
-            print(star_dir)
-            raise RuntimeError('The given directory does not exist:'
-                               f'{star_dir}')
+            raise FileNotFoundError('The given directory does not exist:'
+                                    f'{star_dir}')
 
         # Get a list of pickled fit results in the given directory.
         search_str = str(star_dir) + '/*/pickles_{}/*fits.lzma'.format(suffix)
         pickle_files = [Path(path) for path in glob(search_str)]
+
+        assert len(pickle_files) > 0, FileNotFoundError('No pickled fits found'
+                                                        f' in {star_dir}.')
 
         means_list = []
         errors_list = []
@@ -254,10 +259,11 @@ class Star(object):
             errors_list.append([fit.meanErrVel.to(u.m/u.s).value for
                                 fit in fits_list])
 
-            offsets_list.append([fit.velocityOffset.to(u.m/u.s).value
-                                 for fit in fits_list])
+            offsets_list.append([fit.velocityOffset.to(u.m/u.s).value for
+                                 fit in fits_list])
 
-            chi_squared_list.append([fit.chiSquaredNu for fit in fits_list])
+            chi_squared_list.append([fit.chiSquaredNu for
+                                     fit in fits_list])
 
         means_units = fits_list[0].mean.units
         errors_units = fits_list[0].meanErrVel.units
@@ -336,10 +342,14 @@ class Star(object):
 
         Parameters
         ----------
-        file_path : `pathlib.Path` object
-            The file name to save the data to.
+        file_path : `pathlib.Path` or `str`
+            The file name to save the data to. If `str`, will be converted to
+            a `Path` object.
 
         """
+
+        if isinstance(file_path, str):
+            file_path = Path(file_path)
 
         if file_path.exists():
             backup_path = file_path.with_name(file_path.stem + ".bak")
