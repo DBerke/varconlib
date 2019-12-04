@@ -170,8 +170,8 @@ class GaussianFit(object):
             tqdm.write('Attempting to fit line at {:.4f} with initial guess:'.
                        format(self.correctedWavelength))
         if verbose:
-            print('Initial parameters are:\n{}\n{}\n{}\n{}'.format(
-                  *self.initial_guess))
+            tqdm.write('Initial parameters are:\n{}\n{}\n{}\n{}'.format(
+                        *self.initial_guess))
 
         # Do the fitting:
         try:
