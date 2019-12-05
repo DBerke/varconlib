@@ -39,6 +39,7 @@ try:
 except ValueError:
     value = str(args.value)
 
-with fits.open(filepath, mode='update') as hdulist:
-    hdulist[args.extension].header.set(args.keyword, value=value,
-                                       comment=args.comment)
+hdulist = fits.open(filepath, mode='update')
+hdulist[args.extension].header.set(args.keyword, value=value,
+                                   comment=args.comment)
+hdulist.close(output_verify='warn')
