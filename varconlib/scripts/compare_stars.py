@@ -287,7 +287,6 @@ def create_pair_blend_comparison_plot(main_ax, chi_ax, star1, star2,
             blend_tuples.add(pair.blendTuple)
 
     sorted_blend_tuples = [(0, 0), (0, 1), (1, 1), (0, 2), (1, 2), (2, 2)]
-#    print(sorted_blend_tuples)
 
     results = get_star_results(star1, star2, time_period)
 
@@ -465,6 +464,45 @@ def create_pair_separations_plot(ax, star1, star2,
     ax.legend(loc='upper right')
 
 
+def create_offsets_comparison_plot():
+
+    def layout_axis(axis, time_slice1, time_slice2):
+
+        offsets1 = star1.getTransitionOffsetPattern(time_slice1)
+        offsets2 = star2.getTransitionOffsetPattern(time_slice2)
+        indices1 = np.array(range(len(offsets1[0])))
+        indices2 = indices1 + 0.3
+
+        axis.errorbar(x=indices1, y=offsets1[0], yerr=offsets1[1],
+                      color='Red', marker='_', ecolor='SaddleBrown')
+        axis.errorbar(x=indices2, y=offsets2[0], yerr=offsets2[1],
+                      color='Green', marker='_', ecolor='MidnightBlue')
+
+    pre_slice1 = slice(None, star1.fiberSplitIndex)
+    post_slice1 = slice(star1.fiberSplitIndex, None)
+    pre_slice2 = slice(None, star2.fiberSplitIndex)
+    post_slice2 = slice(star2.fiberSplitIndex, None)
+
+    # If both stars have observations both before and after the fiber change:
+    if star1.hasObsPre and star1.hasObsPost\
+            and star2.hasObsPre and star2.hasObsPost:
+        fig = plt.figure(figsize=(9, 8),
+                         tight_layout=True)
+        gs = GridSpec(nrows=2, ncols=1, hspace=0, figure=fig)
+        ax1 = fig.add_subplot(gs[0])
+        ax2 = fig.add_subplot(gs[1], sharex=ax1)
+        ax1.set_ylabel(r'$\Delta\lambda_\mathrm{expected}$ (m/s)')
+        ax2.set_ylabel(r'$\Delta\lambda_\mathrm{expected}$ (m/s)')
+        ax2.set_xlabel('Index number')
+
+        for axis, t1, t2 in zip((ax1, ax2),
+                                (pre_slice1, post_slice1),
+                                (pre_slice2, post_slice2)):
+            layout_axis(axis, t1, t2)
+
+    plt.show()
+
+
 if __name__ == '__main__':
     # Where the analysis results live:
     output_dir = Path(vcl.config['PATHS']['output_dir'])
@@ -493,6 +531,11 @@ if __name__ == '__main__':
     plot_group.add_argument('--pair-separations', action='store_true',
                             help='Create plots of pairs plotted by their'
                             ' absolute separation values.')
+
+    parser.add_argument('--create-offsets-comparison-plot',
+                        action='store_true',
+                        help='Create a plot comparing the transition offsets'
+                        ' of both stars.')
 
     parser.add_argument('--recreate-stars', action='store_false', default=True,
                         help='Force the stars to be recreated from directories'
@@ -631,3 +674,6 @@ if __name__ == '__main__':
             tqdm.write(f'Saving plot to {temp_filename}.')
             fig.savefig(temp_filename)
             plt.close(fig)
+
+    if args.create_offsets_comparison_plot:
+        create_offsets_comparison_plot()
