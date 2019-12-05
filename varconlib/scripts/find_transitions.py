@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticks
 import numpy as np
 from tqdm import tqdm
+import unyt as u
 
 import varconlib as vcl
 from varconlib.exceptions import (PositiveAmplitudeError,
@@ -51,6 +52,11 @@ parser.add_argument('--start', type=int, action='store', default=0,
 parser.add_argument('--end', type=int, action='store', default=None,
                     help='End position in the list of observations.')
 
+parser.add_argument('-rv', '--radial-velocity', action='store', type=float,
+                    default=None,
+                    help='Radial velocity to use for the star, in km/s.'
+                    ' If not given will use the value from the FITS files.')
+
 parser.add_argument('--pixel-positions', action='store_true',
                     default=False,
                     help='Use new pixel positions.')
@@ -78,6 +84,12 @@ args = parser.parse_args()
 
 assert args.start >= 0, '--start must be a non-negative integer.'
 
+if args.radial_velocity:
+    rv = args.radial_velocity * u.km / u.s
+    assert abs(rv) < u.c, 'Given RV exceeds speed of light!'
+else:
+    rv = args.radial_velocity
+
 observations_dir = Path(args.object_dir)
 # Check that the path given exists:
 if not observations_dir.exists():
@@ -98,15 +110,15 @@ glob_search_string = str(observations_dir) + '/*/*e2ds_A.fits'
 # Get a list of all the data files in the data directory:
 data_files = [Path(string) for string in sorted(glob(glob_search_string))]
 
-files_to_work_on = slice(args.start, args.end)
+files_to_work_on = data_files[slice(args.start, args.end)]
 
-tqdm.write('=' * 25)
-tqdm.write('Found {} observations in the directory, working on:'.format(
-        len(data_files)))
-for file in data_files[files_to_work_on]:
+tqdm.write('=' * 41)
+tqdm.write(f'Found {len(data_files)} observations in the directory,'
+           f' working on {len(files_to_work_on)}:')
+for file in files_to_work_on:
     tqdm.write(str(file.name))
 
-tqdm.write('=' * 40)
+tqdm.write('=' * 41)
 
 output_dir = Path(vcl.config['PATHS']['output_dir'])
 data_dir = output_dir / args.object_name
@@ -152,9 +164,8 @@ elif args.pixel_positions and args.new_coefficients:
 
 total = len(data_files) - args.start
 
-for obs_path in tqdm(data_files[files_to_work_on], initial=args.start,
-                     total=total) if\
-                     len(data_files) > 1 else data_files:
+for obs_path in tqdm(files_to_work_on) if\
+                     len(files_to_work_on) > 1 else files_to_work_on:
     tqdm.write('-' * 40)
     tqdm.write('Fitting {}...'.format(obs_path.name))
     try:
@@ -209,25 +220,30 @@ for obs_path in tqdm(data_files[files_to_work_on], initial=args.start,
 
     fits_list = []
     total_transitions = 0
+    tqdm.write('Fitting transitions...')
     for transition in tqdm(transitions_list):
         for order_num in transition.ordersToFitIn:
             total_transitions += 1
             if args.verbose:
                 tqdm.write(f'Attempting fit of {transition} in order'
-                           ' {order_num}')
+                           f' {order_num}')
             plot_closeup = closeup_dir / '{}_{}_{}_close.png'.format(
                     obs_path.stem, transition.label, order_num)
             plot_context = context_dir / '{}_{}_{}_context.png'.format(
                     obs_path.stem, transition.label, order_num)
             try:
                 fit = GaussianFit(transition, obs, order_num,
+                                  radial_velocity=rv,
                                   verbose=args.verbose,
                                   integrated=args.integrated_gaussian,
                                   close_up_plot_path=plot_closeup,
                                   context_plot_path=plot_context)
             except (RuntimeError, PositiveAmplitudeError):
-                tqdm.write('   Warning! Unable to fit {}!'.format(transition))
-                # Fit is plotted automatically upon failing.
+                tqdm.write('   Warning! Unable to fit {}_{}!'.format(
+                           transition, order_num))
+#                raise
+                # Fit is plotted automatically upon failing, move on to next
+                # transition.
                 continue
 
             # Assuming the fit didn't fail, continue on:
