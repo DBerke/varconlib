@@ -206,7 +206,7 @@ class GaussianFit(object):
             print(self.lineDepth)
             print(self.initial_guess)
             self.plotFit(close_up_plot_path, context_plot_path,
-                         plot_fit=False, verbose=False)
+                         plot_fit=False, verbose=True)
             raise
 
         if verbose:
