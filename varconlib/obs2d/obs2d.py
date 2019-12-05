@@ -463,10 +463,10 @@ class HARPSFile2DScience(HARPSFile2D):
             if isnan(radial_velocity):
                 raise BadRadialVelocityError('Radial velocity is NaN!')
             if abs(radial_velocity) > 5000:
-                tqdm.write(radial_velocity)
-                raise BadRadialVelocityError('Radial velocity is suspiciously'
-                                             ' high! {}'.format(
-                                                     radial_velocity))
+                raise BadRadialVelocityError('Radial velocity for'
+                                             f' {self._filename}'
+                                             ' is suspiciously'
+                                             f' high: {radial_velocity}')
             self._radialVelocity = radial_velocity
         return self._radialVelocity
 
