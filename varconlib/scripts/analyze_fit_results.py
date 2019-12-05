@@ -142,13 +142,11 @@ def create_transition_offset_plots(plots_dir):
         # Plot the values.
         indices = range(len(offsets))
         offset_ax.errorbar(x=indices, y=offsets, yerr=errors,
-                           label=f'Mean: {w_mean:.2f}$\\pm${std_dev:.2f}\n'
-                           f'Absolute mean: {mean_measured:.4f}\n'
-                           r'$\chi^2_\nu=$'
-                           f'{reduced_chi_squared.value:.3f}',
                            **params)
 
-        offset_ax.legend(loc='lower right')
+#        offset_ax.legend(loc='lower right', markerscale=0.5, fontsize='small',
+#                         framealpha=0.4,
+#                         bbox_to_anchor=(0., 1.04, 1., 1.04))
 
         # Plot the chi-squared values for the fits.
         chi_ax.set_xlabel('Index number')
@@ -182,7 +180,16 @@ def create_transition_offset_plots(plots_dir):
                          alpha=0.6)
 
         vs_ax.errorbar(x=fit_chis, y=offsets, yerr=errors,
+                       label=f'Mean: {mean_measured:.4f},'
+                       f' {w_mean.value:.2f} $\\pm$'
+                       f' {std_dev:.2f}\n'
+                       r'$\chi^2_\nu=$'
+                       f'{reduced_chi_squared.value:.3f}',
                        **params)
+
+        vs_ax.legend(loc='lower right', markerscale=0.7,
+                         framealpha=1, mode='expand',
+                         bbox_to_anchor=(-0.02, -0.35, 1.02, -0.35))
 
     # Define slice objects to capture time periods.
     pre_slice = slice(None, star.fiberSplitIndex)
@@ -383,8 +390,6 @@ def create_offset_plot(star):
 
         """
 
-        ax.axhline(y=0, color='DimGray', linestyle='--')
-        ax.yaxis.set_minor_locator(ticker.MultipleLocator(base=100))
         ax.yaxis.grid(which='major', color='Gray', alpha=0.7,
                       linestyle='--')
         ax.yaxis.grid(which='minor', color='Gray', alpha=0.6,
@@ -396,57 +401,29 @@ def create_offset_plot(star):
         ax.xaxis.grid(which='minor', color='Gray', alpha=0.6,
                       linestyle=':')
 
-        pattern, errors, number = get_stellar_offset_pattern(star, time_slice)
-        ax.set_xlim(left=-1, right=len(pattern) + 1)
+        offset_pattern = star.getTransitionOffsetPattern(time_slice)
+        offsets, stddevs = offset_pattern[0], offset_pattern[1]
 
-        weighted_mean = np.average(pattern, weights=1/errors**2)
-        tqdm.write(f'weighted_mean = {weighted_mean}')
-        tqdm.write(f'mean = {np.mean(pattern)}')
+        ax.set_xlim(left=-1, right=len(offsets) + 1)
 
-        indices = range(len(pattern))
-        ax.errorbar(x=indices, y=pattern,
-                    yerr=errors,
+        mean = np.nanmean(offsets)
+        mean_centered_offsets = offsets - mean
+        weighted_mean = np.average(offsets, weights=1/stddevs**2)
+        if args.verbose:
+            tqdm.write(f'weighted_mean = {weighted_mean:.3f}')
+            tqdm.write(f'mean = {np.mean(offsets):.3f}')
+
+        indices = range(len(offsets))
+        ax.errorbar(x=indices,
+                    y=mean_centered_offsets / mean_centered_offsets.max(),
+                    yerr=stddevs / offsets.max(),
                     label=f'{time_str.capitalize()}-fiber change\n'
-                    f' $\\mu=${weighted_mean:.2f}\n'
-                    f'N$={number}$',
+                    f'$\\mu=${mean:.2f}\n'
+                    f'N$={star.getNumObs(time_slice)}$',
                     **params)
-        ax.set_xlabel('Index number')
-        ax.set_ylabel(r'$\Delta\lambda_\mathrm{expected}$ (m/s)')
+#        ax.set_ylabel(r'$\Delta\lambda_\mathrm{expected}$ (m/s)')
+        ax.set_ylabel(r'$(\Delta v-\mu_v)/v_\mathrm{max}$')
         ax.legend(loc='upper center')
-
-    def get_stellar_offset_pattern(star, array_slice=slice(None, None)):
-        """Return an array of the offset from expected wavelength for each
-        transition in the given star.
-
-        Parameters
-        ----------
-        star : `star.Star` object
-            The star to evaluate.
-        array_slice : `slice` object
-            The slice over rows in the star's array of fit means to evaluate.
-            If not given defaults to using the entire array. If looking for
-            the pre- or post-fiber change values only, can be given as:
-            pre  :  slice(None, star.fiberSplitIndex)
-            post :  slice(star.fiberSplitIndex, None)
-
-        Returns
-        -------
-        2-tuple of `unyt.unyt_array`
-            A length-2 tuple of `unyt_array` objects, containing the mean
-            measured offset from the expected wavelength and the standard
-            deviation in the offsets for each transition in the star.
-        """
-
-        pattern = []
-        errors = []
-        number = 0
-
-        for key in star._transition_bidict.keys():
-            offsets = star.fitOffsetsArray[array_slice, star.t_index(key)]
-            pattern.append(np.mean(offsets))
-            errors.append(np.std(offsets))
-        number = len(offsets)
-        return (u.unyt_array(pattern), u.unyt_array(errors), number)
 
     style_params_pre['marker'] = '_'
     style_params_post['marker'] = '_'
@@ -457,12 +434,13 @@ def create_offset_plot(star):
 
     plot_name = data_dir / f'{data_dir.stem}_offset_pattern.png'
 
+    fig = plt.figure(figsize=(9, 7), tight_layout=True)
+    gs = GridSpec(nrows=2, ncols=1, figure=fig,
+                  height_ratios=[1, 1], hspace=0)
+    ax1 = fig.add_subplot(gs[0])
+    ax2 = fig.add_subplot(gs[1], sharex=ax1)
+
     if star.fiberSplitIndex not in (0, None):
-        fig = plt.figure(figsize=(9, 7), tight_layout=True)
-        gs = GridSpec(nrows=2, ncols=1, figure=fig,
-                      height_ratios=[1, 1], hspace=0)
-        ax1 = fig.add_subplot(gs[0])
-        ax2 = fig.add_subplot(gs[1], sharex=ax1)
 
         pre_slice = slice(None, star.fiberSplitIndex)
         post_slice = slice(star.fiberSplitIndex, None)
@@ -472,23 +450,26 @@ def create_offset_plot(star):
                                                      style_params_post),
                                                     (pre_slice, post_slice),
                                                     ('pre', 'post')):
+            if args.verbose:
+                tqdm.write(f'Creating "{time_str}" plot.')
             layout_plots(time_slice, time_str)
 
         ax1.tick_params(labelbottom=False)
 
     else:
-        fig = plt.figure(figsize=(8, 4), tight_layout=True)
         if star.fiberSplitIndex == 0:
             params = style_params_post
             time_str = 'post'
+            ax = ax2
         else:
             params = style_params_pre
             time_str = 'pre'
+            ax = ax1
         time_slice = slice(None, None)
 
-        ax = fig.add_subplot(1, 1, 1)
-
         layout_plots(time_slice, time_str)
+
+    ax2.set_xlabel('Index number')
 
     fig.savefig(str(plot_name))
     plt.close(fig)
@@ -497,6 +478,51 @@ def create_offset_plot(star):
     if dest_name.exists():
         os.unlink(dest_name)
     os.link(plot_name, dest_name)
+
+
+def create_chi_squared_plots():
+    """Create plots of chi^2_nu distributions for the given star.
+
+    """
+
+    def layout_data():
+
+        chi_squareds = star.chiSquaredNuArray[time_slice, column_index]
+        x_pos = [transition.normalizedDepth] * len(chi_squareds)
+
+#        axis.scatter(x_pos, chi_squareds, s=4, color='Black')
+        axis.hist(chi_squareds, histtype='step', cumulative=True)
+
+    if star.fiberSplitIndex not in (0, None):
+
+        pre_slice = slice(None, star.fiberSplitIndex)
+        post_slice = slice(star.fiberSplitIndex, None)
+
+        fig = plt.figure(figsize=(9, 8), tight_layout=True)
+        gs = GridSpec(nrows=2, ncols=1, figure=fig,
+                      height_ratios=[1, 1], hspace=0)
+        ax1 = fig.add_subplot(gs[0])
+        ax2 = fig.add_subplot(gs[1], sharex=ax1)
+#        ax1.set_ylim(bottom=0, top=10)
+#        ax2.set_xlabel('Normalized depth')
+#        ax1.set_ylabel(r'$\chi^2_\nu$')
+#        ax2.set_ylabel(r'$\chi^2_\nu$')
+        ax2.set_xlabel(r'$\chi^2_\nu$')
+        ax1.set_ylabel('Number')
+        ax2.set_ylabel('Number')
+
+        for transition in star.transitionsList:
+            for order_num in transition.ordersToFitIn:
+                transition_label = '_'.join((transition.label, str(order_num)))
+                column_index = star.t_index(transition_label)
+                for axis, time_slice in zip((ax1, ax2),
+                                            (pre_slice, post_slice)):
+                    layout_data()
+
+    else:
+        pass
+
+    plt.show()
 
 
 # Write out a CSV file containing the pair separation values for all
@@ -820,14 +846,21 @@ def create_airmass_plots(transition_plots_dir):
 def create_dir_if_necessary(func):
     """Create a directory returned from a function if it doesn't yet exist.
 
+    Parameters
+    func : function which returns a `pathlib.Path` object
+        A function which returns a directory to be created if it doesn't
+        already exist. Directory creation will still fail if the directory's
+        immediate parent doesn't exist.
+
     """
 
     def wrapper():
         directory = func()
-        print(directory)
 
         if not directory.exists():
-            print('Creating missing directory.')
+            if args.verbose:
+                tqdm.write(str(directory))
+                tqdm.write('Creating missing directory.')
             os.mkdir(directory)
 
         return directory
@@ -909,6 +942,10 @@ if __name__ == '__main__':
                         help='Create a plot of the average offset for all'
                         'transitions from their expected laboratory position.')
 
+    parser.add_argument('--create-chi-squared-plots', action='store_true',
+                        help='Create plots showing the distribution of chi^2'
+                        ' values for the given star.')
+
     parser.add_argument('--link-fit-plots', action='store_true', default=False,
                         help='Hard-link fit plots by transition into new'
                         ' individual folders for each transition.')
@@ -959,8 +996,8 @@ if __name__ == '__main__':
     # Find the data in the given directory.
     data_dir = Path(args.object_dir)
     if not data_dir.exists():
-        print(data_dir)
-        raise RuntimeError('The given directory does not exist.')
+        raise RuntimeError('The given directory does not exist:'
+                           f' {data_dir}')
 
     # Read the list of chosen transitions.
     with open(vcl.final_selection_file, 'r+b') as f:
@@ -978,7 +1015,8 @@ if __name__ == '__main__':
     # Stuff that needs a Star.
 
     if args.create_transition_offset_plots or args.create_berv_plots\
-            or args.create_offset_plot or args.create_airmass_plots:
+            or args.create_offset_plot or args.create_airmass_plots\
+            or args.create_chi_squared_plots:
 
         # Read or create a Star object for this star.
         obj_name = data_dir.stem
@@ -1009,6 +1047,10 @@ if __name__ == '__main__':
             tqdm.write('Creating plots of offsets vs. airmass.')
             t_plots_dir = transition_dir()
             create_airmass_plots(t_plots_dir)
+
+        if args.create_chi_squared_plots:
+            tqdm.write('Creating plots of chi^2 distributions.')
+            create_chi_squared_plots()
 
     # Stuff that needs analysis of pickle files.
     if args.write_csv or args.create_pair_offset_plots\
