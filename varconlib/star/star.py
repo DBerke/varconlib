@@ -283,7 +283,7 @@ class Star(object):
         for transition in self.transitionsList:
             for order_num in transition.ordersToFitIn:
                 transition_labels.append('_'.join((transition.label,
-                                         str(order_num))))
+                                                   str(order_num))))
 
         pair_labels = []
         for pair in self.pairsList:
@@ -483,9 +483,25 @@ class Star(object):
 
         return len(self.fitMeansArray[array_slice])
 
-    def getTransitionOffsetPattern(self, array_slice=slice(None, None)):
+    def getTransitionOffsetPattern(self, array_slice=slice(None, None),
+                                   normalized=True):
         """Return the mean pattern of transition offsets from their expected
         position for this star.
+
+        array_slice : slice
+            A slice object to get either the pre- or post-fiber change
+            observations.
+        normalized : bool, Default : True
+            Whether or not to normalize the value returned. The offsets will
+            have their mean subtracted, then be divided by the value of the
+            maximum of the remaining values. The standard deviations will also
+            be divided by this value.
+
+        Returns
+        -------
+        `unyt.unyt_array`
+             A `unyt_array` containing two arrays corresponding to the means and
+             standard deviations of all the various transitions in this star.
 
         """
 
@@ -510,6 +526,10 @@ class Star(object):
 
         means *= self.fitOffsetsArray.units
         stddevs *= self.fitOffsetsArray.units
+
+        if normalized:
+
+            return u.unyt_array([means - np.nanmean(means), stddevs])
 
         return u.unyt_array([means, stddevs])
 

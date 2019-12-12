@@ -108,6 +108,15 @@ class TestStar(object):
         with pytest.raises(KeyError):
             test_star.od_date(3)
 
+    def testNumObs(self, test_star):
+        assert test_star.getNumObs(slice(None, None)) == 3
+
+    @pytest.mark.parametrize("norm", [True, False])
+    def testTransitionOffsetPattern(self, test_star, norm):
+        assert len(test_star.getTransitionOffsetPattern(slice(None, None),
+                                                        normalized=norm)[0])\
+            == len(test_star._transition_bidict.keys())
+
     def testRadialVelocity(self, test_star):
         assert pytest.approx(test_star.radialVelocity, 1.1 * u.m / u.s)
 

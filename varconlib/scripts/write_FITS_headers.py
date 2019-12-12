@@ -32,7 +32,8 @@ args = parser.parse_args()
 
 filepath = Path(args.FITSfile)
 if not filepath.exists():
-    raise FileNotFoundError("The given file path doesn't exist!")
+    raise FileNotFoundError("The given file path doesn't exist:"
+                            f"{filepath}")
 
 try:
     value = float(args.value)
