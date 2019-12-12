@@ -161,6 +161,8 @@ class Star(object):
         self.hasObsPost = False
 
         self._radialVelocity = None
+        self._temperature = None
+        self._metallicity = None
 
         if transitions_list:
             self.transitionsList = transitions_list
@@ -432,13 +434,45 @@ class Star(object):
                     return None
         return self._radialVelocity
 
-# TODO: Add an exposure time array?
+    @property
+    def temperature(self):
+        if self._temperature is None:
+            data = self._getStellarProperties()
+            for row in data:
+                if row[8] == self.name:
+                    self._temperature = (10 ** float(row[3])) * u.K
+                    return self._temperature
+            raise RuntimeError(f"Couldn't find {self.name} in table!")
+        else:
+            return self._temperature
+
+    @property
+    def metallicity(self):
+        if self._metallicity is None:
+            data = self._getStellarProperties()
+            for row in data:
+                if row[8] == self.name:
+                    self._metallicity = float(row[4])
+                    return self._metallicity
+            raise RuntimeError(f"Couldn't find {self.name} in table!")
+        else:
+            return self._metallicity
+
+    # TODO: Add an exposure time array?
     @property
     def fiberSplitIndex(self):
         if not hasattr(self, '_fiberSplitIndex'):
             self._fiberSplitIndex = self._getFiberSplitIndex()
 
         return self._fiberSplitIndex
+
+    def _getStellarProperties(self):
+        """Load file containing stellar properties and return it as a NumPy
+        array.
+
+        """
+        stellar_props_file = vcl.data_dir / 'StellarSampleData.csv'
+        return np.loadtxt(stellar_props_file, delimiter=',', dtype=str)
 
     def _getFiberSplitIndex(self):
         """Return the index of the first observation after the HARPS fiber
