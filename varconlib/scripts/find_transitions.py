@@ -82,8 +82,6 @@ parser.add_argument('--verbose', action='store_true', default=False,
 
 args = parser.parse_args()
 
-assert args.start >= 0, '--start must be a non-negative integer.'
-
 if args.radial_velocity:
     rv = args.radial_velocity * u.km / u.s
     assert abs(rv) < u.c, 'Given RV exceeds speed of light!'
@@ -113,7 +111,8 @@ data_files = [Path(string) for string in sorted(glob(glob_search_string))]
 files_to_work_on = data_files[slice(args.start, args.end)]
 
 tqdm.write('=' * 41)
-tqdm.write(f'Found {len(data_files)} observations in the directory,'
+tqdm.write(f'Found {len(data_files)} observations in the directory'
+           f' for {args.object_name},'
            f' working on {len(files_to_work_on)}:')
 for file in files_to_work_on:
     tqdm.write(str(file.name))
@@ -231,6 +230,7 @@ for obs_path in tqdm(files_to_work_on) if\
                     obs_path.stem, transition.label, order_num)
             plot_context = context_dir / '{}_{}_{}_context.png'.format(
                     obs_path.stem, transition.label, order_num)
+            # TODO: This all needs to be redone to handle failed fits.
             try:
                 fit = GaussianFit(transition, obs, order_num,
                                   radial_velocity=rv,
@@ -238,12 +238,16 @@ for obs_path in tqdm(files_to_work_on) if\
                                   integrated=args.integrated_gaussian,
                                   close_up_plot_path=plot_closeup,
                                   context_plot_path=plot_context)
-            except (RuntimeError, PositiveAmplitudeError):
-                tqdm.write('   Warning! Unable to fit {}_{}!'.format(
-                           transition, order_num))
+            except RuntimeError:
+                tqdm.write('   Warning! Unable to fit'
+                           f' {transition}_{order_num}!')
 #                raise
                 # Fit is plotted automatically upon failing, move on to next
                 # transition.
+                continue
+            except PositiveAmplitudeError:
+                tqdm.write(f'   Fit of {transition}_{order_num} failed with'
+                           ' PositiveAmplitudeError!')
                 continue
 
             # Assuming the fit didn't fail, continue on:
