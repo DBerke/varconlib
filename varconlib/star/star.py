@@ -70,27 +70,31 @@ class Star(object):
     fitMeansArray : `unyt.unyt_array`
         A two-dimensional array holding the mean of the fit (in wavelength
         space) for each absorption feature in each observation of the star.
-        Rows correspond to observations, columns to transitions.
+        Rows correspond to observations, columns to transitions. Units are
+        Å be default.
     fitErrorsArray : `unyt.unyt_array`
         A two-diemsional array holding the standard deviation of the measured
         mean of the fit for each absorption feature of each observation of the
-        star. Rows correspond to observations, columns to transitions.
+        star. Rows correspond to observations, columns to transitions. Units are
+        m/s.
     fitOffsetsArray : `unyt.unyt_array`
         A two-dimensional array holding the offset from the expected wavelength
         of the measured mean of each absorption feature in each observation of
-        the star. Rows correspond to observations, columns to transitions.
+        the star. Rows correspond to observations, columns to transitions. Units
+        are m/s.
     pairSeparationsArray : `unyt.unyt_array`
         A two-dimensional array holding the velocity separation values for each
         pair of transitions for each observation of the star. Rows correspond
-        to observations, columns to pairs.
+        to observations, columns to pairs. Units are m/s.
     pairSepErrorsArray : `unyt.unyt_array`
         A two-dimensional array holding the standard deviation of the velocity
         separation values for each pair of transitions for each observation of
-        the star. Rows correspond to observations, columns to pairs.
+        the star. Rows correspond to observations, columns to pairs. Units are
+        m/s.
     bervArray : `unyt.unyt_array`
         A one-dimensional array holding the barycentric Earth radial velocity
         (BERV) for each observation of the star. Index number corresponds to
-        row numbers in the two-dimensional arrays
+        row numbers in the two-dimensional arrays. Units are km/s.
     chiSquaredNuArray : `unyt.unyt_array`
         A two-dimensional array holding the reduced chi-squared value of the
         Gaussian fit to each transition for each observation of the star.
@@ -440,7 +444,7 @@ class Star(object):
             data = self._getStellarProperties()
             for row in data:
                 if row[8] == self.name:
-                    self._temperature = (10 ** float(row[3])) * u.K
+                    self._temperature = round((10 ** float(row[3])) * u.K)
                     return self._temperature
             raise RuntimeError(f"Couldn't find {self.name} in table!")
         else:
