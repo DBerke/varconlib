@@ -308,7 +308,8 @@ def create_BERV_plots():
                 binned_seps.append(bin_mean)
 
             tqdm.write(str(tabulate(zip(binned_seps, binned_chi_squareds),
-                           headers=["Separation (km/s)", "Reduced χ²"])))
+                                    headers=["Separation (km/s)",
+                                             "Reduced χ²"])))
 
         ax.set_xlim(left=-100, right=100)
         ax.yaxis.grid(which='major', color='Gray', alpha=0.6, linestyle='--')
@@ -344,6 +345,7 @@ def create_BERV_plots():
                 layout_data(axis, time_slice, params)
 
         else:
+            # BUG Only uses post-change, doesn't handle pre-change.
             fig = plt.figure(figsize=(6, 3), tight_layout=True)
             ax = fig.add_subplot(1, 1, 1)
 
@@ -401,7 +403,9 @@ def create_offset_plot(star):
         ax.xaxis.grid(which='minor', color='Gray', alpha=0.6,
                       linestyle=':')
 
-        offset_pattern = star.getTransitionOffsetPattern(time_slice)
+        offset_pattern = star.getTransitionOffsetPattern(
+            array_slice=time_slice,
+            normalized=False)
         offsets, stddevs = offset_pattern[0], offset_pattern[1]
 
         ax.set_xlim(left=-1, right=len(offsets) + 1)
@@ -419,7 +423,8 @@ def create_offset_plot(star):
                     yerr=stddevs / offsets.max(),
                     label=f'{time_str.capitalize()}-fiber change\n'
                     f'$\\mu=${mean:.2f}\n'
-                    f'N$={star.getNumObs(time_slice)}$',
+                    f'N$={star.getNumObs(time_slice)}$,'
+                    f' RV$=${star.radialVelocity}',
                     **params)
 #        ax.set_ylabel(r'$\Delta\lambda_\mathrm{expected}$ (m/s)')
         ax.set_ylabel(r'$(\Delta v-\mu_v)/v_\mathrm{max}$')
@@ -488,41 +493,64 @@ def create_chi_squared_plots():
     def layout_data():
 
         chi_squareds = star.chiSquaredNuArray[time_slice, column_index]
-        x_pos = [transition.normalizedDepth] * len(chi_squareds)
+        means = star.fitOffsetsArray[time_slice, column_index]
+        x_pos = np.std(means)
+        # x_pos = [transition.normalizedDepth] * len(chi_squareds)
 
-#        axis.scatter(x_pos, chi_squareds, s=4, color='Black')
-        axis.hist(chi_squareds, histtype='step', cumulative=True)
+        axis.errorbar(x=x_pos, y=np.mean(chi_squareds),
+                      # yerr=np.std(chi_squareds),
+                      marker='o', markersize=4,
+                      alpha=0.8)
 
-    if star.fiberSplitIndex not in (0, None):
+    fig = plt.figure(figsize=(9, 8), tight_layout=True)
+    gs = GridSpec(nrows=2, ncols=1, figure=fig,
+                  height_ratios=[1, 1])
+    ax1 = fig.add_subplot(gs[0])
+    ax2 = fig.add_subplot(gs[1], sharex=ax1, sharey=ax1)
 
-        pre_slice = slice(None, star.fiberSplitIndex)
-        post_slice = slice(star.fiberSplitIndex, None)
+    ax2.set_xlabel('Standard deviation (m/s)')
+    for ax in (ax1, ax2):
+        ax.set_ylabel(r'Mean $\chi^2_\nu$')
+        ax.axhline(1, color='Black', linestyle='--')
+        # ax.xaxis.set_major_locator(ticker.MultipleLocator(base=5))
+        ax.xaxis.grid(which="major", color='Black', alpha=0.6,
+                      linestyle=':')
 
-        fig = plt.figure(figsize=(9, 8), tight_layout=True)
-        gs = GridSpec(nrows=2, ncols=1, figure=fig,
-                      height_ratios=[1, 1], hspace=0)
-        ax1 = fig.add_subplot(gs[0])
-        ax2 = fig.add_subplot(gs[1], sharex=ax1)
-#        ax1.set_ylim(bottom=0, top=10)
-#        ax2.set_xlabel('Normalized depth')
-#        ax1.set_ylabel(r'$\chi^2_\nu$')
-#        ax2.set_ylabel(r'$\chi^2_\nu$')
-        ax2.set_xlabel(r'$\chi^2_\nu$')
-        ax1.set_ylabel('Number')
-        ax2.set_ylabel('Number')
+    for transition in star.transitionsList:
+        for order_num in transition.ordersToFitIn:
+            transition_label = '_'.join((transition.label, str(order_num)))
+            column_index = star.t_index(transition_label)
 
-        for transition in star.transitionsList:
-            for order_num in transition.ordersToFitIn:
-                transition_label = '_'.join((transition.label, str(order_num)))
-                column_index = star.t_index(transition_label)
+            if star.fiberSplitIndex not in (0, None):
+
+                pre_slice = slice(None, star.fiberSplitIndex)
+                post_slice = slice(star.fiberSplitIndex, None)
+
                 for axis, time_slice in zip((ax1, ax2),
                                             (pre_slice, post_slice)):
                     layout_data()
 
-    else:
-        pass
+            else:
+                if star.fiberSplitIndex == 0:
+                    axis = ax2
+                else:
+                    axis = ax1
+                time_slice = slice(None, None)
+                layout_data()
 
-    plt.show()
+    # Set the limit after the data plotting to retain the auto-set upper
+    # limit.
+    ax1.set_ylim(bottom=0, top=ax1.get_ylim()[1])
+
+    file_name = data_dir / f'{star.name}_chi_squared_stddev.png'
+    tqdm.write(f'Saving plot to {file_name}')
+
+    fig.savefig(str(file_name))
+    plt.close(fig)
+    dest_name = chi_squared_dir / file_name.name
+    if dest_name.exists():
+        os.unlink(dest_name)
+    os.link(file_name, dest_name)
 
 
 # Write out a CSV file containing the pair separation values for all
@@ -617,8 +645,8 @@ def create_pair_offset_plots(plot_dir):
             weighted_mean = np.average(offsets, weights=weights)
 
             if args.verbose:
-                tqdm.write('Weighted mean for {} is {:.2f}'.format(pair_label,
-                           weighted_mean))
+                tqdm.write(f"Weighted mean for {pair_label} is"
+                           " {weighted_mean:.2f}")
 
             normalized_offsets = offsets - weighted_mean
 #            chi_squared = sum((normalized_offsets / errors) ** 2)
@@ -637,7 +665,7 @@ def create_pair_offset_plots(plot_dir):
                 (len(normalized_offsets[:date_indices[2]]) - 1)
 
             chi_squared_post = sum((normalized_offsets[date_indices[2]:] /
-                                   errors[date_indices[2]:]) ** 2)
+                                    errors[date_indices[2]:]) ** 2)
             chi_squared_nu_post = chi_squared_post /\
                 (len(normalized_offsets[date_indices[2]:]) - 1)
 
@@ -650,7 +678,7 @@ def create_pair_offset_plots(plot_dir):
             fig.autofmt_xdate()
             (ax1, ax2), (ax3, ax4) = axes
             for ax in (ax1, ax2, ax3, ax4):
-                ax.set_ylabel(r'$\Delta v_{\textrm{sep}}\textrm{ (m/s)}$')
+                ax.set_ylabel(r'$\Delta v_{\mathrm{sep}}\mathrm{ (m/s)}$')
                 ax.axhline(y=0, **weighted_mean_params)
                 ax.axhline(y=weighted_mean_err,
                            **weighted_err_params)
@@ -898,6 +926,16 @@ def pattern_dir():
     return data_dir.parent / 'star_pattern_plots'
 
 
+@create_dir_if_necessary
+def chi_squared_plots_dir():
+    """Return the path to the directory to put plots of chi^2 vs. standard
+    deviation for each star in.
+
+    """
+
+    return data_dir.parent / 'chi^2_stddev_plots'
+
+
 if __name__ == '__main__':
 
     # Where the analysis results live:
@@ -1050,7 +1088,11 @@ if __name__ == '__main__':
 
         if args.create_chi_squared_plots:
             tqdm.write('Creating plots of chi^2 distributions.')
-            create_chi_squared_plots()
+            chi_squared_dir = chi_squared_plots_dir()
+            if star.getNumObs(slice(None, None)) > 1:
+                create_chi_squared_plots()
+            else:
+                tqdm.write('Only one observation for this star.')
 
     # Stuff that needs analysis of pickle files.
     if args.write_csv or args.create_pair_offset_plots\
