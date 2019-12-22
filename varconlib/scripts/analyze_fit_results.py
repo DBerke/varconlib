@@ -419,15 +419,15 @@ def create_offset_plot(star):
 
         indices = range(len(offsets))
         ax.errorbar(x=indices,
-                    y=mean_centered_offsets / mean_centered_offsets.max(),
-                    yerr=stddevs / offsets.max(),
+                    y=mean_centered_offsets,
+                    yerr=stddevs,
                     label=f'{time_str.capitalize()}-fiber change\n'
                     f'$\\mu=${mean:.2f}\n'
                     f'N$={star.getNumObs(time_slice)}$,'
                     f' RV$=${star.radialVelocity}',
                     **params)
 #        ax.set_ylabel(r'$\Delta\lambda_\mathrm{expected}$ (m/s)')
-        ax.set_ylabel(r'$(\Delta v-\mu_v)/v_\mathrm{max}$')
+        ax.set_ylabel(r'$\Delta v-\mu_v$ (m/s)')
         ax.legend(loc='upper center')
 
     style_params_pre['marker'] = '_'
