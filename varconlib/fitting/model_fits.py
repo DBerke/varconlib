@@ -9,6 +9,8 @@ Code to define a class for a model fit to an absorption line.
 
 """
 
+import logging
+
 import matplotlib
 from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
@@ -26,6 +28,8 @@ from varconlib.miscellaneous import (shift_wavelength, velocity2wavelength,
 # This line prevents the wavelength formatting from being in the form of
 # scientific notation.
 matplotlib.rcParams['axes.formatter.useoffset'] = False
+
+logger = logging.getLogger(__name__)
 
 
 class GaussianFit(object):
@@ -219,9 +223,9 @@ class GaussianFit(object):
         self.sigma = self.popt[2] * u.angstrom
 
         if self.amplitude > 0:
-            if verbose:
-                tqdm.write('Bad fit for {}'.format(
-                        self.transition.wavelength))
+            logger.warning('Fit for'
+                           f' {self.transition.wavelength.to(u.angstrom)}'
+                           ' has a positive amplitude.')
             self.plotFit(close_up_plot_path, context_plot_path,
                          plot_fit=True, verbose=True)
             raise PositiveAmplitudeError('Positive amplitude from fit.')
