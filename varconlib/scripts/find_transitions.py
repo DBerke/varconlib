@@ -12,10 +12,12 @@ attempts to fit each of the transitions listed in the dictionary.
 
 import argparse
 from glob import glob
+import logging
 import lzma
 import os
 from pathlib import Path
 import pickle
+import sys
 
 from adjustText import adjust_text
 import matplotlib.pyplot as plt
@@ -124,6 +126,19 @@ data_dir = output_dir / args.object_name
 if not data_dir.exists():
     os.mkdir(data_dir)
 
+# Set up logging.
+logger = logging.getLogger('find_transitions')
+logger.setLevel(logging.INFO)
+
+ch = logging.StreamHandler(stream=sys.stderr)
+ch.setLevel(logging.INFO)
+logger.addHandler(ch)
+
+log_file = data_dir / f'{args.object_name}.log'
+fh = logging.FileHandler(log_file, mode='a', delay=True)
+fh.setLevel(logging.WARNING)
+logger.addHandler(fh)
+
 # Define edges between pixels to plot to see if transitions overlap them.
 edges = (509.5, 1021.5, 1533.5, 2045.5, 2557.5, 3069.5, 3581.5)
 
@@ -178,10 +193,12 @@ for obs_path in tqdm(files_to_work_on) if\
         if set(['ALL', 'WAVE', 'BARY']).isdisjoint(set(args.update)):
             obs.getWavelengthCalibrationFile()
     except BlazeFileNotFoundError:
-        tqdm.write('Blaze file not found, continuing.')
+        logger.warning(f'Blaze file not found for {obs_path.name},'
+                       ' continuing.')
         continue
     except NewCoefficientsNotFoundError:
-        tqdm.write('New coefficients not found, continuing.')
+        logger.warning(f'New coefficients not found for {obs_path.name},'
+                       ' continuing.')
         continue
 
     obs_dir = data_dir / obs_path.stem
@@ -230,7 +247,6 @@ for obs_path in tqdm(files_to_work_on) if\
                     obs_path.stem, transition.label, order_num)
             plot_context = context_dir / '{}_{}_{}_context.png'.format(
                     obs_path.stem, transition.label, order_num)
-            # TODO: This all needs to be redone to handle failed fits.
             try:
                 fit = GaussianFit(transition, obs, order_num,
                                   radial_velocity=rv,
@@ -239,15 +255,20 @@ for obs_path in tqdm(files_to_work_on) if\
                                   close_up_plot_path=plot_closeup,
                                   context_plot_path=plot_context)
             except RuntimeError:
-                tqdm.write('   Warning! Unable to fit'
-                           f' {transition}_{order_num}!')
-#                raise
+                logger.warning('Unable to fit'
+                               f' {transition}_{order_num} for'
+                               f' {obs_path.name}!')
+                # Append None to fits list to signify that no fit exists for
+                # this transition.
+                fits_list.append(None)
                 # Fit is plotted automatically upon failing, move on to next
                 # transition.
                 continue
             except PositiveAmplitudeError:
-                tqdm.write(f'   Fit of {transition}_{order_num} failed with'
-                           ' PositiveAmplitudeError!')
+                logger.warning(f'Fit of {transition} {order_num} failed with'
+                               ' PositiveAmplitudeError in'
+                               f' {obs_path.name}!')
+                fits_list.append(None)
                 continue
 
             # Assuming the fit didn't fail, continue on:
