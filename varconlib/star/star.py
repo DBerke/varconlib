@@ -75,13 +75,13 @@ class Star(object):
     fitErrorsArray : `unyt.unyt_array`
         A two-diemsional array holding the standard deviation of the measured
         mean of the fit for each absorption feature of each observation of the
-        star. Rows correspond to observations, columns to transitions. Units are
-        m/s.
+        star. Rows correspond to observations, columns to transitions. Units
+        are m/s.
     fitOffsetsArray : `unyt.unyt_array`
         A two-dimensional array holding the offset from the expected wavelength
         of the measured mean of each absorption feature in each observation of
-        the star. Rows correspond to observations, columns to transitions. Units
-        are m/s.
+        the star. Rows correspond to observations, columns to transitions.
+        Units are m/s.
     pairSeparationsArray : `unyt.unyt_array`
         A two-dimensional array holding the velocity separation values for each
         pair of transitions for each observation of the star. Rows correspond
@@ -256,33 +256,47 @@ class Star(object):
             self._obs_date_bidict[fits_list[0].dateObs.isoformat(
                                timespec='milliseconds')] = obs_num
             # Save the BERV and airmass.
-            self.bervArray[obs_num] = fits_list[0].BERV
+            self.bervArray[obs_num] = fits_list[0].BERV.to(u.km/u.s).value
             self.airmassArray[obs_num] = fits_list[0].airmass
 
-            means_list.append([fit.mean.to(u.angstrom).value for
-                               fit in fits_list])
+            # Iterate through all the fits in the pickled list and save their
+            # values only if the fit was 'good' (i.e., a mean value exists and
+            # the amplitude of the fitted Gaussian is negative).
+            star_means = []
+            star_errors = []
+            star_offsets = []
+            star_chi_squareds = []
+            for fit in fits_list:
+                if (fit is not None) and (fit.amplitude < 0):
+                    fit_mean = fit.mean.to(u.angstrom).value
+                    fit_error = fit.meanErrVel.to(u.m/u.s).value
+                    fit_offset = fit.velocityOffset.to(u.m/u.s).value
+                    fit_chi_squared = fit.chiSquaredNu
+                else:
+#                    print(fit.dateObs)
+#                    print(fit.transition)
+                    fit_mean = float('nan')
+                    fit_error = float('nan')
+                    fit_offset = float('nan')
+                    fit_chi_squared = float('nan')
 
-            errors_list.append([fit.meanErrVel.to(u.m/u.s).value for
-                                fit in fits_list])
+                star_means.append(fit_mean)
+                star_errors.append(fit_error)
+                star_offsets.append(fit_offset)
+                star_chi_squareds.append(fit_chi_squared)
 
-            offsets_list.append([fit.velocityOffset.to(u.m/u.s).value for
-                                 fit in fits_list])
-
-            chi_squared_list.append([fit.chiSquaredNu for
-                                     fit in fits_list])
-
-        means_units = fits_list[0].mean.units
-        errors_units = fits_list[0].meanErrVel.units
-        offsets_units = fits_list[0].velocityOffset.units
-        berv_units = fits_list[0].BERV.units
+            means_list.append(star_means)
+            errors_list.append(star_errors)
+            offsets_list.append(star_offsets)
+            chi_squared_list.append(star_chi_squareds)
 
         self.fitMeansArray = u.unyt_array(np.asarray(means_list),
-                                          means_units)
+                                          u.angstrom)
         self.fitErrorsArray = u.unyt_array(np.asarray(errors_list),
-                                           errors_units)
+                                           u.m/u.s)
         self.fitOffsetsArray = u.unyt_array(np.asarray(offsets_list),
-                                            offsets_units)
-        self.bervArray *= berv_units
+                                            u.m/u.s)
+        self.bervArray *= u.km / u.s
         self.chiSquaredNuArray = np.array(chi_squared_list)
 
         transition_labels = []

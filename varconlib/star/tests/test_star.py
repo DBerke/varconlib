@@ -118,16 +118,23 @@ class TestStar(object):
             == len(test_star._transition_bidict.keys())
 
     def testTemperature(self, test_star):
-        assert pytest.approx(test_star.temperature, 5929.25 * u.K)
+        assert test_star.temperature == pytest.approx(5929 * u.K, abs=10)
 
     def testMetallicity(self, test_star):
-        assert pytest.approx(test_star.metallicity, -0.05)
+        assert test_star.metallicity == pytest.approx(-0.05)
 
     def testRadialVelocity(self, test_star):
-        assert pytest.approx(test_star.radialVelocity, 1.1 * u.m / u.s)
+        assert test_star.radialVelocity == pytest.approx(1.1 * u.km / u.s)
+
+    @pytest.mark.parametrize('obs_num,expected',
+                             [(0, -0.13005375),
+                              (1, 24.92201306),
+                              (2, 4.58199186)])
+    def testBERV(self, test_star, obs_num, expected):
+        assert test_star.bervArray[obs_num] ==\
+            pytest.approx(expected * u.km / u.s)
 
     def testDumpAndRestoreData(self, test_star, tmp_dir):
-
         star_name = test_star.name
         tmp_file_path = tmp_dir / f'{star_name}_data.hdf5'
         test_star.dumpDataToDisk(tmp_file_path)
