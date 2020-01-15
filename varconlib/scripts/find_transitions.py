@@ -130,14 +130,10 @@ if not data_dir.exists():
 logger = logging.getLogger('find_transitions')
 logger.setLevel(logging.INFO)
 
-ch = logging.StreamHandler(stream=sys.stderr)
-ch.setLevel(logging.INFO)
-logger.addHandler(ch)
-
 log_file = data_dir / f'{args.object_name}.log'
-fh = logging.FileHandler(log_file, mode='a', delay=True)
-fh.setLevel(logging.WARNING)
-logger.addHandler(fh)
+file_handler = logging.FileHandler(log_file, mode='a', delay=True)
+file_handler.setLevel(logging.WARNING)
+logger.addHandler(file_handler)
 
 # Define edges between pixels to plot to see if transitions overlap them.
 edges = (509.5, 1021.5, 1533.5, 2045.5, 2557.5, 3069.5, 3581.5)
@@ -193,12 +189,15 @@ for obs_path in tqdm(files_to_work_on) if\
         if set(['ALL', 'WAVE', 'BARY']).isdisjoint(set(args.update)):
             obs.getWavelengthCalibrationFile()
     except BlazeFileNotFoundError:
-        logger.warning(f'Blaze file not found for {obs_path.name},'
-                       ' continuing.')
+        err_msg = f'Blaze file not found for {obs_path.name}, continuing.'
+        tqdm.write(err_msg)
+        logger.warning(err_msg)
         continue
     except NewCoefficientsNotFoundError:
-        logger.warning(f'New coefficients not found for {obs_path.name},'
-                       ' continuing.')
+        err_msg = f'New coefficients not found for {obs_path.name},'\
+                  ' continuing.'
+        tqdm.write(err_msg)
+        logger.warning(err_msg)
         continue
 
     obs_dir = data_dir / obs_path.stem
@@ -255,9 +254,11 @@ for obs_path in tqdm(files_to_work_on) if\
                                   close_up_plot_path=plot_closeup,
                                   context_plot_path=plot_context)
             except RuntimeError:
-                logger.warning('Unable to fit'
-                               f' {transition}_{order_num} for'
-                               f' {obs_path.name}!')
+                err_msg = ('Unable to fit'
+                           f' {transition}_{order_num} for'
+                           f' {obs_path.name}!')
+                tqdm.write(err_msg)
+                logger.warning(err_msg)
                 # Append None to fits list to signify that no fit exists for
                 # this transition.
                 fits_list.append(None)
@@ -265,9 +266,11 @@ for obs_path in tqdm(files_to_work_on) if\
                 # transition.
                 continue
             except PositiveAmplitudeError:
-                logger.warning(f'Fit of {transition} {order_num} failed with'
-                               ' PositiveAmplitudeError in'
-                               f' {obs_path.name}!')
+                err_msg = (f'Fit of {transition} {order_num} failed with'
+                           ' PositiveAmplitudeError in'
+                           f' {obs_path.name}!')
+                tqdm.write(err_msg)
+                logger.warning(err_msg)
                 fits_list.append(None)
                 continue
 
