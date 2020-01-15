@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 import numpy as np
+import numpy.ma as ma
 from tabulate import tabulate
 from tqdm import tqdm
 import unyt as u
@@ -101,17 +102,19 @@ def create_transition_offset_plots(plots_dir):
 
         """
 
-        offsets = star.fitOffsetsArray[time_slice,
-                                       column_index]
-        errors = star.fitErrorsArray[time_slice,
-                                     column_index]
-        fit_chis = star.chiSquaredNuArray[time_slice,
-                                          column_index]
-        mean_measured = np.average(star.
-                                   fitMeansArray[time_slice,
-                                                 column_index],
-                                   weights=(1/errors**2)).to(
-                                           u.angstrom)
+        offsets = ma.masked_invalid(star.fitOffsetsArray[time_slice,
+                                                         column_index].value)
+        errors = ma.masked_invalid(star.fitErrorsArray[time_slice,
+                                                       column_index].value)
+        fit_chis = ma.masked_invalid(star.chiSquaredNuArray[time_slice,
+                                                            column_index])
+        mean_measured = np.average(ma.masked_invalid(
+                                   star.fitMeansArray[time_slice,
+                                                      column_index].value),
+                                   weights=(1/errors**2))
+        if args.verbose:
+            tqdm.write(f'Mean for {star.t_label(column_index)} is'
+                       ' {mean_measured * u.angstrom:.4f}')
         w_mean, weight_sum = np.average(offsets,
                                         weights=(1/errors**2),
                                         returned=True)
@@ -125,6 +128,7 @@ def create_transition_offset_plots(plots_dir):
         offset_ax.set_ylabel('Offset from expected position (m/s)')
         offset_ax.xaxis.set_major_locator(ticker.MultipleLocator(base=10))
         offset_ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=2))
+        plt.setp(offset_ax.get_xticklabels(), visible=False)
 
         offset_ax.xaxis.grid(which='major', color='Gray', alpha=0.7,
                              linestyle='-')
@@ -180,16 +184,16 @@ def create_transition_offset_plots(plots_dir):
                          alpha=0.6)
 
         vs_ax.errorbar(x=fit_chis, y=offsets, yerr=errors,
-                       label=f'Mean: {mean_measured:.4f},'
-                       f' {w_mean.value:.2f} $\\pm$'
-                       f' {std_dev:.2f}\n'
+                       label=f'Mean: {mean_measured * u.angstrom:.4f},'
+                       f' {w_mean * u.m/u.s:.1f} $\\pm$'
+                       f' {std_dev * u.m/u.s:.1f}\n'
                        r'$\chi^2_\nu=$'
-                       f'{reduced_chi_squared.value:.3f}',
+                       f'{reduced_chi_squared:.3f}',
                        **params)
 
         vs_ax.legend(loc='lower right', markerscale=0.7,
                          framealpha=1, mode='expand',
-                         bbox_to_anchor=(-0.02, -0.35, 1.02, -0.35))
+                         bbox_to_anchor=(-0.04, -0.35, 1.04, -0.35))
 
     # Define slice objects to capture time periods.
     pre_slice = slice(None, star.fiberSplitIndex)
@@ -427,7 +431,7 @@ def create_offset_plot(star):
                     f' RV$=${star.radialVelocity}',
                     **params)
 #        ax.set_ylabel(r'$\Delta\lambda_\mathrm{expected}$ (m/s)')
-        ax.set_ylabel(r'$\Delta v-\mu_v$ (m/s)')
+        ax.set_ylabel(r'$\Delta v-\mu_{\Delta v}$ (m/s)')
         ax.legend(loc='upper center')
 
     style_params_pre['marker'] = '_'
