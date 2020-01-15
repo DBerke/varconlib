@@ -241,10 +241,12 @@ if __name__ == '__main__':
                 metal_fig = plt.figure(figsize=(11, 10), tight_layout=True)
 
                 temp_ax1 = temp_fig.add_subplot(2, 1, 1)
-                temp_ax2 = temp_fig.add_subplot(2, 1, 2)
+                temp_ax2 = temp_fig.add_subplot(2, 1, 2,
+                                                sharex=temp_ax1)
 
                 mtl_ax1 = metal_fig.add_subplot(2, 1, 1)
-                mtl_ax2 = metal_fig.add_subplot(2, 1, 2)
+                mtl_ax2 = metal_fig.add_subplot(2, 1, 2,
+                                                sharex=mtl_ax1)
 
                 # Axis styles for all subplots.
                 for ax in (temp_ax1, temp_ax2, mtl_ax1, mtl_ax2):
