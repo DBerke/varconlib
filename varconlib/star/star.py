@@ -273,8 +273,6 @@ class Star(object):
                     fit_offset = fit.velocityOffset.to(u.m/u.s).value
                     fit_chi_squared = fit.chiSquaredNu
                 else:
-#                    print(fit.dateObs)
-#                    print(fit.transition)
                     fit_mean = float('nan')
                     fit_error = float('nan')
                     fit_offset = float('nan')
@@ -552,8 +550,9 @@ class Star(object):
         Returns
         -------
         `unyt.unyt_array`
-             A `unyt_array` containing two arrays corresponding to the means and
-             standard deviations of all the various transitions in this star.
+             A `unyt_array` containing two arrays corresponding to the means
+             and standard deviations of all the various transitions in this
+             star.
 
         """
 
