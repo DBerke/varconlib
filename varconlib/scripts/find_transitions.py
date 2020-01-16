@@ -17,7 +17,6 @@ import lzma
 import os
 from pathlib import Path
 import pickle
-import sys
 
 from adjustText import adjust_text
 import matplotlib.pyplot as plt
@@ -93,8 +92,9 @@ else:
 observations_dir = Path(args.object_dir)
 # Check that the path given exists:
 if not observations_dir.exists():
-    print(observations_dir)
-    raise FileNotFoundError('The given directory could not be found.')
+    raise FileNotFoundError('The given directory:\n'
+                            f'"{observations_dir}"\n'
+                            'could not be found.')
 
 # Check if the given path ends in data/reduced:
 if observations_dir.match('*/data/reduced'):
@@ -102,8 +102,9 @@ if observations_dir.match('*/data/reduced'):
 else:
     observations_dir = observations_dir / 'data/reduced'
     if not observations_dir.exists():
-        print(observations_dir)
-        raise FileNotFoundError('The directory could not be found')
+        raise FileNotFoundError('The given directory:\n'
+                                f'"{observations_dir}"\n'
+                                'could not be found.')
 
 # Search through subdirectories for e2ds files:
 glob_search_string = str(observations_dir) + '/*/*e2ds_A.fits'
@@ -132,7 +133,7 @@ logger.setLevel(logging.INFO)
 
 log_file = data_dir / f'{args.object_name}.log'
 file_handler = logging.FileHandler(log_file, mode='a', delay=True)
-file_handler.setLevel(logging.WARNING)
+file_handler.setLevel(logging.INFO)
 logger.addHandler(file_handler)
 
 # Define edges between pixels to plot to see if transitions overlap them.
@@ -234,11 +235,10 @@ for obs_path in tqdm(files_to_work_on) if\
     transitions_x, transitions_y, labels = [], [], []
 
     fits_list = []
-    total_transitions = 0
+    fit_transitions = 0
     tqdm.write('Fitting transitions...')
     for transition in tqdm(transitions_list):
         for order_num in transition.ordersToFitIn:
-            total_transitions += 1
             if args.verbose:
                 tqdm.write(f'Attempting fit of {transition} in order'
                            f' {order_num}')
@@ -276,6 +276,7 @@ for obs_path in tqdm(files_to_work_on) if\
 
             # Assuming the fit didn't fail, continue on:
             fits_list.append(fit)
+            fit_transitions += 1
             if args.create_plots:
                 # Plot the fit.
                 fit.plotFit(plot_closeup, plot_context)
@@ -286,8 +287,10 @@ for obs_path in tqdm(files_to_work_on) if\
 
     # Pickle the list of fits, then compress them to save space before writing
     # them out.
-    tqdm.write('Fit {}/{} transitions in {}.'.format(len(fits_list),
-               total_transitions, obs_path.name))
+    info_msg = (f'Fit {fit_transitions}/{len(fits_list)} transitions'
+                f' in {obs_path.name}.')
+    tqdm.write(info_msg)
+    logger.info(info_msg)
     outfile = output_pickle_dir / '{}_gaussian_fits.lzma'.format(
             obs._filename.stem)
     if not outfile.parent.exists():
