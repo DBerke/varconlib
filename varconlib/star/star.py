@@ -61,9 +61,18 @@ class Star(object):
         A list of `transition_pair.TransitionPair` objects. If `star_dir`
         is given, will be passed to `initializeFromFits`, otherwise no
         effect.
-    load_data : bool, Default : True
+    load_data : bool or None, Default : None
         Controls whether to attempt to read a file containing data for the
-        star.
+        star or create it from scratch from observations in the `star_dir`.
+        If *False*, the Star will be created from observations, regardless of
+        whether an HDF5 file already exists.
+        If *True*, the Star will *only* be created from an HDF5 file if one
+        exists, and will fail if one does not (even if it could have been
+        created from the observations in the directory).
+        If *None*, then the code will first attempt to create a Star using a
+        previously-created HDF5 file, and if one does not exist will attempt to
+        create one using observations. This is essentially the 'pragmatic'
+        option, and is also the default behavior.
 
     Attributes
     ----------
@@ -142,7 +151,7 @@ class Star(object):
 
     def __init__(self, name, star_dir=None, suffix='int',
                  transitions_list=None, pairs_list=None,
-                 load_data=True):
+                 load_data=None):
         """Instantiate a `star.Star` object.
 
         """
@@ -175,15 +184,20 @@ class Star(object):
 
         if (star_dir is not None):
             star_dir = Path(star_dir)
-            h5filename = star_dir / f'{name}_data.hdf5'
-            if load_data and h5filename.exists():
-                self.constructFromHDF5(h5filename)
-            else:
+            hdf5file = star_dir / f'{name}_data.hdf5'
+            if load_data is False or\
+                    (load_data is None and not hdf5file.exists()):
                 self.constructFromDir(star_dir, suffix,
                                       pairs_list=pairs_list,
                                       transitions_list=transitions_list)
                 self.getPairSeparations()
-                self.dumpDataToDisk(h5filename)
+                self.dumpDataToDisk(hdf5file)
+            elif (load_data is True or load_data is None)\
+                    and hdf5file.exists():
+                self.constructFromHDF5(hdf5file)
+            else:
+                raise FileNotFoundError('No HDF5 file found for'
+                                        f' {hdf5file}.')
 
         # Figure out when the observations for the star were taken, and set the
         # appropriate flags.
