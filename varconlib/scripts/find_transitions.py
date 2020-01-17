@@ -370,3 +370,6 @@ for transition in tqdm(transitions_list):
             # If the file already exists, linking will fail with an error.
             if not dest_name.exists():
                 os.link(file_to_link, dest_name)
+
+tqdm.write('-' * 30)
+tqdm.write(f'Finished analyzing {args.object_name}.')
