@@ -250,14 +250,16 @@ class Star(object):
 
             with lzma.open(pickle_file, 'rb') as f:
                 fits_list = pickle.loads(f.read())
-
             # Save the observation date.
             # ??? Maybe save as datetime objects rather than strings?
-            self._obs_date_bidict[fits_list[0].dateObs.isoformat(
-                               timespec='milliseconds')] = obs_num
-            # Save the BERV and airmass.
-            self.bervArray[obs_num] = fits_list[0].BERV.to(u.km/u.s).value
-            self.airmassArray[obs_num] = fits_list[0].airmass
+            for fit in fits_list:
+                if fit is not None:
+                    self._obs_date_bidict[fit.dateObs.isoformat(
+                                          timespec='milliseconds')] = obs_num
+                    # Save the BERV and airmass.
+                    self.bervArray[obs_num] = fit.BERV.to(u.km/u.s).value
+                    self.airmassArray[obs_num] = fit.airmass
+                    break
 
             # Iterate through all the fits in the pickled list and save their
             # values only if the fit was 'good' (i.e., a mean value exists and
