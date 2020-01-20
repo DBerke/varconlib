@@ -620,12 +620,12 @@ def create_pair_offset_plots(plot_dir):
             fitted_pairs = []
             date_obs = []
             for pair_dict in master_star_dict.values():
-                try:
+                if pair_dict[pair_label] is not None:
                     # Grab the associated pair from each observation.
                     fitted_pairs.append(pair_dict[pair_label])
                     # Grab the observation date.
                     date_obs.append(pair_dict[pair_label][0].dateObs)
-                except KeyError:
+                else:
                     # If a particular pair isn't available, just continue.
                     continue
 
@@ -1132,7 +1132,19 @@ if __name__ == '__main__':
 
             # Set up a dictionary to map fits in this observation to
             # transitions:
-            fits_dict = {fit.label: fit for fit in fits_list}
+            fit_labels = []
+            for transition in transitions_list:
+                for order_num in transition.ordersToFitIn:
+                    fit_labels.append(f'{transition.label}_{order_num}')
+            fits_dict = {}
+            for fit, label in zip(fits_list, fit_labels):
+                if fit is not None:
+                    assert fit.label == label, f'{fit.label} does not match'\
+                                                'generated label: {label}'
+                    fits_dict[label] = fit
+                else:
+                    fits_dict[label] = None
+#            fits_dict = {fit.label: fit for fit in fits_list}
             master_fits_list.append(fits_dict)
 
             # This can be used to remake plots for individual fits without
@@ -1157,10 +1169,16 @@ if __name__ == '__main__':
                             tqdm.write('Creating plots at:')
                             tqdm.write(str(plot_closeup))
                             tqdm.write(str(plot_context))
-                        fits_dict['_'.join((transition.label,
-                                            str(order_num)))].plotFit(
-                                                                plot_closeup,
-                                                                plot_context)
+                        tr_label = f'{transition.label}_{order_num}'
+                        if fits_dict[tr_label] is not None:
+                            fits_dict[tr_label].plotFit(plot_closeup,
+                                                        plot_context)
+                        else:
+                            err_msg = f'The fit for {tr_label} failed for'\
+                                      f' observation {obs_name}, and'\
+                                      ' will need to be re-reduced to be'\
+                                      ' created.'
+                            tqdm.write(err_msg)
 
             pairs_dict = {}
             separations_list = [obs_name, fits_list[0].dateObs.
@@ -1171,33 +1189,41 @@ if __name__ == '__main__':
                 for order_num in pair.ordersToMeasureIn:
                     pair_label = '_'.join((pair.label, str(order_num)))
                     column_names.extend([pair_label, pair_label + '_err'])
-                    try:
-                        fits_pair = [fits_dict['_'.join((
-                                            pair._higherEnergyTransition.
-                                            label, str(order_num)))],
-                                     fits_dict['_'.join((
-                                            pair._lowerEnergyTransition.
-                                            label, str(order_num)))]]
-                    except KeyError:
-                        # Measurement of one or the other transition doesn't
+                    high_E_label = '_'.join((pair._higherEnergyTransition.
+                                            label, str(order_num)))
+                    low_E_label = '_'.join((pair._lowerEnergyTransition.
+                                            label, str(order_num)))
+
+                    # Check that fits for both transitions exist.
+                    if fits_dict[high_E_label] and fits_dict[low_E_label]:
+                        fits_pair = [fits_dict[high_E_label],
+                                     fits_dict[low_E_label]]
+
+                        assert fits_pair[0].order == fits_pair[1].order,\
+                            f"Orders don't match for {fits_pair}"
+                        if np.isnan(fits_pair[0].meanErrVel) or \
+                           np.isnan(fits_pair[1].meanErrVel):
+                            # Similar to above, fill in list with placeholder
+                            # values.
+                            if args.verbose:
+                                tqdm.write(f'{pair.label} in {obs_name} has a'
+                                           ' NaN velocity offset!')
+                                tqdm.write(str(fits_pair[0].meanErrVel))
+                                tqdm.write(str(fits_pair[1].meanErrVel))
+                            separations_list.extend(['NaN', ' NaN'])
+                            pairs_dict[pair_label] = None
+                            continue
+
+                    else:
+                        # Measurement of one or both transition doesn't
                         # exist, so skip it (but fill in the list to prevent
                         # getting out of sync)
                         separations_list.extend(['N/A', ' N/A'])
+                        pairs_dict[pair_label] = None
                         continue
 
-                    assert fits_pair[0].order == fits_pair[1].order,\
-                        f"Orders don't match for {fits_pair}"
-                    if np.isnan(fits_pair[0].meanErrVel) or \
-                       np.isnan(fits_pair[1].meanErrVel):
-                        # Similar to above, fill in list with placeholder
-                        # value.
-                        tqdm.write(f'{pair.label} in {obs_name} has a NaN'
-                                   ' velocity offset!')
-                        tqdm.write(str(fits_pair[0].meanErrVel))
-                        tqdm.write(str(fits_pair[1].meanErrVel))
-                        separations_list.extend(['NaN', ' NaN'])
-                        continue
-
+                    # If both transitions have non-NaN values, add the velocity
+                    # separation and error:
                     pairs_dict[pair_label] = fits_pair
 
                     velocity_separation = wave2vel(fits_pair[0].mean,
