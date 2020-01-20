@@ -132,7 +132,7 @@ logger = logging.getLogger('find_transitions')
 logger.setLevel(logging.INFO)
 
 log_file = data_dir / f'{args.object_name}.log'
-file_handler = logging.FileHandler(log_file, mode='a', delay=True)
+file_handler = logging.FileHandler(log_file, mode='w', delay=False)
 file_handler.setLevel(logging.INFO)
 logger.addHandler(file_handler)
 
