@@ -16,6 +16,7 @@ import pytest
 import unyt as u
 
 import varconlib as vcl
+from varconlib.exceptions import StarDirectoryNotFoundError
 from varconlib.star import Star
 
 # Tell pytest to ignore SerializedWarnings that pop up from storing bidicts
@@ -52,7 +53,7 @@ class TestStar(object):
                     load_data=False)
 
     def testNonExistentDir(self):
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(StarDirectoryNotFoundError):
             Star('HD117618', star_dir='/nonsensical_dir_that_should_not_exist',
                  suffix='int')
 

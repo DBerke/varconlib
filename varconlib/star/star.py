@@ -27,6 +27,9 @@ from tqdm import tqdm
 import unyt as u
 
 import varconlib as vcl
+from varconlib.exceptions import (HDF5FileNotFoundError,
+                                  PickleFilesNotFoundError,
+                                  StarDirectoryNotFoundError)
 from varconlib.miscellaneous import wavelength2velocity as wave2vel
 
 
@@ -196,8 +199,8 @@ class Star(object):
                     and hdf5file.exists():
                 self.constructFromHDF5(hdf5file)
             else:
-                raise FileNotFoundError('No HDF5 file found for'
-                                        f' {hdf5file}.')
+                raise HDF5FileNotFoundError('No HDF5 file found for'
+                                            f' {hdf5file}.')
 
         # Figure out when the observations for the star were taken, and set the
         # appropriate flags.
@@ -242,15 +245,16 @@ class Star(object):
 
         # Check that the given directory exists.
         if not star_dir.exists():
-            raise FileNotFoundError('The given directory does not exist:'
-                                    f'{star_dir}')
+            raise StarDirectoryNotFoundError('The given directory does not'
+                                             f' exist: {star_dir}')
 
         # Get a list of pickled fit results in the given directory.
         search_str = str(star_dir) + '/*/pickles_{}/*fits.lzma'.format(suffix)
         pickle_files = [Path(path) for path in glob(search_str)]
 
-        assert len(pickle_files) > 0, FileNotFoundError('No pickled fits found'
-                                                        f' in {star_dir}.')
+        if len(pickle_files) == 0:
+            raise PickleFilesNotFoundError('No pickled fits found'
+                                           f' in {star_dir}.')
 
         means_list = []
         errors_list = []
