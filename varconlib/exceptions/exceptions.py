@@ -15,7 +15,7 @@ class Error(Exception):
     pass
 
 
-# Errors relating to observation files.
+# Errors relating to obs2d.HARPSFile2D and HARPSFile2DScience objects.
 class ObservationError(Error):
     """Errors relating to importing or working with observation files."""
 
@@ -66,7 +66,7 @@ class WavelengthNotFoundInArrayError(ObservationError):
         self.message = message
 
 
-# Errors relating to attempting to fit absorption features.
+# Errors relating to model_fits.GaussianFit objects.
 class FeatureFitError(Error):
     """Errors relating to fitting absorption features."""
 
@@ -86,7 +86,7 @@ class PositiveAmplitudeError(FeatureFitError):
         self.message = message
 
 
-# Errors relating to Transition objects.
+# Errors relating to transition.Transition objects.
 class TransitionLineError(Error):
     """Errors relating to Transition objects."""
 
@@ -121,7 +121,7 @@ class BadElementInputError(TransitionLineError):
         self.message = message
 
 
-# Errors relating to TransitionPair objects.
+# Errors relating to transition_pair.TransitionPair objects.
 class TransitionPairError(Error):
     """Errors relating to TransitionPair objects."""
 
@@ -131,6 +131,43 @@ class TransitionPairError(Error):
 class SameWavelengthsError(TransitionPairError):
     """Exception to raise if TransitionPair is given two transitions with the
     same wavelength.
+
+    """
+
+    def __init__(self, message=None):
+        self.message = message
+
+
+# Errors relating to star.Star objects.
+class StarError(Error):
+    """Errors relating to Star objects."""
+
+    pass
+
+
+class HDF5FileNotFoundError(Error):
+    """Error to raise if an HDF5 file with saved data is not found when
+    attempting to create a star using one.
+
+    """
+
+    def __init__(self, message=None):
+        self.message = message
+
+
+class PickleFilesNotFoundError(Error):
+    """Error to raise if no pickled fits files are found when attempting to
+    create a star using them.
+
+    """
+
+    def __init__(self, message=None):
+        self.message = message
+
+
+class StarDirectoryNotFoundError(Error):
+    """Error to raise if the directory given to create a star from does not
+    exist.
 
     """
 
