@@ -21,46 +21,90 @@ from tqdm import tqdm
 import unyt as u
 
 import varconlib as vcl
+from varconlib.exceptions import HDF5FileNotFoundError
 from varconlib.star import Star
+
+
+def get_star(star_name):
+    """Return a varconlib.star.Star object based on its name.
+
+    Parameters
+    ----------
+    star_name : str
+        A string representing the name of the directory within the main given
+        directory where a star's observations can be found.
+
+    Returns
+    -------
+    `star.Star`
+        A Star object from the directory. Note that this will only use already-
+        existing stars, it will not create ones which do not already exist from
+        their observations.
+
+    """
+    star_path = main_dir / star_name
+    assert star_path.exists(), FileNotFoundError('Star directory'
+                                                 f' {star_path}'
+                                                 ' not found.')
+    try:
+        tqdm.write(f'Getting star {star_path.stem}.')
+        return Star(star_path.stem, star_path, load_data=True)
+    except IndexError:
+        tqdm.write(f'Excluded {star_path.stem}.')
+    except HDF5FileNotFoundError:
+        tqdm.write(f'No HDF5 file for {star_path.stem}.')
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Create a plot of the'
-                                     'transition offset pattern for multiple'
-                                     'stars.')
+                                     ' transition offset pattern for multiple'
+                                     ' stars.')
     parser.add_argument('main_dir', action='store', type=str, nargs=1,
                         help='The main directory within which to find'
                         ' additional star directories.')
     parser.add_argument('star_names', action='store', type=str, nargs='+',
                         help='The names of stars (directories) containing the'
                         ' stars to be used in the plot.')
+    parser.add_argument('--reference-star', action='store', type=str,
+                        metavar='star_name',
+                        help='The star to be used as a reference when using'
+                        ' the --compare-stellar-parameters flag (unnecessary'
+                        ' otherwise).')
 
     parser.add_argument('--compare-offset-patterns', action='store_true',
                         help='Create a plot of all the transition offset'
-                        'patterns for the given stars.')
+                        ' patterns for the given stars.')
 
     parser.add_argument('--compare-stellar-parameters', action='store_true',
                         help='Create plots for each pair of transitions'
-                        'with stars sorted by parameters such as temperature'
-                        'or metallicity.')
+                        ' with stars sorted by parameters such as temperature'
+                        ' or metallicity.')
 
     args = parser.parse_args()
 
     main_dir = Path(args.main_dir[0])
-    assert main_dir.exists(), FileNotFoundError(f'{main_dir} does not exist!')
+    if not main_dir.exists():
+        raise FileNotFoundError(f'{main_dir} does not exist!')
 
     tqdm.write(f'Looking in main directory {main_dir}')
 
+    if args.reference_star:
+        ref_star = get_star(args.reference_star)
+        tqdm.write(f'Reference star is {ref_star.name}.')
+
     star_list = []
     for star_dir in tqdm(args.star_names):
-        star_path = main_dir / star_dir
-        assert star_path.exists(), FileNotFoundError('Star directory'
-                                                     f' {star_path}'
-                                                     ' not found.')
-        try:
-            tqdm.write(f'Getting star {star_path.stem}')
-            star_list.append(Star(star_path.stem, star_path))
-        except IndexError:
-            tqdm.write(f'Excluded {star_path.stem}')
+        if args.reference_star:
+            star = get_star(star_dir)
+            if star is None:
+                pass
+            elif star.name != ref_star.name:
+                star_list.append(star)
+            else:
+                tqdm.write(f'Found reference star! {star.name}')
+        else:
+            star_list.append(get_star(star_dir))
+    tqdm.write(f'Found {len(star_list)} usable stars in total.')
 
     if args.compare_offset_patterns:
 
@@ -170,8 +214,8 @@ if __name__ == '__main__':
 
             return (weighted_mean, weighted_error, np.std(means))
 
-        def plot_data_point(axis, star, attr, mean, err, std,
-                            color):
+        def plot_data_point(axis, star, attr, mean, err, std, era=None,
+                            ref=False):
             """Plot a data point for a star.
 
             Parameters
@@ -193,8 +237,15 @@ if __name__ == '__main__':
             std : `unyt.unyt_quantity`
                 The standard deviation of the distribution of pair separation
                 values for this star.
-            color : str
-                A `matplotlib`-recognized color string to color the point.
+            era : string, ['pre', 'post'], Default : None
+                Whether the time period of the plot is pre- or post-fiber
+                change. Only allowed values are 'pre' and 'post'. Controls
+                color of the points. If `ref` is *True*, the value of `era` is
+                ignored, and can be left unspecified, otherwise it needs a
+                value to be given.
+            ref : bool, Default : False
+                Whether this data point is for the reference star. If *True*,
+                will use a special separate color scheme.
 
             Returns
             -------
@@ -202,27 +253,48 @@ if __name__ == '__main__':
 
             """
 
+            if ref:
+                params = style_ref
+            elif era == 'pre':
+                params = style_pre
+            elif era == 'post':
+                params = style_post
+            else:
+                raise ValueError("Keyword 'era' received an unknown value"
+                                 f" (valid values are 'pre' & 'post'): {era}")
+
             axis.errorbar(x=getattr(star, attr), y=mean,
                           yerr=std,
-                          marker='', capsize=4, color=color,
-                          ecolor=color, elinewidth=2,
+                          marker='', capsize=4, color=params['color'],
+                          ecolor=params['ecolor_thin'], elinewidth=2,
                           capthick=1.5)
             axis.errorbar(x=getattr(star, attr), y=mean,
                           yerr=err,
-                          marker='o', capsize=7, color=color,
-                          ecolor=color, elinewidth=4,
+                          marker='o', capsize=7, color=params['color'],
+                          ecolor=params['ecolor_thick'], elinewidth=4,
                           capthick=2.5)
-
-        plots_folder = main_dir / "star_comparisons(pairs)"
-        if not plots_folder.exists():
-            import os
-            os.mkdir(plots_folder)
 
         tqdm.write('Unpickling pairs list...')
         with open(vcl.final_pair_selection_file, 'r+b') as f:
             pairs_list = pickle.load(f)
 
-        point_color = 'DodgerBlue'
+        plots_folder = main_dir / "star_comparisons(pairs)"
+        metallicity_folder = plots_folder / 'metallicity'
+        temperature_folder = plots_folder / 'temperature'
+        for folder in (plots_folder, metallicity_folder, temperature_folder):
+            if not folder.exists():
+                import os
+                os.mkdir(folder)
+
+        style_pre = {'color': 'DodgerBlue',
+                     'ecolor_thick': 'CornFlowerBlue',
+                     'ecolor_thin': 'LightSkyBlue'}
+        style_post = {'color': 'Chocolate',
+                      'ecolor_thick': 'DarkOrange',
+                      'ecolor_thin': 'BurlyWood'}
+        style_ref = {'color': 'DarkGreen',
+                     'ecolor_thick': 'ForestGreen',
+                     'ecolor_thin': 'DarkSeaGreen'}
 
         star_labels, metal_values, temp_values = [], [], []
 
@@ -233,6 +305,8 @@ if __name__ == '__main__':
 
         tqdm.write('Creating plots for each pair...')
         for pair in tqdm(pairs_list):
+            blend1 = pair._higherEnergyTransition.blendedness
+            blend2 = pair._lowerEnergyTransition.blendedness
             for order_num in pair.ordersToMeasureIn:
                 pair_label = '_'.join([pair.label, str(order_num)])
 
@@ -242,19 +316,35 @@ if __name__ == '__main__':
 
                 temp_ax1 = temp_fig.add_subplot(2, 1, 1)
                 temp_ax2 = temp_fig.add_subplot(2, 1, 2,
-                                                sharex=temp_ax1)
+                                                sharex=temp_ax1,
+                                                sharey=temp_ax1)
+                temp_ax1.set_ylim(bottom=-600 * u.m / u.s,
+                                  top=600 * u.m / u.s)
+                temp_ax1.set_xlim(left=5000 * u.K,
+                                  right=6200 * u.K)
 
                 mtl_ax1 = metal_fig.add_subplot(2, 1, 1)
                 mtl_ax2 = metal_fig.add_subplot(2, 1, 2,
-                                                sharex=mtl_ax1)
+                                                sharex=mtl_ax1,
+                                                sharey=mtl_ax1)
+                mtl_ax1.set_ylim(bottom=-600 * u.m / u.s,
+                                 top=600 * u.m / u.s)
+                mtl_ax1.set_xlim(left=-0.75,
+                                 right=0.45)
 
                 # Axis styles for all subplots.
                 for ax in (temp_ax1, temp_ax2, mtl_ax1, mtl_ax2):
+                    ax.yaxis.set_major_locator(ticker.MultipleLocator(
+                                               base=100))
+                    ax.yaxis.set_minor_locator(ticker.MultipleLocator(
+                                               base=50))
                     ax.axhline(y=0, color='Black', linestyle='--')
                     ax.yaxis.grid(which='major', color='Gray',
-                                  linestyle=':', alpha=0.8)
+                                  linestyle='--', alpha=0.85)
                     ax.xaxis.grid(which='major', color='Gray',
-                                  linestyle=':', alpha=0.8)
+                                  linestyle='--', alpha=0.85)
+                    ax.yaxis.grid(which='minor', color='Gray',
+                                  linestyle=':', alpha=0.75)
 
                 for ax in (temp_ax1, temp_ax2):
                     ax.set_xlabel('Temperature (K)')
@@ -266,7 +356,7 @@ if __name__ == '__main__':
                 for ax in (temp_ax2, mtl_ax2):
                     ax.set_ylabel('Post-fiber change offset (m/s)')
 
-                ref_star = star_list[0]
+                # Get the reference star properties.
                 pre_slice = slice(None, ref_star.fiberSplitIndex)
                 post_slice = slice(ref_star.fiberSplitIndex, None)
                 ref_mean_pre, ref_err_pre, ref_std_pre = get_data_point(
@@ -274,17 +364,13 @@ if __name__ == '__main__':
                 ref_mean_post, ref_err_post, ref_std_post = get_data_point(
                     ref_star, post_slice, pair_label)
 
-                plot_data_point(temp_ax1, ref_star, "temperature",
-                                0, ref_err_pre, ref_std_pre, color='Green')
-                plot_data_point(temp_ax2, ref_star, "temperature",
-                                0, ref_err_post, ref_std_post, color='Green')
-                plot_data_point(mtl_ax1, ref_star, "metallicity",
-                                0, ref_err_pre, ref_std_pre, color='Green')
-                plot_data_point(mtl_ax2, ref_star, "metallicity",
-                                0, ref_err_post, ref_std_post, color='Green')
+                for ax in (temp_ax1, temp_ax2, mtl_ax1, mtl_ax2):
+                    ax.annotate(f'Blendedness: ({blend1}, {blend2})',
+                                (0.01, 0.95),
+                                xycoords='axes fraction')
 
-                for star in tqdm(star_list[1:]):
-
+                # Plot the data points for each star:
+                for star in tqdm(star_list):
                     pre_slice = slice(None, star.fiberSplitIndex)
                     post_slice = slice(star.fiberSplitIndex, None)
 
@@ -296,10 +382,10 @@ if __name__ == '__main__':
 
                         plot_data_point(temp_ax1, star, "temperature",
                                         offset, star_err_pre, star_std_pre,
-                                        point_color)
+                                        era='pre')
                         plot_data_point(mtl_ax1, star, "metallicity",
                                         offset, star_err_pre, star_std_pre,
-                                        point_color)
+                                        era='pre')
 
                     if star.hasObsPost:
                         star_mean_post, star_err_post, star_std_post =\
@@ -308,11 +394,23 @@ if __name__ == '__main__':
                         offset = ref_mean_post - star_mean_post
 
                         plot_data_point(temp_ax2, star, "temperature",
-                                        offset, star_err_post, star_std_post,
-                                        point_color)
+                                        offset, star_err_post,
+                                        star_std_post,
+                                        era='post')
                         plot_data_point(mtl_ax2, star, "metallicity",
-                                        offset, star_err_pre, star_std_post,
-                                        point_color)
+                                        offset, star_err_pre,
+                                        star_std_post,
+                                        era='post')
+
+                # Plot the reference star points last so they're on top.
+                plot_data_point(temp_ax1, ref_star, "temperature",
+                                0, ref_err_pre, ref_std_pre, ref=True)
+                plot_data_point(temp_ax2, ref_star, "temperature",
+                                0, ref_err_post, ref_std_post, ref=True)
+                plot_data_point(mtl_ax1, ref_star, "metallicity",
+                                0, ref_err_pre, ref_std_pre, ref=True)
+                plot_data_point(mtl_ax2, ref_star, "metallicity",
+                                0, ref_err_post, ref_std_post, ref=True)
 
 #            temp_ax1.set_xticks(temp_values)
 #            temp_ax1.set_xticklabels(star_labels, horizontalalignment='right',
@@ -326,8 +424,10 @@ if __name__ == '__main__':
 #            mtl_ax2.set_xticks(metal_values)
 #            mtl_ax2.set_xticklabels(star_labels, horizontalalignment='right',
 #                                    rotation='vertical')
-            temperature_file = plots_folder / f"Temperature_{pair_label}.png"
-            metallicity_file = plots_folder / f"Metallicity_{pair_label}.png"
+            temperature_file = temperature_folder /\
+                f"Temperature_{pair_label}.png"
+            metallicity_file = metallicity_folder /\
+                f"Metallicity_{pair_label}.png"
 
             temp_fig.savefig(str(temperature_file))
             metal_fig.savefig(str(metallicity_file))
