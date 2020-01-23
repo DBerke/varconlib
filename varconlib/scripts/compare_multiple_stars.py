@@ -47,12 +47,14 @@ def get_star(star_name):
                                                  f' {star_path}'
                                                  ' not found.')
     try:
-        tqdm.write(f'Getting star {star_path.stem}.')
+        vprint(f'Getting star {star_path.stem}.')
         return Star(star_path.stem, star_path, load_data=True)
     except IndexError:
-        tqdm.write(f'Excluded {star_path.stem}.')
+        vprint(f'Excluded {star_path.stem}.')
+        pass
     except HDF5FileNotFoundError:
-        tqdm.write(f'No HDF5 file for {star_path.stem}.')
+        vprint(f'No HDF5 file for {star_path.stem}.')
+        pass
 
 
 if __name__ == '__main__':
@@ -79,8 +81,13 @@ if __name__ == '__main__':
                         help='Create plots for each pair of transitions'
                         ' with stars sorted by parameters such as temperature'
                         ' or metallicity.')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help="Print more output about what's happening.")
 
     args = parser.parse_args()
+
+    # Define vprint to only print when the verbose flag is given.
+    vprint = vcl.verbose_print(args.verbose)
 
     main_dir = Path(args.main_dir[0])
     if not main_dir.exists():
@@ -93,6 +100,7 @@ if __name__ == '__main__':
         tqdm.write(f'Reference star is {ref_star.name}.')
 
     star_list = []
+    tqdm.write('Collecting stars...')
     for star_dir in tqdm(args.star_names):
         if args.reference_star:
             star = get_star(star_dir)
@@ -101,7 +109,7 @@ if __name__ == '__main__':
             elif star.name != ref_star.name:
                 star_list.append(star)
             else:
-                tqdm.write(f'Found reference star! {star.name}')
+                vprint(f'Found reference star! {star.name}')
         else:
             star_list.append(get_star(star_dir))
     tqdm.write(f'Found {len(star_list)} usable stars in total.')
@@ -271,20 +279,18 @@ if __name__ == '__main__':
             axis.errorbar(x=getattr(star, attr), y=mean,
                           yerr=err,
                           marker='o', capsize=7, color=params['color'],
-                          ecolor=params['ecolor_thick'], elinewidth=4,
+                          ecolor=params['ecolor_thick'], elinewidth=3.6,
                           capthick=2.5)
 
+        # -----------------
         tqdm.write('Unpickling pairs list...')
         with open(vcl.final_pair_selection_file, 'r+b') as f:
             pairs_list = pickle.load(f)
 
-        plots_folder = main_dir / "star_comparisons(pairs)"
-        metallicity_folder = plots_folder / 'metallicity'
-        temperature_folder = plots_folder / 'temperature'
-        for folder in (plots_folder, metallicity_folder, temperature_folder):
-            if not folder.exists():
-                import os
-                os.mkdir(folder)
+        plots_folder = main_dir / "star_comparisons/pairs"
+        if not plots_folder.exists():
+            import os
+            os.makedirs(plots_folder)
 
         style_pre = {'color': 'DodgerBlue',
                      'ecolor_thick': 'CornFlowerBlue',
@@ -296,13 +302,6 @@ if __name__ == '__main__':
                      'ecolor_thick': 'ForestGreen',
                      'ecolor_thin': 'DarkSeaGreen'}
 
-        star_labels, metal_values, temp_values = [], [], []
-
-        for star in tqdm(star_list):
-            star_labels.append(star.name)
-            metal_values.append(star.metallicity)
-            temp_values.append(star.temperature)
-
         tqdm.write('Creating plots for each pair...')
         for pair in tqdm(pairs_list):
             blend1 = pair._higherEnergyTransition.blendedness
@@ -311,33 +310,33 @@ if __name__ == '__main__':
                 pair_label = '_'.join([pair.label, str(order_num)])
 
                 # Create the figure and set it up here.
-                temp_fig = plt.figure(figsize=(11, 10), tight_layout=True)
-                metal_fig = plt.figure(figsize=(11, 10), tight_layout=True)
+                comp_fig = plt.figure(figsize=(14, 10), tight_layout=True)
+                gs = GridSpec(ncols=2, nrows=2, figure=comp_fig)
 
-                temp_ax1 = temp_fig.add_subplot(2, 1, 1)
-                temp_ax2 = temp_fig.add_subplot(2, 1, 2,
+                temp_ax1 = comp_fig.add_subplot(gs[0, 0])
+                temp_ax2 = comp_fig.add_subplot(gs[1, 0],
                                                 sharex=temp_ax1,
                                                 sharey=temp_ax1)
-                temp_ax1.set_ylim(bottom=-600 * u.m / u.s,
-                                  top=600 * u.m / u.s)
-                temp_ax1.set_xlim(left=5000 * u.K,
+                mtl_ax1 = comp_fig.add_subplot(gs[0, 1],
+                                               sharey=temp_ax1)
+                mtl_ax2 = comp_fig.add_subplot(gs[1, 1],
+                                               sharex=mtl_ax1,
+                                               sharey=mtl_ax1)
+                # Set the plot limits here. The y-limits for temp_ax1 are
+                # used for all subplots.
+                temp_ax1.set_ylim(bottom=-300 * u.m / u.s,
+                                  top=300 * u.m / u.s)
+                temp_ax1.set_xlim(left=5300 * u.K,
                                   right=6200 * u.K)
-
-                mtl_ax1 = metal_fig.add_subplot(2, 1, 1)
-                mtl_ax2 = metal_fig.add_subplot(2, 1, 2,
-                                                sharex=mtl_ax1,
-                                                sharey=mtl_ax1)
-                mtl_ax1.set_ylim(bottom=-600 * u.m / u.s,
-                                 top=600 * u.m / u.s)
                 mtl_ax1.set_xlim(left=-0.75,
-                                 right=0.45)
+                                 right=0.4)
 
                 # Axis styles for all subplots.
                 for ax in (temp_ax1, temp_ax2, mtl_ax1, mtl_ax2):
                     ax.yaxis.set_major_locator(ticker.MultipleLocator(
-                                               base=100))
-                    ax.yaxis.set_minor_locator(ticker.MultipleLocator(
                                                base=50))
+                    ax.yaxis.set_minor_locator(ticker.MultipleLocator(
+                                               base=25))
                     ax.axhline(y=0, color='Black', linestyle='--')
                     ax.yaxis.grid(which='major', color='Gray',
                                   linestyle='--', alpha=0.85)
@@ -412,23 +411,7 @@ if __name__ == '__main__':
                 plot_data_point(mtl_ax2, ref_star, "metallicity",
                                 0, ref_err_post, ref_std_post, ref=True)
 
-#            temp_ax1.set_xticks(temp_values)
-#            temp_ax1.set_xticklabels(star_labels, horizontalalignment='right',
-#                                     rotation='vertical')
-#            temp_ax2.set_xticks(temp_values)
-#            temp_ax2.set_xticklabels(star_labels, horizontalalignment='right',
-#                                     rotation='vertical')
-#            mtl_ax1.set_xticks(metal_values)
-#            mtl_ax1.set_xticklabels(star_labels, horizontalalignment='right',
-#                                    rotation='vertical')
-#            mtl_ax2.set_xticks(metal_values)
-#            mtl_ax2.set_xticklabels(star_labels, horizontalalignment='right',
-#                                    rotation='vertical')
-            temperature_file = temperature_folder /\
-                f"Temperature_{pair_label}.png"
-            metallicity_file = metallicity_folder /\
-                f"Metallicity_{pair_label}.png"
+            file_name = plots_folder / f"{pair_label}.png"
 
-            temp_fig.savefig(str(temperature_file))
-            metal_fig.savefig(str(metallicity_file))
+            comp_fig.savefig(str(file_name))
             plt.close('all')
