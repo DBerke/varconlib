@@ -12,6 +12,7 @@ VarConLib -- the Varying Constants Library
 import configparser
 from pathlib import Path
 
+from tqdm import tqdm
 
 __all__ = ['base_dir', 'data_dir', 'masks_dir', 'pickle_dir',
            'pixel_geom_files_dir', 'final_selection_file',
@@ -45,3 +46,42 @@ config_file = base_dir / 'config/variables.cfg'
 config = configparser.ConfigParser(interpolation=configparser.
                                    ExtendedInterpolation())
 config.read(config_file)
+
+
+def verbose_print(verbosity):
+    """Return a function depending on the value of `verbosity`.
+
+    Function returns a different function depending on whether a script is
+    called with a 'verbose' option or not. It is intended that this function be
+    used to define another function whose behavior fundamentally changes
+    depending on whether a 'verbose' flag is set or not. If it is, the defined
+    function should print its output (though using tqdm.write() in order to
+    not mess up scripts making use of tqdm.tqdm). If not, the function will
+    simply do nothing at all.
+
+    Sample usage:
+        verbose = True
+        vprint = varconlib.verbose_print(verbose)
+    Anything passed to vprint will then be printed to stdout as long as verbose
+    is *True*.
+
+    Parameters
+    ----------
+    verbosity : bool
+        If *True*, returns a lamdba function which passes its input through
+        str() and on to tqdm.write().
+        If *False*, returns a lambda function which simply returns *None*.
+
+    Returns
+    -------
+    function
+        A function which does different things depending on the value of
+        `verbosity`; if *True* it will cast its input to a string, then write
+        it using tqdm.write(), otherwise it will simply return *None* always.
+
+    """
+
+    if verbosity:
+        return lambda x: tqdm.write(str(x))
+    else:
+        return lambda x: None
