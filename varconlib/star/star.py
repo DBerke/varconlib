@@ -249,8 +249,8 @@ class Star(object):
                                              f' exist: {star_dir}')
 
         # Get a list of pickled fit results in the given directory.
-        search_str = str(star_dir) + '/*/pickles_{}/*fits.lzma'.format(suffix)
-        pickle_files = [Path(path) for path in glob(search_str)]
+        search_str = str(star_dir) + f'/HARPS*/pickles_{suffix}/*fits.lzma'
+        pickle_files = [Path(path) for path in sorted(glob(search_str))]
 
         if len(pickle_files) == 0:
             raise PickleFilesNotFoundError('No pickled fits found'
@@ -264,7 +264,7 @@ class Star(object):
         self.airmassArray = np.empty(len(pickle_files))
 
         # For each pickle file:
-        for obs_num, pickle_file in enumerate(tqdm(pickle_files[:])):
+        for obs_num, pickle_file in enumerate(tqdm(pickle_files)):
 
             with lzma.open(pickle_file, 'rb') as f:
                 fits_list = pickle.loads(f.read())
