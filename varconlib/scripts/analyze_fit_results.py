@@ -78,7 +78,7 @@ def link_fit_plots(transition_plots_dir):
                 '/HARPS*/plots_{}/{}/*{}*.png'.format(args.suffix,
                                                       plot_type,
                                                       wavelength_str)
-            tqdm.write(search_str)
+            vprint(search_str)
 
             files_to_link = [Path(path) for path in glob(search_str)]
             for file_to_link in files_to_link:
@@ -112,9 +112,10 @@ def create_transition_offset_plots(plots_dir):
                                    star.fitMeansArray[time_slice,
                                                       column_index].value),
                                    weights=(1/errors**2))
-        if args.verbose:
-            tqdm.write(f'Mean for {star.t_label(column_index)} is'
-                       ' {mean_measured * u.angstrom:.4f}')
+
+        vprint(f'Mean for {star.t_label(column_index)} is'
+               ' {mean_measured * u.angstrom:.4f}')
+
         w_mean, weight_sum = np.average(offsets,
                                         weights=(1/errors**2),
                                         returned=True)
@@ -147,10 +148,6 @@ def create_transition_offset_plots(plots_dir):
         indices = range(len(offsets))
         offset_ax.errorbar(x=indices, y=offsets, yerr=errors,
                            **params)
-
-#        offset_ax.legend(loc='lower right', markerscale=0.5, fontsize='small',
-#                         framealpha=0.4,
-#                         bbox_to_anchor=(0., 1.04, 1., 1.04))
 
         # Plot the chi-squared values for the fits.
         chi_ax.set_xlabel('Index number')
@@ -417,9 +414,8 @@ def create_offset_plot(star):
         mean = np.nanmean(offsets)
         mean_centered_offsets = offsets - mean
         weighted_mean = np.average(offsets, weights=1/stddevs**2)
-        if args.verbose:
-            tqdm.write(f'weighted_mean = {weighted_mean:.3f}')
-            tqdm.write(f'mean = {np.mean(offsets):.3f}')
+        vprint(f'weighted_mean = {weighted_mean:.3f}')
+        vprint(f'mean = {np.mean(offsets):.3f}')
 
         indices = range(len(offsets))
         ax.errorbar(x=indices,
@@ -459,8 +455,7 @@ def create_offset_plot(star):
                                                      style_params_post),
                                                     (pre_slice, post_slice),
                                                     ('pre', 'post')):
-            if args.verbose:
-                tqdm.write(f'Creating "{time_str}" plot.')
+            vprint(f'Creating "{time_str}" plot.')
             layout_plots(time_slice, time_str)
 
         ax1.tick_params(labelbottom=False)
@@ -470,10 +465,12 @@ def create_offset_plot(star):
             params = style_params_post
             time_str = 'post'
             ax = ax2
+            vprint(f'Creating "{time_str}" plot.')
         else:
             params = style_params_pre
             time_str = 'pre'
             ax = ax1
+            vprint(f'Creating "{time_str}" plot.')
         time_slice = slice(None, None)
 
         layout_plots(time_slice, time_str)
@@ -484,6 +481,7 @@ def create_offset_plot(star):
     plt.close(fig)
     # Link the plots to a common directory.
     dest_name = pattern_dir / plot_name.name
+    vprint(f'Saving plot to {dest_name}.')
     if dest_name.exists():
         os.unlink(dest_name)
     os.link(plot_name, dest_name)
@@ -563,9 +561,8 @@ def create_chi_squared_plots():
 def write_csv(column_names):
 
     csv_filename = data_dir / 'pair_separations_{}.csv'.format(data_dir.stem)
-    if args.verbose:
-        tqdm.write(f'Creating CSV file of separations for {data_dir.stem}'
-                   f' at {csv_filename}')
+    vprint(f'Creating CSV file of separations for {data_dir.stem}'
+           f' at {csv_filename}')
 
     assert len(master_star_list[0]) == len(column_names)
 
@@ -586,9 +583,7 @@ def write_csv(column_names):
     csv_fits_dir = data_dir / 'fits_info_csv'
     if not csv_fits_dir.exists():
         os.mkdir(csv_fits_dir)
-    if args.verbose:
-        tqdm.write('Writing information on fits to files in {}'.format(
-                   csv_fits_dir))
+    vprint(f'Writing information on fits to files in {csv_fits_dir}')
     for transition in tqdm(transitions_list):
         csv_filename = csv_fits_dir / '{}_{}.csv'.format(transition.label,
                                                          data_dir.stem)
@@ -615,8 +610,7 @@ def create_pair_offset_plots(plot_dir):
     for pair in tqdm(pairs_list):
         for order_num in pair.ordersToMeasureIn:
             pair_label = '_'.join((pair.label, str(order_num)))
-            if args.verbose:
-                tqdm.write(f'Creating plot for pair {pair_label}')
+            vprint(f'Creating plot for pair {pair_label}')
             fitted_pairs = []
             date_obs = []
             for pair_dict in master_star_dict.values():
@@ -648,9 +642,8 @@ def create_pair_offset_plots(plot_dir):
             weights = 1 / errors ** 2
             weighted_mean = np.average(offsets, weights=weights)
 
-            if args.verbose:
-                tqdm.write(f"Weighted mean for {pair_label} is"
-                           " {weighted_mean:.2f}")
+            vprint(f"Weighted mean for {pair_label} is"
+                   " {weighted_mean:.2f}")
 
             normalized_offsets = offsets - weighted_mean
 #            chi_squared = sum((normalized_offsets / errors) ** 2)
@@ -890,9 +883,8 @@ def create_dir_if_necessary(func):
         directory = func()
 
         if not directory.exists():
-            if args.verbose:
-                tqdm.write(str(directory))
-                tqdm.write('Creating missing directory.')
+            vprint(directory)
+            vprint('Creating missing directory.')
             os.mkdir(directory)
 
         return directory
@@ -1004,6 +996,10 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    # Define vprint to write out messages (using tqdm.write, after having been
+    # string-ified) if the "verbose" flag is passed.
+    vprint = vcl.verbose_print(args.verbose)
+
 #    if args.use_tex or args.create_pair_offset_plots:
 #        plt.rc('text', usetex=True)
 
@@ -1065,7 +1061,7 @@ if __name__ == '__main__':
         if args.recreate_star:
             load_data = False
         else:
-            load_data = True
+            load_data = None
         star = Star(obj_name, data_dir, suffix=args.suffix,
                     load_data=load_data)
 
@@ -1103,9 +1099,8 @@ if __name__ == '__main__':
             or args.create_fit_plots:
 
         # Search for pickle files in the given directory.
-        search_str = str(data_dir) + '/*/pickles_{}/*fits.lzma'.format(args.
-                                                                       suffix)
-        tqdm.write(search_str)
+        search_str = str(data_dir)+f'/HARPS*/pickles_{args.suffix}/*fits.lzma'
+        vprint(f'Searching for pickle files using string: {search_str}')
         pickle_files = [Path(path) for path in glob(search_str)]
 
         # dictionary with entries per observation
@@ -1165,10 +1160,9 @@ if __name__ == '__main__':
                         plot_context = context_dir /\
                             f'{obs_name}_{transition.label}'\
                             f'_{order_num}_context.png'
-                        if args.verbose:
-                            tqdm.write('Creating plots at:')
-                            tqdm.write(str(plot_closeup))
-                            tqdm.write(str(plot_context))
+                        vprint('Creating plots at:')
+                        vprint(plot_closeup)
+                        vprint(plot_context)
                         tr_label = f'{transition.label}_{order_num}'
                         if fits_dict[tr_label] is not None:
                             fits_dict[tr_label].plotFit(plot_closeup,
@@ -1205,11 +1199,10 @@ if __name__ == '__main__':
                            np.isnan(fits_pair[1].meanErrVel):
                             # Similar to above, fill in list with placeholder
                             # values.
-                            if args.verbose:
-                                tqdm.write(f'{pair.label} in {obs_name} has a'
-                                           ' NaN velocity offset!')
-                                tqdm.write(str(fits_pair[0].meanErrVel))
-                                tqdm.write(str(fits_pair[1].meanErrVel))
+                            vprint(f'{pair.label} in {obs_name} has a'
+                                   ' NaN velocity offset!')
+                            vprint(fits_pair[0].meanErrVel)
+                            vprint(fits_pair[1].meanErrVel)
                             separations_list.extend(['NaN', ' NaN'])
                             pairs_dict[pair_label] = None
                             continue
