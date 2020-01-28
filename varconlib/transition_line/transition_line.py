@@ -127,6 +127,10 @@ class Transition(object):
         self._higherJ = None
         self.higherOrbital = None
 
+        # This attribute records which HARPS order(s) to fit this transition
+        # in, and is modified for individual Transitions by other code.
+        self.ordersToFitIn = None
+
     @property
     def lowerJ(self):
         return self._lowerJ

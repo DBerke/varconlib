@@ -45,6 +45,10 @@ class TransitionPair(object):
             msg = 'Tried to make pair with two transitions of same wavelength!'
             raise SameWavelengthsError(msg)
 
+        # This attribute records which HARPS order(s) to measure a pair's
+        # separation in, and is modified by other code for individual pairs.
+        self.ordersToMeasureIn = None
+
     @property
     def velocitySeparation(self):
         if not hasattr(self, '_velocitySeparation'):
