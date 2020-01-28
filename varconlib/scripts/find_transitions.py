@@ -48,6 +48,11 @@ parser.add_argument('object_dir', action='store',
 parser.add_argument('object_name', action='store',
                     help='Name of object to use for storing output.')
 
+parser.add_argument('--output_dir', action='store',
+                    help='Directory in which to store output. Defaults to'
+                    f""" "{vcl.config['PATHS']['output_dir']}" if not"""
+                    ' specified.')
+
 parser.add_argument('--start', type=int, action='store', default=0,
                     help='Start position in the list of observations.')
 parser.add_argument('--end', type=int, action='store', default=None,
@@ -122,9 +127,14 @@ for file in files_to_work_on:
 
 tqdm.write('=' * 41)
 
-output_dir = Path(vcl.config['PATHS']['output_dir'])
+# Set up the output directory.
+if not args.output_dir:
+    output_dir = Path(vcl.config['PATHS']['output_dir'])
+else:
+    output_dir = Path(args.output_dir)
 data_dir = output_dir / args.object_name
 if not data_dir.exists():
+    tqdm.write(f'Creating output directory {data_dir}...')
     os.mkdir(data_dir)
 
 # Set up logging.
