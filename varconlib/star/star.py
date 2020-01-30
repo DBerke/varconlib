@@ -25,6 +25,7 @@ import numpy as np
 import numpy.ma as ma
 from tqdm import tqdm
 import unyt as u
+import unyt.dimensions as dimensions
 
 import varconlib as vcl
 from varconlib.exceptions import (HDF5FileNotFoundError,
@@ -82,8 +83,7 @@ class Star(object):
     fitMeansArray : `unyt.unyt_array`
         A two-dimensional array holding the mean of the fit (in wavelength
         space) for each absorption feature in each observation of the star.
-        Rows correspond to observations, columns to transitions. Units are
-        Å be default.
+        Rows correspond to observations, columns to transitions. Units are Å.
     fitErrorsArray : `unyt.unyt_array`
         A two-diemsional array holding the standard deviation of the measured
         mean of the fit for each absorption feature of each observation of the
@@ -141,7 +141,12 @@ class Star(object):
                         'airmasses': 'airmassArray',
                         '/obs_date_bidict': '_obs_date_bidict',
                         '/transition_bidict': '_transition_bidict',
-                        '/pair_bidict': '_pair_bidict'}
+                        '/pair_bidict': '_pair_bidict',
+                        '/metadata/radial_velocity': 'radialVelocity',
+                        '/metadata/temperature': 'temperature',
+                        '/metadata/metallicity': 'metallicity',
+                        '/metadata/absolute_magnitude': 'absoluteMagnitude',
+                        '/metadata/logG': 'logG'}
 
     # Define some custom namedbidict objects which can be
     DateMap = namedbidict('ObservationDateMap', 'date', 'index')
@@ -179,6 +184,8 @@ class Star(object):
         self._radialVelocity = None
         self._temperature = None
         self._metallicity = None
+        self._absoluteMagnitude = None
+        self._logG = None
 
         if transitions_list:
             self.transitionsList = transitions_list
@@ -470,29 +477,61 @@ class Star(object):
                     return None
         return self._radialVelocity
 
+    @radialVelocity.setter
+    def radialVelocity(self, new_RV):
+        assert new_RV.units.dimensions == dimensions.length / dimensions.time,\
+            f'New radial velocity has units {new_RV.units.dimensions}!'
+        self._radialVelocity = new_RV
+
     @property
     def temperature(self):
         if self._temperature is None:
-            data = self._getStellarProperties()
-            for row in data:
-                if row[8] == self.name:
-                    self._temperature = round((10 ** float(row[3])) * u.K)
-                    return self._temperature
-            raise RuntimeError(f"Couldn't find {self.name} in table!")
-        else:
-            return self._temperature
+            self._temperature = self._getStellarProperty('temperature')
+        return self._temperature
+
+    @temperature.setter
+    def temperature(self, new_T):
+        assert new_T.units.dimensions == dimensions.temperature,\
+            f'New temperature has units {new_T.units}!'
+        self._temperature = new_T
 
     @property
     def metallicity(self):
         if self._metallicity is None:
-            data = self._getStellarProperties()
-            for row in data:
-                if row[8] == self.name:
-                    self._metallicity = float(row[4])
-                    return self._metallicity
-            raise RuntimeError(f"Couldn't find {self.name} in table!")
-        else:
-            return self._metallicity
+            self._metallicity = self._getStellarProperty('metallicity')
+        return self._metallicity
+
+    @metallicity.setter
+    def metallicity(self, new_mtl):
+        if not isinstance(new_mtl, (float, int)):
+            new_mtl = float(new_mtl)
+        assert -5. < new_mtl < 2., f'Metallicity value seems odd: {new_mtl}.'
+        self._metallicity = new_mtl
+
+    @property
+    def absoluteMagnitude(self):
+        if self._absoluteMagnitude is None:
+            self._absoluteMagnitude = self._getStellarProperty(
+                    'absoluteMagnitude')
+        return self._absoluteMagnitude
+
+    @absoluteMagnitude.setter
+    def absoluteMagnitude(self, new_mag):
+        if not isinstance(new_mag, (float, int)):
+            new_mag = float(new_mag)
+        self._absoluteMagnitude = new_mag
+
+    @property
+    def logG(self):
+        if self._logG is None:
+            self._logG = self._getStellarProperty('logG')
+        return self._logG
+
+    @logG.setter
+    def logG(self, new_log_g):
+        if not isinstance(new_log_g, (float, int)):
+            new_log_g = float(new_log_g)
+        self._logG = new_log_g
 
     # TODO: Add an exposure time array?
     @property
@@ -502,13 +541,44 @@ class Star(object):
 
         return self._fiberSplitIndex
 
-    def _getStellarProperties(self):
-        """Load file containing stellar properties and return it as a NumPy
-        array.
+    def _getStellarProperty(self, value):
+        """Load file containing stellar properties and return the requested
+        value.
+
+        Parameters
+        ----------
+        value, str : ['temperature', 'metallicity', 'absoluteMagnitude',
+                      'logG']
+            The property of the star to return.
+
+        Returns
+        -------
+        float or `unyt.unyt_quantity`
+            The value of the requested property for the star, either as a float
+            if it has no units or as a `unyt_quantity` if it does.
 
         """
+
+        row_values = {'temperature': 3, 'metallicity': 4,
+                      'absoluteMagnitude': 5, 'logG': 9}
+
+        if value not in row_values.keys():
+            raise RuntimeError('Improper value for keyword "value"!')
+
         stellar_props_file = vcl.data_dir / 'StellarSampleData.csv'
-        return np.loadtxt(stellar_props_file, delimiter=',', dtype=str)
+        data = np.loadtxt(stellar_props_file, delimiter=',', dtype=str)
+        for row in data:
+            if row[8] == self.name:
+                if value == 'temperature':
+                    return round((10 ** float(row[row_values[value]])) * u.K)
+                elif value == 'metallicity':
+                    return float(row[row_values[value]])
+                elif value == 'absoluteMagnitude':
+                    return float(row[row_values[value]])
+                elif value == 'logG':
+                    return float(row[row_values[value]])
+        # If the star isn't found in any row, throw an error.
+        raise RuntimeError(f"Couldn't find {self.name} in table!")
 
     def _getFiberSplitIndex(self):
         """Return the index of the first observation after the HARPS fiber
