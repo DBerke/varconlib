@@ -428,7 +428,11 @@ class Star(object):
                 setattr(self, attr_name, dataset)
 
             for path_name, attr_name in self.other_attributes.items():
-                setattr(self, attr_name, hickle.load(f, path=path_name))
+                try:
+                    setattr(self, attr_name, hickle.load(f, path=path_name))
+                except AttributeError:
+                    print(self.name, attr_name, path_name)
+                    raise
 
     @property
     def transitionsList(self):
