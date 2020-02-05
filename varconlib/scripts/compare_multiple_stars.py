@@ -54,13 +54,22 @@ def get_star(star_name):
     except HDF5FileNotFoundError:
         vprint(f'No HDF5 file for {star_path.stem}.')
         pass
+    except AttributeError:
+        vprint(f'Affected star is {star_name}.')
+        raise
 
 
-def create_parameter_comparison_figures():
+def create_parameter_comparison_figures(ylims=None):
     """Creates and returns a figure with pre-set subplots.
 
     This function creates the background figure and subplots for use with the
     --compare-stellar-parameter-* flags.
+
+    Optional
+    ----------
+    ylims : 2-tuple of floats or ints
+        A tuple of length 2 containing the upper and lower limits of the
+        subplots in the figure.
 
     Returns
     -------
@@ -70,29 +79,43 @@ def create_parameter_comparison_figures():
 
     """
 
-    comp_fig = plt.figure(figsize=(14, 10), tight_layout=True)
-    gs = GridSpec(ncols=2, nrows=2, figure=comp_fig)
+    comp_fig = plt.figure(figsize=(16, 8), tight_layout=True)
+    gs = GridSpec(ncols=4, nrows=2, figure=comp_fig)
 
-    temp_ax1 = comp_fig.add_subplot(gs[0, 0])
-    temp_ax2 = comp_fig.add_subplot(gs[1, 0],
-                                    sharex=temp_ax1,
-                                    sharey=temp_ax1)
-    mtl_ax1 = comp_fig.add_subplot(gs[0, 1],
-                                   sharey=temp_ax1)
-    mtl_ax2 = comp_fig.add_subplot(gs[1, 1],
-                                   sharex=mtl_ax1,
-                                   sharey=mtl_ax1)
+    temp_ax_pre = comp_fig.add_subplot(gs[0, 0])
+    temp_ax_post = comp_fig.add_subplot(gs[1, 0],
+                                        sharex=temp_ax_pre,
+                                        sharey=temp_ax_pre)
+    mtl_ax_pre = comp_fig.add_subplot(gs[0, 1],
+                                      sharey=temp_ax_pre)
+    mtl_ax_post = comp_fig.add_subplot(gs[1, 1],
+                                       sharex=mtl_ax_pre,
+                                       sharey=mtl_ax_pre)
+    mag_ax_pre = comp_fig.add_subplot(gs[0, 2],
+                                      sharey=temp_ax_pre)
+    mag_ax_post = comp_fig.add_subplot(gs[1, 2],
+                                       sharex=mag_ax_pre,
+                                       sharey=mag_ax_pre)
+    logg_ax_pre = comp_fig.add_subplot(gs[0, 3],
+                                       sharey=temp_ax_pre)
+    logg_ax_post = comp_fig.add_subplot(gs[1, 3],
+                                        sharex=logg_ax_pre,
+                                        sharey=logg_ax_pre)
+
+    all_axes = (temp_ax_pre, temp_ax_post, mtl_ax_pre, mtl_ax_post,
+                mag_ax_pre, mag_ax_post, logg_ax_pre, logg_ax_post)
     # Set the plot limits here. The y-limits for temp_ax1 are
     # used for all subplots.
-#    temp_ax1.set_ylim(bottom=-300 * u.m / u.s,
-#                      top=300 * u.m / u.s)
-    temp_ax1.set_xlim(left=5300 * u.K,
-                      right=6200 * u.K)
-    mtl_ax1.set_xlim(left=-0.75,
-                     right=0.4)
+    if ylims is not None:
+        temp_ax_pre.set_ylim(bottom=ylims[0],
+                             top=ylims[1])
+    temp_ax_pre.set_xlim(left=5300 * u.K,
+                         right=6200 * u.K)
+    mtl_ax_pre.set_xlim(left=-0.75,
+                        right=0.4)
 
     # Axis styles for all subplots.
-    for ax in (temp_ax1, temp_ax2, mtl_ax1, mtl_ax2):
+    for ax in all_axes:
 #        ax.yaxis.set_major_locator(ticker.MultipleLocator(
 #                                   base=50))
 #        ax.yaxis.set_minor_locator(ticker.MultipleLocator(
@@ -105,39 +128,43 @@ def create_parameter_comparison_figures():
         ax.yaxis.grid(which='minor', color='Gray',
                       linestyle=':', alpha=0.75)
 
-    for ax in (temp_ax1, temp_ax2):
+    for ax in (temp_ax_pre, temp_ax_post):
         ax.set_xlabel('Temperature (K)')
-    for ax in (mtl_ax1, mtl_ax2):
+    for ax in (mtl_ax_pre, mtl_ax_post):
         ax.set_xlabel('Metallicity [Fe/H]')
+    for ax in (mag_ax_pre, mag_ax_post):
+        ax.set_xlabel('Absolute Magnitude')
+    for ax in (logg_ax_pre, logg_ax_post):
+        ax.set_xlabel(r'$\log(g)$')
 
-    for ax in (temp_ax1, mtl_ax1):
+    # Just label the left-most two subplots' y-axes.
+    for ax in (temp_ax_pre, temp_ax_post):
         ax.set_ylabel('Pre-fiber change offset (m/s)')
-    for ax in (temp_ax2, mtl_ax2):
-        ax.set_ylabel('Post-fiber change offset (m/s)')
 
-    return (comp_fig, temp_ax1, temp_ax2, mtl_ax1, mtl_ax2)
+    axes_dict = {'temp_pre': temp_ax_pre, 'temp_post': temp_ax_post,
+                 'mtl_pre': mtl_ax_pre, 'mtl_post': mtl_ax_post,
+                 'mag_pre': mag_ax_pre, 'mag_post': mag_ax_post,
+                 'logg_pre': logg_ax_pre, 'logg_post': logg_ax_post}
+
+    return comp_fig, axes_dict
 
 
-def plot_data_point(axis, xpos, mean, err, std, era=None,
-                    ref=False):
+def plot_data_points(axis, x_pos, y_pos, thick_err, thin_err, era=None,
+                     ref=False):
     """Plot a data point for a star.
 
     Parameters
     ----------
     axis : `matplotlib.axes.Axes`
         An axes to plot the data on.
-    xpos : float
-        The x-position of the point to plot.
-    mean : `unyt.unyt_quantity`
-        The offset of the weighted mean for a star from the value of
-        the weighted mean for the same transition pair from the
-        reference star. Units of velocity, m/s by default.
-    err : `unyt.unyt_quantity`
-        The error on the weighted mean, in units of velocity, m/s by
-        default.
-    std : `unyt.unyt_quantity`
-        The standard deviation of the distribution of pair separation
-        values for this star.
+    x_pos : iterable of floats or `unyt.unyt_quantity`
+        The x-positions of the points to plot.
+    y_pos : iterable of floats or `unyt.unyt_quantity`
+        The y-positions of the points to plot.
+    thick_err : iterable of floats or `unyt.unyt_quantity`
+        The values of the thick error bars to plot.
+    thin_err : iterable of floats or `unyt.unyt_quantity`
+        The values of the thin error bars to plot.
     era : string, ['pre', 'post'], Default : None
         Whether the time period of the plot is pre- or post-fiber
         change. Only allowed values are 'pre' and 'post'. Controls
@@ -164,16 +191,20 @@ def plot_data_point(axis, xpos, mean, err, std, era=None,
         raise ValueError("Keyword 'era' received an unknown value"
                          f" (valid values are 'pre' & 'post'): {era}")
 
-    axis.errorbar(x=xpos, y=mean,
-                  yerr=std,
+    axis.errorbar(x=x_pos, y=y_pos,
+                  yerr=thin_err, linestyle='',
                   marker='', capsize=style_caps['capsize_thin'],
                   color=params['color'],
                   ecolor=params['ecolor_thin'],
                   elinewidth=style_caps['linewidth_thin'],
                   capthick=style_caps['cap_thin'])
-    axis.errorbar(x=xpos, y=mean,
-                  yerr=err,
-                  marker='o', capsize=style_caps['capsize_thick'],
+    axis.errorbar(x=x_pos, y=y_pos,
+                  yerr=thick_err, linestyle='',
+                  marker='o', markersize=style_markers['markersize'],
+                  markeredgewidth=style_markers['markeredgewidth'],
+                  markeredgecolor=style_markers['markeredgecolor'],
+                  alpha=style_markers['alpha'],
+                  capsize=style_caps['capsize_thick'],
                   color=params['color'],
                   ecolor=params['ecolor_thick'],
                   elinewidth=style_caps['linewidth_thick'],
@@ -231,17 +262,12 @@ if __name__ == '__main__':
     star_list = []
     tqdm.write('Collecting stars...')
     for star_dir in tqdm(args.star_names):
-        if args.reference_star:
-            star = get_star(star_dir)
-            if star is None:
-                pass
-            elif star.name != ref_star.name:
-                vprint(f'Added star {star.name}.')
-                star_list.append(star)
-            else:
-                vprint(f'Found reference star! {star.name}')
+        star = get_star(star_dir)
+        if star is None:
+            pass
         else:
-            star_list.append(get_star(star_dir))
+            vprint(f'Added {star.name}.')
+            star_list.append(star)
     tqdm.write(f'Found {len(star_list)} usable stars in total.')
 
     # Define style parameters to use for stellar parameter plots.
@@ -254,10 +280,14 @@ if __name__ == '__main__':
     style_ref = {'color': 'DarkGreen',
                  'ecolor_thick': 'ForestGreen',
                  'ecolor_thin': 'DarkSeaGreen'}
+    style_markers = {'markeredgecolor': 'Black',
+                     'markeredgewidth': 1,
+                     'alpha': 0.7,
+                     'markersize': 4}
     style_caps = {'capsize_thin': 4,
                   'capsize_thick': 7,
                   'linewidth_thin': 2,
-                  'linewidth_thick': 3.4,
+                  'linewidth_thick': 3,
                   'cap_thin': 1.5,
                   'cap_thick': 2.5}
 
@@ -360,14 +390,17 @@ if __name__ == '__main__':
 
             col_index = star.p_index(pair_label)
 
-            means = star.pairSeparationsArray[time_slice, col_index]
-            stds = star.pairSepErrorsArray[time_slice, col_index]
-            weighted_mean = np.average(means,
-                                       weights=1/stds**2).to(u.m / u.s)
-            weighted_error = np.std(means) / np.sqrt(
+            separations = star.pairSeparationsArray[time_slice, col_index]
+            errs = star.pairSepErrorsArray[time_slice, col_index]
+            weighted_mean, weight_sum = np.average(separations,
+                                                   weights=1/errs**2,
+                                                   returned=True)
+            weighted_mean.convert_to_units(u.m / u.s)
+            error_on_weighted_mean = 1 / np.sqrt(weight_sum)
+            error_on_mean = np.std(separations) / np.sqrt(
                 star.getNumObs(time_slice))
 
-            return (weighted_mean, weighted_error, np.std(means))
+            return (weighted_mean, error_on_weighted_mean, error_on_mean)
 
         # -----------------
         tqdm.write('Unpickling pairs list...')
@@ -386,9 +419,14 @@ if __name__ == '__main__':
             for order_num in pair.ordersToMeasureIn:
                 pair_label = '_'.join([pair.label, str(order_num)])
 
-                # Create the figure and subplots:
-                comp_fig, temp_ax1, temp_ax2, mtl_ax1, mtl_ax2 =\
-                    create_parameter_comparison_figures()
+                offsets_pre, offsets_post = [], []
+                errs_pre, errs_post = [], []
+                stds_pre, stds_post = [], []
+
+                temp_pre, temp_post = [], []
+                mtl_pre, mtl_post = [], []
+                mag_pre, mag_post = [], []
+                logg_pre, logg_post = [], []
 
                 # Get the reference star properties.
                 pre_slice = slice(None, ref_star.fiberSplitIndex)
@@ -398,13 +436,14 @@ if __name__ == '__main__':
                 ref_mean_post, ref_err_post, ref_std_post =\
                     get_pair_data_point(ref_star, post_slice, pair_label)
 
-                for ax in (temp_ax1, temp_ax2, mtl_ax1, mtl_ax2):
-                    ax.annotate(f'Blendedness: ({blend1}, {blend2})',
-                                (0.01, 0.95),
-                                xycoords='axes fraction')
-
-                # Plot the data points for each star:
+                # Collect the data points for each star:
                 for star in tqdm(star_list):
+
+                    # Ignore the reference star.
+                    if star.name == ref_star.name:
+                        vprint(f'Skipping over reference star {star.name}.')
+                        continue
+
                     pre_slice = slice(None, star.fiberSplitIndex)
                     post_slice = slice(star.fiberSplitIndex, None)
 
@@ -414,11 +453,13 @@ if __name__ == '__main__':
 
                         offset = ref_mean_pre - star_mean_pre
 
-                        for ax, attr in zip((temp_ax1, mtl_ax1),
-                                            ('temperature', 'metallicity')):
-                            plot_data_point(ax, getattr(star, attr),
-                                            offset, star_err_pre,
-                                            star_std_pre, era='pre')
+                        offsets_pre.append(offset)
+                        errs_pre.append(star_err_pre)
+                        stds_pre.append(star_std_pre)
+                        temp_pre.append(star.temperature)
+                        mtl_pre.append(star.metallicity)
+                        mag_pre.append(star.absoluteMagnitude)
+                        logg_pre.append(star.logG)
 
                     if star.hasObsPost:
                         star_mean_post, star_err_post, star_std_post =\
@@ -426,21 +467,58 @@ if __name__ == '__main__':
 
                         offset = ref_mean_post - star_mean_post
 
-                        for ax, attr in zip((temp_ax2, mtl_ax2),
-                                            ('temperature', 'metallicity')):
-                            plot_data_point(ax, getattr(star, attr),
-                                            offset, star_err_post,
-                                            star_std_post, era='post')
+                        offsets_post.append(offset)
+                        errs_post.append(star_err_post)
+                        stds_post.append(star_std_post)
+                        temp_post.append(star.temperature)
+                        mtl_post.append(star.metallicity)
+                        mag_post.append(star.absoluteMagnitude)
+                        logg_post.append(star.logG)
+
+                # Create the figure and subplots:
+                comp_fig, axes_dict = create_parameter_comparison_figures(
+                        ylims=(-300 * u.m / u.s, 300 * u.m / u.s))
+
+                for ax in (axes_dict.values()):
+                    ax.annotate(f'Blendedness: ({blend1}, {blend2})',
+                                (0.01, 0.95),
+                                xycoords='axes fraction')
+
+                for ax, attr in zip(('temp_pre', 'mtl_pre',
+                                     'mag_pre', 'logg_pre'),
+                                    (temp_pre, mtl_pre,
+                                     mag_pre, logg_pre)):
+                    plot_data_points(axes_dict[ax], attr,
+                                     offsets_pre, errs_pre,
+                                     stds_pre, era='pre')
+
+                for ax, attr in zip(('temp_post', 'mtl_post',
+                                     'mag_post', 'logg_post'),
+                                    (temp_post, mtl_post,
+                                     mag_post, logg_post)):
+                    plot_data_points(axes_dict[ax], attr,
+                                     offsets_post, errs_post,
+                                     stds_post, era='post')
 
                 # Plot the reference star points last so they're on top.
-                plot_data_point(temp_ax1, ref_star.temperature,
-                                0, ref_err_pre, ref_std_pre, ref=True)
-                plot_data_point(temp_ax2, ref_star.temperature,
-                                0, ref_err_post, ref_std_post, ref=True)
-                plot_data_point(mtl_ax1, ref_star.metallicity,
-                                0, ref_err_pre, ref_std_pre, ref=True)
-                plot_data_point(mtl_ax2, ref_star.metallicity,
-                                0, ref_err_post, ref_std_post, ref=True)
+                plot_data_points(axes_dict['temp_pre'], ref_star.temperature,
+                                 0, ref_err_pre, ref_std_pre, ref=True)
+                plot_data_points(axes_dict['temp_post'], ref_star.temperature,
+                                 0, ref_err_post, ref_std_post, ref=True)
+                plot_data_points(axes_dict['mtl_pre'], ref_star.metallicity,
+                                 0, ref_err_pre, ref_std_pre, ref=True)
+                plot_data_points(axes_dict['mtl_post'], ref_star.metallicity,
+                                 0, ref_err_post, ref_std_post, ref=True)
+                plot_data_points(axes_dict['mag_pre'],
+                                 ref_star.absoluteMagnitude,
+                                 0, ref_err_pre, ref_std_pre, ref=True)
+                plot_data_points(axes_dict['mag_post'],
+                                 ref_star.absoluteMagnitude,
+                                 0, ref_err_post, ref_std_post, ref=True)
+                plot_data_points(axes_dict['logg_pre'], ref_star.logG,
+                                 0, ref_err_pre, ref_std_pre, ref=True)
+                plot_data_points(axes_dict['logg_post'], ref_star.logG,
+                                 0, ref_err_post, ref_std_post, ref=True)
 
                 file_name = plots_folder / f'{pair_label}.png'
                 vprint(f'Saving file {pair_label}.png')
@@ -478,13 +556,16 @@ if __name__ == '__main__':
             col_index = star.t_index(transition_label)
 
             offsets = star.fitOffsetsArray[time_slice, col_index]
-            stds = star.fitErrorsArray[time_slice, col_index]
-            weighted_mean = np.average(offsets,
-                                       weights=1/stds**2).to(u.m/u.s)
-            weighted_error = np.std(offsets) / np.sqrt(
+            errs = star.fitErrorsArray[time_slice, col_index]
+            weighted_mean, weight_sum = np.average(offsets,
+                                                   weights=1/errs**2,
+                                                   returned=True)
+            weighted_mean.convert_to_units(u.m/u.s)
+            error_on_weighted_mean = 1 / np.sqrt(weight_sum)
+            error_on_mean = np.std(offsets) / np.sqrt(
                 star.getNumObs(time_slice))
 
-            return (weighted_mean, weighted_error, np.std(offsets))
+            return (weighted_mean, error_on_weighted_mean, error_on_mean)
 
         # ------------------
         tqdm.write('Unpickling transitions list..')
@@ -501,14 +582,14 @@ if __name__ == '__main__':
             for order_num in transition.ordersToFitIn:
                 transition_label = '_'.join([transition.label, str(order_num)])
 
-                # Create the figure and subplots:
-                comp_fig, temp_ax1, temp_ax2, mtl_ax1, mtl_ax2 =\
-                    create_parameter_comparison_figures()
+                means_pre, means_post = [], []
+                errs_pre, errs_post = [], []
+                stds_pre, stds_post = [], []
 
-                for ax in (temp_ax1, temp_ax2, mtl_ax1, mtl_ax2):
-                    ax.annotate(f'Blendedness: ({transition.blendedness})',
-                                (0.01, 0.95),
-                                xycoords='axes fraction')
+                temp_pre, temp_post = [], []
+                mtl_pre, mtl_post = [], []
+                mag_pre, mag_post = [], []
+                logg_pre, logg_post = [], []
 
                 for star in tqdm(star_list):
                     pre_slice = slice(None, star.fiberSplitIndex)
@@ -518,23 +599,49 @@ if __name__ == '__main__':
                         star_mean_pre, star_err_pre, star_std_pre =\
                             get_transition_data_point(star, pre_slice,
                                                       transition_label)
-
-                        for ax, attr in zip((temp_ax1, mtl_ax1),
-                                            ('temperature', 'metallicity')):
-                            plot_data_point(ax, getattr(star, attr),
-                                            star_mean_pre, star_err_pre,
-                                            star_std_pre, era='pre')
+                        means_pre.append(star_mean_pre)
+                        errs_pre.append(star_err_pre)
+                        stds_pre.append(star_std_pre)
+                        temp_pre.append(star.temperature)
+                        mtl_pre.append(star.metallicity)
+                        mag_pre.append(star.absoluteMagnitude)
+                        logg_pre.append(star.logG)
 
                     if star.hasObsPost:
                         star_mean_post, star_err_post, star_std_post =\
                             get_transition_data_point(star, post_slice,
                                                       transition_label)
+                        means_post.append(star_mean_post)
+                        errs_post.append(star_err_post)
+                        stds_post.append(star_std_post)
+                        temp_post.append(star.temperature)
+                        mtl_post.append(star.metallicity)
+                        mag_post.append(star.absoluteMagnitude)
+                        logg_post.append(star.logG)
 
-                        for ax, attr in zip((temp_ax2, mtl_ax2),
-                                            ('temperature', 'metallicity')):
-                            plot_data_point(ax, getattr(star, attr),
-                                            star_mean_post, star_err_post,
-                                            star_std_post, era='post')
+                # Create the figure and subplots:
+                comp_fig, axes_dict = create_parameter_comparison_figures()
+
+                for ax in axes_dict.values():
+                    ax.annotate(f'Blendedness: {transition.blendedness}',
+                                (0.01, 0.95),
+                                xycoords='axes fraction')
+
+                for ax, attr in zip(('temp_pre', 'mtl_pre',
+                                     'mag_pre', 'logg_pre'),
+                                    (temp_pre, mtl_pre,
+                                     mag_pre, logg_pre)):
+                    plot_data_points(axes_dict[ax], attr,
+                                     means_pre, errs_pre,
+                                     stds_pre, era='pre')
+
+                for ax, attr in zip(('temp_post', 'mtl_post',
+                                     'mag_post', 'logg_post'),
+                                    (temp_post, mtl_post,
+                                     mag_post, logg_post)):
+                    plot_data_points(axes_dict[ax], attr,
+                                     means_post, errs_post,
+                                     stds_post, era='post')
 
                 file_name = plots_folder / f'{transition_label}.png'
                 vprint(f'Saving file {transition_label}.png')
