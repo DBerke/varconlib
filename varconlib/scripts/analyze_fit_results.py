@@ -1175,8 +1175,16 @@ if __name__ == '__main__':
                             tqdm.write(err_msg)
 
             pairs_dict = {}
-            separations_list = [obs_name, fits_list[0].dateObs.
-                                isoformat(timespec='milliseconds')]
+            for fit in fits_list:
+                # Iterate through the list until a non-None observation is
+                # found.
+                try:
+                    separations_list = [obs_name, fit.dateObs.
+                                        isoformat(timespec='milliseconds')]
+                    break
+                except AttributeError:
+                    # If the fit is None, this will catch it.
+                    pass
 
             column_names = ['Observation', 'Time']
             for pair in pairs_list:
