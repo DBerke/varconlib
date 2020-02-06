@@ -102,8 +102,8 @@ def create_transition_offset_plots(plots_dir):
 
         """
 
-        offsets = ma.masked_invalid(star.fitOffsetsArray[time_slice,
-                                                         column_index].value)
+        offsets = ma.masked_invalid(
+                star.fitOffsetsNormalizedArray[time_slice, column_index].value)
         errors = ma.masked_invalid(star.fitErrorsArray[time_slice,
                                                        column_index].value)
         fit_chis = ma.masked_invalid(star.chiSquaredNuArray[time_slice,
@@ -122,7 +122,10 @@ def create_transition_offset_plots(plots_dir):
 #        w_mean_err = 1 / np.sqrt(weight_sum)
 
         chi_squared = np.sum(((offsets - w_mean) / errors) ** 2)
-        reduced_chi_squared = chi_squared / (len(offsets) - 1)
+        if len(offsets) > 1:
+            reduced_chi_squared = chi_squared / (len(offsets) - 1)
+        else:
+            reduced_chi_squared = chi_squared
         std_dev = np.std(offsets)
 
         # Set up the offset axis with grids.
@@ -411,8 +414,8 @@ def create_offset_plot(star):
 
         ax.set_xlim(left=-1, right=len(offsets) + 1)
 
-        mean = np.nanmean(offsets)
-        mean_centered_offsets = offsets - mean
+        median = np.nanmedian(offsets)
+        mean_centered_offsets = offsets - median
         weighted_mean = np.average(offsets, weights=1/stddevs**2)
         vprint(f'weighted_mean = {weighted_mean:.3f}')
         vprint(f'mean = {np.mean(offsets):.3f}')
@@ -422,7 +425,7 @@ def create_offset_plot(star):
                     y=mean_centered_offsets,
                     yerr=stddevs,
                     label=f'{time_str.capitalize()}-fiber change\n'
-                    f'$\\mu=${mean:.2f}\n'
+                    f'median$=${median:.2f}\n'
                     f'N$={star.getNumObs(time_slice)}$,'
                     f' RV$=${star.radialVelocity}',
                     **params)
@@ -1065,6 +1068,11 @@ if __name__ == '__main__':
         star = Star(obj_name, data_dir, suffix=args.suffix,
                     load_data=load_data)
 
+        if args.create_offset_plot:
+            tqdm.write('Creating plot of mean fit offsets.')
+            pattern_dir = pattern_dir()
+            create_offset_plot(star)
+
         if args.create_transition_offset_plots:
             tqdm.write('Creating transition offset plots.')
             transition_plots_dir = data_dir / 'transition_offset_plots'
@@ -1075,11 +1083,6 @@ if __name__ == '__main__':
         if args.create_berv_plots:
             tqdm.write('Creating plots of pair offsets vs. BERV.')
             create_BERV_plots()
-
-        if args.create_offset_plot:
-            tqdm.write('Creating plot of mean fit offsets.')
-            pattern_dir = pattern_dir()
-            create_offset_plot(star)
 
         if args.create_airmass_plots:
             tqdm.write('Creating plots of offsets vs. airmass.')

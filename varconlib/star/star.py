@@ -56,8 +56,8 @@ class Star(object):
         `initializeFromFits` method.
     suffix : str, Default: 'int'
         A string to be added to the subdirectory names to distinguish
-        between different reduction methods. Must be given if `star_dir` is
-        given. Defaults to 'int' for 'integrated Gaussian' fits.
+        between different reduction methods. Defaults to 'int' for
+        'integrated Gaussian' fits.
     transitions_list : list
         A list of `transition_line.Transition` objects. If `star_dir` is
         given, will be passed to `initializeFromFits`, otherwise no effect.
@@ -130,25 +130,27 @@ class Star(object):
 
     # Define dataset names and corresponding attribute names to be saved
     # and loaded when dumping star data.
-    unyt_arrays = {'transition_means': 'fitMeansArray',
-                   'transition_errors': 'fitErrorsArray',
-                   'offsets': 'fitOffsetsArray',
-                   'pair_separations': 'pairSeparationsArray',
-                   'pair_separation_errors': 'pairSepErrorsArray',
-                   'BERV_array': 'bervArray'}
+    unyt_arrays = {'/arrays/transition_means': 'fitMeansArray',
+                   '/arrays/transition_errors': 'fitErrorsArray',
+                   '/arrays/offsets': 'fitOffsetsArray',
+                   '/arrays/pair_separations': 'pairSeparationsArray',
+                   '/arrays/pair_separation_errors': 'pairSepErrorsArray',
+                   '/arrays/BERV_array': 'bervArray',
+                   '/arrays/observation_rv': 'obsRVOffsetsArray',
+                   '/arrays/normalized_offsets': 'fitOffsetsNormalizedArray'}
 
-    other_attributes = {'reduced_chi_squareds': 'chiSquaredNuArray',
-                        'airmasses': 'airmassArray',
-                        '/obs_date_bidict': '_obs_date_bidict',
-                        '/transition_bidict': '_transition_bidict',
-                        '/pair_bidict': '_pair_bidict',
+    other_attributes = {'/arrays/reduced_chi_squareds': 'chiSquaredNuArray',
+                        '/arrays/airmasses': 'airmassArray',
+                        '/bidicts/obs_date_bidict': '_obs_date_bidict',
+                        '/bidicts/transition_bidict': '_transition_bidict',
+                        '/bidicts//pair_bidict': '_pair_bidict',
                         '/metadata/radial_velocity': 'radialVelocity',
                         '/metadata/temperature': 'temperature',
                         '/metadata/metallicity': 'metallicity',
                         '/metadata/absolute_magnitude': 'absoluteMagnitude',
                         '/metadata/logG': 'logG'}
 
-    # Define some custom namedbidict objects which can be
+    # Define some custom namedbidict objects.
     DateMap = namedbidict('ObservationDateMap', 'date', 'index')
     TransitionMap = namedbidict('TransitionMap', 'label', 'index')
     PairMap = namedbidict('PairMap', 'label', 'index')
@@ -267,8 +269,10 @@ class Star(object):
         errors_list = []
         offsets_list = []
         chi_squared_list = []
-        self.bervArray = np.empty(len(pickle_files))
-        self.airmassArray = np.empty(len(pickle_files))
+        total_obs = len(pickle_files)
+        self.bervArray = np.empty(total_obs)
+        self.airmassArray = np.empty(total_obs)
+        self.obsRVOffsetsArray = np.empty((total_obs, 1))
 
         # For each pickle file:
         for obs_num, pickle_file in enumerate(tqdm(pickle_files)):
@@ -314,6 +318,7 @@ class Star(object):
             errors_list.append(star_errors)
             offsets_list.append(star_offsets)
             chi_squared_list.append(star_chi_squareds)
+            self.obsRVOffsetsArray[obs_num] = np.nanmedian(star_offsets)
 
         self.fitMeansArray = u.unyt_array(np.asarray(means_list),
                                           u.angstrom)
@@ -321,6 +326,9 @@ class Star(object):
                                            u.m/u.s)
         self.fitOffsetsArray = u.unyt_array(np.asarray(offsets_list),
                                             u.m/u.s)
+        self.obsRVOffsetsArray *= u.m / u.s
+        self.fitOffsetsNormalizedArray = self.fitOffsetsArray -\
+            self.obsRVOffsetsArray
         self.bervArray *= u.km / u.s
         self.chiSquaredNuArray = np.array(chi_squared_list)
 
@@ -397,6 +405,7 @@ class Star(object):
             file_path = Path(file_path)
 
         if file_path.exists():
+            # Save the previously existing file as a backup.
             backup_path = file_path.with_name(file_path.stem + ".bak")
             os.replace(file_path, backup_path)
         with h5py.File(file_path, mode='a') as f:
@@ -653,8 +662,8 @@ class Star(object):
         means, stddevs = [], []
         for key in self._transition_bidict.keys():
             column_index = self.t_index(key)
-            offsets = ma.masked_array(self.fitOffsetsArray[array_slice,
-                                                           column_index])
+            offsets = ma.masked_array(self.fitOffsetsNormalizedArray[
+                    array_slice, column_index])
             # A NaN value for an error will give a NaN value for the weighted
             # mean for a transition, so mask out values where that's the case.
             errors = ma.masked_invalid(self.fitErrorsArray[array_slice,
@@ -669,12 +678,12 @@ class Star(object):
             means.append(weighted_mean)
             stddevs.append(sample_std)
 
-        means *= self.fitOffsetsArray.units
-        stddevs *= self.fitOffsetsArray.units
+        means *= self.fitOffsetsNormalizedArray.units
+        stddevs *= self.fitOffsetsNormalizedArray.units
 
         if normalized:
 
-            return u.unyt_array([means - np.nanmean(means), stddevs])
+            return u.unyt_array([means - np.nanmedian(means), stddevs])
 
         return u.unyt_array([means, stddevs])
 
