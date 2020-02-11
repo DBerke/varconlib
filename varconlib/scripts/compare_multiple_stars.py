@@ -271,12 +271,12 @@ if __name__ == '__main__':
     tqdm.write(f'Found {len(star_list)} usable stars in total.')
 
     # Define style parameters to use for stellar parameter plots.
-    style_pre = {'color': 'DodgerBlue',
-                 'ecolor_thick': 'CornFlowerBlue',
-                 'ecolor_thin': 'LightSkyBlue'}
-    style_post = {'color': 'Chocolate',
-                  'ecolor_thick': 'DarkOrange',
-                  'ecolor_thin': 'BurlyWood'}
+    style_pre = {'color': 'Chocolate',
+                 'ecolor_thick': 'DarkOrange',
+                 'ecolor_thin': 'BurlyWood'}
+    style_post = {'color': 'DodgerBlue',
+                  'ecolor_thick': 'CornFlowerBlue',
+                  'ecolor_thin': 'LightSkyBlue'}
     style_ref = {'color': 'DarkGreen',
                  'ecolor_thick': 'ForestGreen',
                  'ecolor_thin': 'DarkSeaGreen'}
@@ -555,7 +555,7 @@ if __name__ == '__main__':
 
             col_index = star.t_index(transition_label)
 
-            offsets = star.fitOffsetsArray[time_slice, col_index]
+            offsets = star.fitOffsetsNormalizedArray[time_slice, col_index]
             errs = star.fitErrorsArray[time_slice, col_index]
             weighted_mean, weight_sum = np.average(offsets,
                                                    weights=1/errs**2,
