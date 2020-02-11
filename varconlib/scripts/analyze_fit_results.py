@@ -130,8 +130,9 @@ def create_transition_offset_plots(plots_dir):
 
         # Set up the offset axis with grids.
         offset_ax.set_ylabel('Offset from expected position (m/s)')
-        offset_ax.xaxis.set_major_locator(ticker.MultipleLocator(base=10))
-        offset_ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=2))
+        if not args.simplified:
+            offset_ax.xaxis.set_major_locator(ticker.MultipleLocator(base=10))
+            offset_ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=2))
         plt.setp(offset_ax.get_xticklabels(), visible=False)
 
         offset_ax.xaxis.grid(which='major', color='Gray', alpha=0.7,
@@ -157,7 +158,8 @@ def create_transition_offset_plots(plots_dir):
         chi_ax.set_ylabel(r'$\chi^2_\nu$')
 
         chi_ax.axhline(y=1, color=params['color'], linestyle='-.')
-        chi_ax.yaxis.set_major_locator(ticker.MultipleLocator(base=2))
+        if not args.simplified:
+            chi_ax.yaxis.set_major_locator(ticker.MultipleLocator(base=2))
         chi_ax.yaxis.grid(which='major', color='Gray', alpha=0.6)
         chi_ax.xaxis.grid(which='major', color='Gray', alpha=0.8,
                           linestyle='-')
@@ -428,17 +430,18 @@ def create_offset_plot(star):
                     f'median$=${median:.2f}\n'
                     f'N$={star.getNumObs(time_slice)}$,'
                     f' RV$=${star.radialVelocity}',
-                    **params)
+                    marker='_', linestyle='',
+                    markeredgecolor=params['markeredgecolor'],
+                    color=params['color'],
+                    alpha=params['alpha'],
+                    markersize=params['markersize'],
+                    ecolor=color)
 #        ax.set_ylabel(r'$\Delta\lambda_\mathrm{expected}$ (m/s)')
         ax.set_ylabel(r'$\Delta v-\mu_{\Delta v}$ (m/s)')
         ax.legend(loc='upper center')
 
-    style_params_pre['marker'] = '_'
-    style_params_post['marker'] = '_'
-    style_params_pre['markeredgecolor'] = 'Black'
-    style_params_post['markeredgecolor'] = 'Black'
-    style_params_pre['ecolor'] = 'SaddleBrown'
-    style_params_post['ecolor'] = 'MidnightBlue'
+    ecolor_pre = 'SaddleBrown'
+    ecolor_post = 'MidnightBlue'
 
     plot_name = data_dir / f'{data_dir.stem}_offset_pattern.png'
 
@@ -453,11 +456,14 @@ def create_offset_plot(star):
         pre_slice = slice(None, star.fiberSplitIndex)
         post_slice = slice(star.fiberSplitIndex, None)
 
-        for ax, params, time_slice, time_str in zip((ax1, ax2),
-                                                    (style_params_pre,
-                                                     style_params_post),
-                                                    (pre_slice, post_slice),
-                                                    ('pre', 'post')):
+        for ax, params, time_slice, time_str, color in zip((ax1, ax2),
+                                                           (style_params_pre,
+                                                            style_params_post),
+                                                           (pre_slice,
+                                                            post_slice),
+                                                           ('pre', 'post'),
+                                                           (ecolor_pre,
+                                                            ecolor_post)):
             vprint(f'Creating "{time_str}" plot.')
             layout_plots(time_slice, time_str)
 
@@ -993,6 +999,10 @@ if __name__ == '__main__':
     parser.add_argument('--recreate-star', action='store_true', default=False,
                         help='Force the star to be recreated from directories'
                         ' rather than be read in from saved data.')
+
+    parser.add_argument('--simplified', action='store_true', default=False,
+                        help='Forego usual tick markers for stars with'
+                        ' thousands of observations.')
 
     parser.add_argument('-v', '--verbose', action='store_true', default=False,
                         help='Print more information about the process.')
