@@ -243,9 +243,12 @@ def wavelength2velocity(wavelength1, wavelength2):
 
     """
 
+    if wavelength1 == wavelength2:
+        return 0 * u.m / u.s
+
     result = (wavelength2 - wavelength1) * u.c /\
              ((wavelength1 + wavelength2) / 2)
-    return result.to(u.m/u.s)
+    return result.to(u.m / u.s)
 
 
 def q_alpha_shift(omega, q_coefficient, delta_alpha):
