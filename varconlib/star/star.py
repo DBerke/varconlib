@@ -11,7 +11,6 @@ various observations taken of it.
 
 """
 
-from bidict import namedbidict
 import datetime as dt
 from glob import glob
 import lzma
@@ -19,6 +18,7 @@ import os
 from pathlib import Path
 import pickle
 
+from bidict import namedbidict
 import h5py
 import hickle
 import numpy as np
