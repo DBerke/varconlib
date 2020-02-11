@@ -1,3 +1,4 @@
-codecov
+codecov>2.0.15
+hypothesis>=5.5.1
 pytest>=5.0.1
-pytest-cov
+pytest-cov>=2.7.1

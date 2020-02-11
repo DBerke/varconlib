@@ -1,5 +1,5 @@
 adjusttext>=0.7.2
-astropy>=3.2.1
+astropy>=3.2.3
 astroquery>=0.3.10
 bidict>=0.18.0
 h5py>=2.9.0
