@@ -11,6 +11,8 @@ Test script for functions in varconlib
 
 import datetime as dt
 
+from hypothesis import given, example
+import hypothesis.strategies as st
 import numpy as np
 import pytest
 import unyt as u
@@ -39,6 +41,22 @@ class TestWavelength2Velocity(object):
         assert vcl.wavelength2velocity(bluer_wavelength, redder_wavelength) ==\
             pytest.approx(11991698.32 * u.m / u.s)
 
+    @given(x=st.floats(min_value=300,
+                       max_value=700),
+           y=st.floats(min_value=300,
+                       max_value=700))
+    @example(x=0., y=0.)
+    def testArbitraryWavelengths(self, x, y):
+        x *= u.nm
+        y *= u.nm
+        if x < y:
+            assert vcl.wavelength2velocity(x, y) > 0 * u.m / u.s
+        elif x > y:
+            assert vcl.wavelength2velocity(x, y) < 0 * u.m / u.s
+        else:
+            assert vcl.wavelength2velocity(x, y) == pytest.approx(0 * u.m/u.s,
+                                                                  rel=1e-5)
+
 
 class TestVelocity2Wavelenth(object):
 
@@ -51,6 +69,20 @@ class TestVelocity2Wavelenth(object):
         assert vcl.velocity2wavelength(10 * u.km / u.s, 500 * u.nm,
                                        unit=u.pm) == pytest.approx(
                                                16.67820476 * u.pm)
+
+    @given(vel=st.floats(min_value=float(-u.c.value),
+                         max_value=float(u.c.value)),
+           wl=st.floats(min_value=300,
+                        max_value=700))
+    def testArbitraryVelocities(self, vel, wl):
+        vel *= u.m / u.s
+        wl *= u.nm
+        if vel == 0:
+            assert vcl.velocity2wavelength(vel, wl) == 0 * u.nm
+        elif vel > 0:
+            assert vcl.velocity2wavelength(vel, wl) > 0 * u.nm
+        elif vel < 0:
+            assert vcl.velocity2wavelength(vel, wl) < 0 * u.nm
 
 
 class TestDate2Index(object):
