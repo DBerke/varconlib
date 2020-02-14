@@ -25,6 +25,14 @@ def wavelength_array():
     return [4000, 4500, 5000, 5500, 6000, 6500] * u.angstrom
 
 
+def make_velocity_mpers(value):
+    return value * u.m / u.s
+
+
+def make_wavelength_nm(value):
+    return value * u.nm
+
+
 class TestWavelength2Velocity(object):
 
     @pytest.fixture(scope='class')
@@ -41,14 +49,11 @@ class TestWavelength2Velocity(object):
         assert vcl.wavelength2velocity(bluer_wavelength, redder_wavelength) ==\
             pytest.approx(11991698.32 * u.m / u.s)
 
-    @given(x=st.floats(min_value=300,
-                       max_value=700),
-           y=st.floats(min_value=300,
-                       max_value=700))
-    @example(x=0., y=0.)
+    @given(x=st.builds(make_wavelength_nm, st.floats(min_value=300,
+                       max_value=700)),
+           y=st.builds(make_wavelength_nm, st.floats(min_value=300,
+                       max_value=700)))
     def testArbitraryWavelengths(self, x, y):
-        x *= u.nm
-        y *= u.nm
         if x < y:
             assert vcl.wavelength2velocity(x, y) > 0 * u.m / u.s
         elif x > y:
@@ -70,13 +75,11 @@ class TestVelocity2Wavelenth(object):
                                        unit=u.pm) == pytest.approx(
                                                16.67820476 * u.pm)
 
-    @given(vel=st.floats(min_value=float(-u.c.value),
-                         max_value=float(u.c.value)),
-           wl=st.floats(min_value=300,
-                        max_value=700))
+    @given(vel=st.builds(make_velocity_mpers,
+           st.floats(min_value=float(-u.c.value), max_value=float(u.c.value))),
+           wl=st.builds(make_wavelength_nm,
+           st.floats(min_value=300, max_value=700)))
     def testArbitraryVelocities(self, vel, wl):
-        vel *= u.m / u.s
-        wl *= u.nm
         if vel == 0:
             assert vcl.velocity2wavelength(vel, wl) == 0 * u.nm
         elif vel > 0:
