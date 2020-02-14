@@ -18,6 +18,8 @@ from pathlib import Path
 from bidict import bidict
 import numpy as np
 from scipy.special import erf
+from unyt.dimensions import length, time
+from unyt import accepts, returns
 import unyt as u
 
 import varconlib as vcl
@@ -154,6 +156,8 @@ def date2index(given_date, date_list):
             return i
 
 
+@accepts(wavelength=length, shift_velocity=length/time)
+@returns(length)
 def shift_wavelength(wavelength, shift_velocity):
     """Find the new wavelength of a wavelength (single or an array) given a
     velocity to shift it by. Returns in the units given.
@@ -188,6 +192,8 @@ def shift_wavelength(wavelength, shift_velocity):
     return result.to(original_units)
 
 
+@accepts(velocity_offset=length/time, wavelength=length)
+@returns(length)
 def velocity2wavelength(velocity_offset, wavelength, unit=None):
     """Return the wavelength separation for a given velocity separation at the
     given wavelength.
@@ -224,6 +230,8 @@ def velocity2wavelength(velocity_offset, wavelength, unit=None):
         return result.to(unit)
 
 
+@accepts(wavelength1=length, wavelength2=length)
+@returns(length/time)
 def wavelength2velocity(wavelength1, wavelength2):
     """Return velocity separation of a pair of wavelengths.
 
@@ -242,9 +250,6 @@ def wavelength2velocity(wavelength1, wavelength2):
         The velocity separation between the given wavelengths in m/s.
 
     """
-
-    if wavelength1 == wavelength2:
-        return 0 * u.m / u.s
 
     result = (wavelength2 - wavelength1) * u.c /\
              ((wavelength1 + wavelength2) / 2)
