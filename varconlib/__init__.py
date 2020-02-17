@@ -16,8 +16,8 @@ from tqdm import tqdm
 
 __all__ = ['base_dir', 'data_dir', 'masks_dir', 'pickle_dir',
            'pixel_geom_files_dir', 'final_selection_file',
-           'final_pair_selection_file']
-
+           'final_pair_selection_file', 'stellar_results_file',
+           'verbose_print']
 
 # Define some important paths to be available globally relative to the
 # absolute path of the parent directory.
@@ -40,12 +40,15 @@ final_selection_file = pickle_dir / 'final_transitions_selection.pkl'
 # The pickle file containing the final selection of pairs to use.
 final_pair_selection_file = pickle_dir / 'final_pairs_selection.pkl'
 
-
 # Read the config file to get values from it.
 config_file = base_dir / 'config/variables.cfg'
 config = configparser.ConfigParser(interpolation=configparser.
                                    ExtendedInterpolation())
 config.read(config_file)
+
+# The file containing the collected results from all stars.
+stellar_results_file = Path(config['PATHS']['output_dir']) /\
+                       'stellar_database.hdf5'
 
 
 def verbose_print(verbosity):
