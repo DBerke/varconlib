@@ -143,7 +143,7 @@ class Star(object):
                         '/arrays/airmasses': 'airmassArray',
                         '/bidicts/obs_date_bidict': '_obs_date_bidict',
                         '/bidicts/transition_bidict': '_transition_bidict',
-                        '/bidicts//pair_bidict': '_pair_bidict',
+                        '/bidicts/pair_bidict': '_pair_bidict',
                         '/metadata/radial_velocity': 'radialVelocity',
                         '/metadata/temperature': 'temperature',
                         '/metadata/metallicity': 'metallicity',
@@ -408,11 +408,13 @@ class Star(object):
             # Save the previously existing file as a backup.
             backup_path = file_path.with_name(file_path.stem + ".bak")
             os.replace(file_path, backup_path)
+
+        for dataset_name, attr_name in self.unyt_arrays.items():
+            getattr(self, attr_name).write_hdf5(file_path,
+                                                dataset_name=dataset_name)
+
         with h5py.File(file_path, mode='a') as f:
 
-            for dataset_name, attr_name in self.unyt_arrays.items():
-                getattr(self, attr_name).write_hdf5(file_path,
-                                                    dataset_name=dataset_name)
             for path_name, attr_name in self.other_attributes.items():
                 hickle.dump(getattr(self, attr_name), f, path=path_name)
 
@@ -429,12 +431,12 @@ class Star(object):
 
         """
 
-        with h5py.File(filename, mode='r') as f:
+        for dataset_name, attr_name in self.unyt_arrays.items():
+            dataset = u.unyt_array.from_hdf5(filename,
+                                             dataset_name=dataset_name)
+            setattr(self, attr_name, dataset)
 
-            for dataset_name, attr_name in self.unyt_arrays.items():
-                dataset = u.unyt_array.from_hdf5(filename,
-                                                 dataset_name=dataset_name)
-                setattr(self, attr_name, dataset)
+        with h5py.File(filename, mode='r') as f:
 
             for path_name, attr_name in self.other_attributes.items():
                 try:
