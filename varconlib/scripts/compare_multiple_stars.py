@@ -13,10 +13,10 @@ import argparse
 from pathlib import Path
 import pickle
 
-import numpy as np
 from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import numpy as np
 from tqdm import tqdm
 import unyt as u
 
@@ -25,14 +25,41 @@ from varconlib.exceptions import HDF5FileNotFoundError
 from varconlib.star import Star
 
 
-def get_star(star_name):
+# Define style parameters to use for stellar parameter plots.
+style_pre = {'color': 'Chocolate',
+             'ecolor_thick': 'DarkOrange',
+             'ecolor_thin': 'BurlyWood'}
+style_post = {'color': 'DodgerBlue',
+              'ecolor_thick': 'CornFlowerBlue',
+              'ecolor_thin': 'LightSkyBlue'}
+style_ref = {'color': 'DarkGreen',
+             'ecolor_thick': 'ForestGreen',
+             'ecolor_thin': 'DarkSeaGreen'}
+style_markers = {'markeredgecolor': 'Black',
+                 'markeredgewidth': 1,
+                 'alpha': 0.7,
+                 'markersize': 4}
+style_caps = {'capsize_thin': 4,
+              'capsize_thick': 7,
+              'linewidth_thin': 2,
+              'linewidth_thick': 3,
+              'cap_thin': 1.5,
+              'cap_thick': 2.5}
+
+
+def get_star(star_path, verbose=False):
     """Return a varconlib.star.Star object based on its name.
 
     Parameters
     ----------
-    star_name : str
-        A string representing the name of the directory within the main given
-        directory where a star's observations can be found.
+    star_path : str
+        A string representing the name of the directory where the HDF5 file
+        containing a `star.Star`'s data can be found.
+
+    Optional
+    --------
+    verbose : bool, Default: False
+        If *True*, write out additional information.
 
     Returns
     -------
@@ -42,24 +69,31 @@ def get_star(star_name):
         their observations.
 
     """
-    star_path = main_dir / star_name
+
     assert star_path.exists(), FileNotFoundError('Star directory'
                                                  f' {star_path}'
                                                  ' not found.')
     try:
         return Star(star_path.stem, star_path, load_data=True)
     except IndexError:
-        vprint(f'Excluded {star_path.stem}.')
+        if verbose:
+            tqdm.write(f'Excluded {star_path.stem}.')
         pass
     except HDF5FileNotFoundError:
-        vprint(f'No HDF5 file for {star_path.stem}.')
+        if verbose:
+            tqdm.write(f'No HDF5 file for {star_path.stem}.')
         pass
     except AttributeError:
-        vprint(f'Affected star is {star_name}.')
+        if verbose:
+            tqdm.write(f'Affected star is {star_path.stem}.')
         raise
 
 
-def create_parameter_comparison_figures(ylims=None):
+def create_parameter_comparison_figures(ylims=None,
+                                        temp_lims=(5300 * u.K, 6200 * u.K),
+                                        mtl_lims=(-0.75, 0.4),
+                                        mag_lims=(4, 5.8),
+                                        logg_lims=(4.1, 4.6)):
     """Creates and returns a figure with pre-set subplots.
 
     This function creates the background figure and subplots for use with the
@@ -70,6 +104,18 @@ def create_parameter_comparison_figures(ylims=None):
     ylims : 2-tuple of floats or ints
         A tuple of length 2 containing the upper and lower limits of the
         subplots in the figure.
+    temp_lims : 2-tuple of floats or ints (optional dimensions of temperature)
+        A tuple of length containing upper and lower limits for the x-axis of
+        the temperature subplot.
+    mtl_lims : 2-tuple of floats or ints
+        A tuple of length containing upper and lower limits for the x-axis of
+        the metallicity subplot.
+    mag_lims : 2-tuple of floats or ints
+        A tuple of length containing upper and lower limits for the x-axis of
+        the absolute magnitude subplot.
+    logg_lims : 2-tuple of floats or ints
+        A tuple of length containing upper and lower limits for the x-axis of
+        the log(g) subplot.
 
     Returns
     -------
@@ -109,17 +155,17 @@ def create_parameter_comparison_figures(ylims=None):
     if ylims is not None:
         temp_ax_pre.set_ylim(bottom=ylims[0],
                              top=ylims[1])
-    temp_ax_pre.set_xlim(left=5300 * u.K,
-                         right=6200 * u.K)
-    mtl_ax_pre.set_xlim(left=-0.75,
-                        right=0.4)
+    temp_ax_pre.set_xlim(left=temp_lims[0],
+                         right=temp_lims[1])
+    mtl_ax_pre.set_xlim(left=mtl_lims[0],
+                        right=mtl_lims[1])
 
     # Axis styles for all subplots.
     for ax in all_axes:
-#        ax.yaxis.set_major_locator(ticker.MultipleLocator(
-#                                   base=50))
-#        ax.yaxis.set_minor_locator(ticker.MultipleLocator(
-#                                   base=25))
+        ax.yaxis.set_major_locator(ticker.MultipleLocator(
+                                   base=100))
+        ax.yaxis.set_minor_locator(ticker.MultipleLocator(
+                                   base=50))
         ax.axhline(y=0, color='Black', linestyle='--')
         ax.yaxis.grid(which='major', color='Gray',
                       linestyle='--', alpha=0.85)
@@ -256,40 +302,19 @@ if __name__ == '__main__':
     tqdm.write(f'Looking in main directory {main_dir}')
 
     if args.reference_star:
-        ref_star = get_star(args.reference_star)
+        ref_star = get_star(main_dir / args.reference_star)
         tqdm.write(f'Reference star is {ref_star.name}.')
 
     star_list = []
     tqdm.write('Collecting stars...')
     for star_dir in tqdm(args.star_names):
-        star = get_star(star_dir)
+        star = get_star(main_dir / star_dir)
         if star is None:
             pass
         else:
             vprint(f'Added {star.name}.')
             star_list.append(star)
     tqdm.write(f'Found {len(star_list)} usable stars in total.')
-
-    # Define style parameters to use for stellar parameter plots.
-    style_pre = {'color': 'Chocolate',
-                 'ecolor_thick': 'DarkOrange',
-                 'ecolor_thin': 'BurlyWood'}
-    style_post = {'color': 'DodgerBlue',
-                  'ecolor_thick': 'CornFlowerBlue',
-                  'ecolor_thin': 'LightSkyBlue'}
-    style_ref = {'color': 'DarkGreen',
-                 'ecolor_thick': 'ForestGreen',
-                 'ecolor_thin': 'DarkSeaGreen'}
-    style_markers = {'markeredgecolor': 'Black',
-                     'markeredgewidth': 1,
-                     'alpha': 0.7,
-                     'markersize': 4}
-    style_caps = {'capsize_thin': 4,
-                  'capsize_thick': 7,
-                  'linewidth_thin': 2,
-                  'linewidth_thick': 3,
-                  'cap_thin': 1.5,
-                  'cap_thick': 2.5}
 
     if args.compare_offset_patterns:
 
@@ -477,7 +502,9 @@ if __name__ == '__main__':
 
                 # Create the figure and subplots:
                 comp_fig, axes_dict = create_parameter_comparison_figures(
-                        ylims=(-300 * u.m / u.s, 300 * u.m / u.s))
+                        ylims=(-300 * u.m / u.s, 300 * u.m / u.s),
+                        temp_lims=(5400 * u.K, 6300 * u.K),
+                        mtl_lims=(-0.63, 0.52))
 
                 for ax in (axes_dict.values()):
                     ax.annotate(f'Blendedness: ({blend1}, {blend2})',
@@ -486,7 +513,8 @@ if __name__ == '__main__':
 
                 for ax, attr in zip(('temp_pre', 'mtl_pre',
                                      'mag_pre', 'logg_pre'),
-                                    (temp_pre, mtl_pre,
+                                    (np.array(temp_pre)+97,
+                                     np.array(mtl_pre)+0.12,
                                      mag_pre, logg_pre)):
                     plot_data_points(axes_dict[ax], attr,
                                      offsets_pre, errs_pre,
@@ -494,7 +522,8 @@ if __name__ == '__main__':
 
                 for ax, attr in zip(('temp_post', 'mtl_post',
                                      'mag_post', 'logg_post'),
-                                    (temp_post, mtl_post,
+                                    (np.array(temp_post)+97,
+                                     np.array(mtl_post)+0.12,
                                      mag_post, logg_post)):
                     plot_data_points(axes_dict[ax], attr,
                                      offsets_post, errs_post,
@@ -620,7 +649,12 @@ if __name__ == '__main__':
                         logg_post.append(star.logG)
 
                 # Create the figure and subplots:
-                comp_fig, axes_dict = create_parameter_comparison_figures()
+                median = np.nanmedian(means_pre + means_post)
+
+                comp_fig, axes_dict = create_parameter_comparison_figures(
+                        ylims=(median - 300, median + 300),
+                        temp_lims=(5400 * u.K, 6300 * u.K),
+                        mtl_lims=(-0.63, 0.52))
 
                 for ax in axes_dict.values():
                     ax.annotate(f'Blendedness: {transition.blendedness}',
@@ -629,7 +663,8 @@ if __name__ == '__main__':
 
                 for ax, attr in zip(('temp_pre', 'mtl_pre',
                                      'mag_pre', 'logg_pre'),
-                                    (temp_pre, mtl_pre,
+                                    (np.array(temp_pre)+97,
+                                     np.array(mtl_pre)+0.12,
                                      mag_pre, logg_pre)):
                     plot_data_points(axes_dict[ax], attr,
                                      means_pre, errs_pre,
@@ -637,7 +672,8 @@ if __name__ == '__main__':
 
                 for ax, attr in zip(('temp_post', 'mtl_post',
                                      'mag_post', 'logg_post'),
-                                    (temp_post, mtl_post,
+                                    (np.array(temp_post)+97,
+                                     np.array(mtl_post)+0.12,
                                      mag_post, logg_post)):
                     plot_data_points(axes_dict[ax], attr,
                                      means_post, errs_post,
