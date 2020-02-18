@@ -10,6 +10,7 @@ retrieval by other scripts.
 """
 
 import argparse
+import os
 from pathlib import Path
 import pickle
 
@@ -20,23 +21,43 @@ from tqdm import tqdm
 import unyt as u
 
 import varconlib as vcl
-from varconlib.exceptions import HDF5FileNotFoundError
+from varconlib.exceptions import (HDF5FileNotFoundError,
+                                  PickleFilesNotFoundError)
 from varconlib.star import Star
 
 
-def get_star(star_path, verbose=False):
+def append_dir(dir1, dir2):
+    """Append dir2 to dir2.
+
+    Parameters
+    ----------
+    dir1 : pathlib.Path
+        A path.
+    dir2 : str or pathlib.Path
+        A second path to be appended to `dir1`.
+
+    """
+
+    return dir1 / dir2
+
+
+def get_star(star_path, verbose=False, recreate=False):
     """Return a varconlib.star.Star object based on its name.
 
     Parameters
     ----------
     star_path : str
-        A string representing the name of the directory within the main given
-        directory where a star's observations can be found.
+        A string representing the name of the directory where the HDF5 file
+        containing a `star.Star`'s data can be found.
 
     Optional
     --------
     verbose : bool, Default: False
         If *True*, write out additional information.
+    recreate : bool, Default: False
+        If *True*, first recreate the star from observations before returning
+        it. This will only work on stars which already have an HDF5 file saved,
+        and will not create new ones.
 
     Returns
     -------
@@ -46,23 +67,25 @@ def get_star(star_path, verbose=False):
         their observations.
 
     """
+
     assert star_path.exists(), FileNotFoundError('Star directory'
                                                  f' {star_path}'
                                                  ' not found.')
+    recreate = not args.recreate_stars
     try:
-        return Star(star_path.stem, star_path, load_data=True)
+        return Star(star_path.stem, star_path, load_data=recreate)
     except IndexError:
-        if verbose:
-            tqdm.write(f'Excluded {star_path.stem}.')
+        vprint(f'Excluded {star_path.stem}.')
         pass
     except HDF5FileNotFoundError:
-        if verbose:
-            tqdm.write(f'No HDF5 file for {star_path.stem}.')
+        vprint(f'No HDF5 file for {star_path.stem}.')
         pass
     except AttributeError:
-        if verbose:
-            tqdm.write(f'Affected star is {star_path.stem}.')
+        vprint(f'Affected star is {star_path.stem}.')
         raise
+    except PickleFilesNotFoundError:
+        vprint(f'No pickle files found for {star_path.stem}')
+        pass
 
 
 def get_transition_data_point(star, time_slice, col_index):
@@ -92,15 +115,15 @@ def get_transition_data_point(star, time_slice, col_index):
 
     offsets = star.fitOffsetsNormalizedArray[time_slice, col_index]
     errs = star.fitErrorsArray[time_slice, col_index]
-    weighted_mean, weight_sum = np.average(offsets,
-                                           weights=1/errs**2,
+    weighted_mean, weight_sum = np.average(offsets.value,
+                                           weights=errs.value**-2,
                                            returned=True)
-    weighted_mean.convert_to_units(u.m/u.s)
-    error_on_weighted_mean = 1 / np.sqrt(weight_sum)
-    error_on_mean = np.std(offsets) / np.sqrt(
-        star.getNumObs(time_slice))
+    weighted_mean * u.m/u.s
+    error_on_weighted_mean = (1 / np.sqrt(weight_sum)) * u.m / u.s
+    stddev = np.std(offsets)
+    error_on_mean = stddev / np.sqrt(star.getNumObs(time_slice))
 
-    return (weighted_mean, error_on_weighted_mean, error_on_mean)
+    return (weighted_mean, error_on_weighted_mean, error_on_mean, stddev)
 
 
 if __name__ == '__main__':
@@ -112,6 +135,9 @@ if __name__ == '__main__':
     parser.add_argument('star_names', action='store', type=str, nargs='+',
                         help='The names of stars (directories) containing the'
                         ' stars to be used in the plot.')
+    parser.add_argument('--recreate-stars', action='store_true', default=False,
+                        help='Recreate all star.Star HDF5 files from'
+                        ' observations.')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help="Print more output about what's happening.")
 
@@ -128,6 +154,7 @@ if __name__ == '__main__':
 
     star_list = []
     tqdm.write('Collecting stars...')
+
     for star_dir in tqdm(args.star_names):
         star = get_star(main_dir / star_dir)
         if star is None:
@@ -135,6 +162,7 @@ if __name__ == '__main__':
         else:
             vprint(f'Added {star.name}.')
             star_list.append(star)
+
     tqdm.write(f'Found {len(star_list)} usable stars in total.')
 
     tqdm.write('Unpickling transitions list..')
@@ -146,6 +174,8 @@ if __name__ == '__main__':
         for order_num in transition.ordersToFitIn:
             transition_labels.append('_'.join([transition.label,
                                                str(order_num)]))
+
+    column_dict = {label: num for num, label in enumerate(transition_labels)}
 
     # Define the data structures to fill with results:
     # EotM = error on the mean
@@ -159,6 +189,7 @@ if __name__ == '__main__':
     star_transition_offsets = np.full([2, row_len, col_len], np.nan)
     star_transition_offsets_EotWM = np.full([2, row_len, col_len], np.nan)
     star_transition_offsets_EotM = np.full([2, row_len, col_len], np.nan)
+    star_transition_offsets_stds = np.full([2, row_len, col_len], np.nan)
 
     star_temperatures = np.full([row_len, 1], np.nan)
     star_metallicities = np.full([row_len, 1], np.nan)
@@ -169,53 +200,60 @@ if __name__ == '__main__':
     tqdm.write('Collecting data from stars...')
     for i, star in enumerate(tqdm(star_list)):
         vprint(f'Working on {star.name}')
-        for j, label in enumerate(tqdm(transition_labels)):
+        for j, label in enumerate(transition_labels):
             pre_slice = slice(None, star.fiberSplitIndex)
             post_slice = slice(star.fiberSplitIndex, None)
             col_index = star.t_index(label)
 
             if star.hasObsPre:
-                star_mean, star_eotwm, star_eotm =\
-                    get_transition_data_point(star, pre_slice,
-                                              col_index)
+                star_mean, star_eotwm, star_eotm, star_std =\
+                    get_transition_data_point(star, pre_slice, col_index)
                 star_transition_offsets[0, i, j] = star_mean
                 star_transition_offsets_EotWM[0, i, j] = star_eotwm
                 star_transition_offsets_EotM[0, i, j] = star_eotm
+                star_transition_offsets_stds[0, i, j] = star_std
 
             if star.hasObsPost:
-                star_mean, star_eotwm, star_eotm =\
-                    get_transition_data_point(star, post_slice,
-                                              col_index)
+                star_mean, star_eotwm, star_eotm, star_std =\
+                    get_transition_data_point(star, post_slice, col_index)
                 star_transition_offsets[1, i, j] = star_mean
                 star_transition_offsets_EotWM[1, i, j] = star_eotwm
                 star_transition_offsets_EotM[1, i, j] = star_eotm
+                star_transition_offsets_stds[1, i, j] = star_std
 
             star_temperatures[i] = star.temperature
             star_metallicities[i] = star.metallicity
             star_magnitudes[i] = star.absoluteMagnitude
             star_gravities[i] = star.logG
 
-        star_transition_offsets *= star.fitOffsetsArray.units
-        star_transition_offsets_EotWM *= star.fitErrorsArray.units
-        star_transition_offsets_EotM *= star.fitErrorsArray.units
-        star_temperatures *= u.K
+    star_transition_offsets *= star.fitOffsetsArray.units
+    star_transition_offsets_EotWM *= star.fitErrorsArray.units
+    star_transition_offsets_EotM *= star.fitErrorsArray.units
+    star_transition_offsets_stds *= star.fitErrorsArray.units
+    star_temperatures *= u.K
 
     # Save the output to disk.
     unyt_arrays = ('star_transition_offsets', 'star_transition_offsets_EotWM',
-                   'star_transition_offsets_EotM', 'star_temperatures')
-    other_arrays = ('star_metallicities', 'star_magnitudes', 'star_gravities')
+                   'star_transition_offsets_EotM', 'star_standard_deviations',
+                   'star_temperatures')
+    other_arrays = ('star_metallicities', 'star_magnitudes', 'star_gravities',
+                    'transition_column_index')
 
-    output_dir = Path(vcl.config['PATHS']['output_dir'])
-    db_file = output_dir / 'stellar_database.hdf5'
+    db_file = vcl.stellar_results_file
     tqdm.write(f'Writing output to {str(db_file)}')
+    if db_file.exists():
+        backup_path = db_file.with_name(db_file.stem + '.bak')
+        os.replace(db_file, backup_path)
     with h5py.File(db_file, mode='a') as f:
         for name, array in zip(unyt_arrays,
                                (star_transition_offsets,
                                 star_transition_offsets_EotWM,
                                 star_transition_offsets_EotM,
+                                star_transition_offsets_stds,
                                 star_temperatures)):
             array.write_hdf5(db_file, dataset_name=f'/{name}')
         for name, array in zip(other_arrays, (star_metallicities,
                                               star_magnitudes,
-                                              star_gravities)):
+                                              star_gravities,
+                                              column_dict)):
             hickle.dump(array, f, path=f'/{name}')
