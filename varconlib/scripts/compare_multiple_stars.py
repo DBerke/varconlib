@@ -663,8 +663,7 @@ if __name__ == '__main__':
 
                 for ax, attr in zip(('temp_pre', 'mtl_pre',
                                      'mag_pre', 'logg_pre'),
-                                    (np.array(temp_pre)+97,
-                                     np.array(mtl_pre)+0.12,
+                                    (temp_pre, mtl_pre,
                                      mag_pre, logg_pre)):
                     plot_data_points(axes_dict[ax], attr,
                                      means_pre, errs_pre,
@@ -672,8 +671,7 @@ if __name__ == '__main__':
 
                 for ax, attr in zip(('temp_post', 'mtl_post',
                                      'mag_post', 'logg_post'),
-                                    (np.array(temp_post)+97,
-                                     np.array(mtl_post)+0.12,
+                                    (temp_post, mtl_post,
                                      mag_post, logg_post)):
                     plot_data_points(axes_dict[ax], attr,
                                      means_post, errs_post,

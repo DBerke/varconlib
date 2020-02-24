@@ -127,10 +127,10 @@ def create_parameter_comparison_figures(ylims=None,
 
     # Axis styles for all subplots.
     for ax in all_axes:
-        ax.yaxis.set_major_locator(ticker.MultipleLocator(
-                                   base=100))
-        ax.yaxis.set_minor_locator(ticker.MultipleLocator(
-                                   base=50))
+#        ax.yaxis.set_major_locator(ticker.MultipleLocator(
+#                                   base=100))
+#        ax.yaxis.set_minor_locator(ticker.MultipleLocator(
+#                                   base=50))
         ax.axhline(y=0, color='Black', linestyle='--')
         ax.yaxis.grid(which='major', color='Gray',
                       linestyle='--', alpha=0.85)
@@ -243,16 +243,28 @@ def offset_model(beta, data):
 
     """
 
-    return beta[0] + beta[1] * data[0] + beta[2] * data[1] +\
-        beta[3] * data[2] + beta[4] * data[0] ** 2 +\
-        beta[5] * data[1] ** 2 + beta[6] * data[2] ** 2# +\
+#    return beta[0] + beta[1] * data[0]# + beta[2] * data[1] +\
+#        beta[3] * data[2]# + beta[4] * data[0] ** 2 +\
+#        beta[5] * data[1] ** 2 + beta[6] * data[2] ** 2# +\
 #        beta[7] * data[1] / data[0] +\
 #        beta[8] * data[1] / data[2]
-
-
-def linear_temp_model(beta, data):
-
-    return beta[0] + beta[1] * data
+    if args.constant:
+        return beta[0] + 0 * data[0]
+    elif args.linear_temp:
+        return beta[0] + beta[1] * data[0]
+    elif args.quad_temp:
+        return beta[0] + beta[1] * data[0] + beta[2] * data[0] ** 2
+    elif args.linear_mtl:
+        return beta[0] + beta[1] * data[1]
+    elif args.quad_mtl:
+        return beta[0] + beta[1] * data[1] + beta[2] * data[1] ** 2
+    elif args.linear_mag:
+        return beta[0] + beta[1] * data[2]
+    elif args.quad_mag:
+        return beta[0] + beta[1] * data[2] + beta[2] * data[2] ** 2
+    elif args.linear:
+        return beta[0] + beta[1] * data[0] + beta[2] * data[1] +\
+            beta[3] * data[2]
 
 
 def make_x_values(limits, num_points, position):
@@ -324,7 +336,6 @@ def main():
     # Handle various fitting and plotting setup:
     # Define the model to fit.
     hypersurface = odr.Model(offset_model)
-#    line = odr.Model(linear_temp_model)
 
     eras = {'pre': 0, 'post': 1}
     param_dict = {'temp': 0, 'mtl': 1, 'mag': 2}
@@ -348,8 +359,8 @@ def main():
                                   col])
 
             comp_fig, axes_dict = create_parameter_comparison_figures(
-                            ylims=(median - 300 * u.m / u.s,
-                                   median + 300 * u.m / u.s),
+#                            ylims=(median - 300 * u.m / u.s,
+#                                   median + 300 * u.m / u.s),
                             temp_lims=(5400 * u.K, 6300 * u.K),
                             mtl_lims=(-0.63, 0.52))
 
@@ -358,31 +369,31 @@ def main():
                             (0.01, 0.95),
                             xycoords='axes fraction')
 
-            for ax, attr in zip(('temp_pre', 'mtl_pre',
-                                 'mag_pre', 'logg_pre'),
-                                (star_temperatures+temp_offset,
-                                 star_metallicities+mtl_offset,
-                                 star_magnitudes,
-                                 star_gravities)):
-                plot_data_points(
-                    axes_dict[ax], attr,
-                    star_transition_offsets[eras['pre'], :, col],
-                    star_transition_offsets_EotWM[eras['pre'], :, col],
-                    star_transition_offsets_EotM[eras['pre'], :, col],
-                    era='pre')
-
-            for ax, attr in zip(('temp_post', 'mtl_post',
-                                 'mag_post', 'logg_post'),
-                                (star_temperatures+temp_offset,
-                                 star_metallicities+mtl_offset,
-                                 star_magnitudes,
-                                 star_gravities)):
-                plot_data_points(
-                    axes_dict[ax], attr,
-                    star_transition_offsets[eras['post'], :, col],
-                    star_transition_offsets_EotWM[eras['post'], :, col],
-                    star_transition_offsets_EotM[eras['post'], :, col],
-                    era='post')
+#            for ax, attr in zip(('temp_pre', 'mtl_pre',
+#                                 'mag_pre', 'logg_pre'),
+#                                (star_temperatures,
+#                                 star_metallicities,
+#                                 star_magnitudes,
+#                                 star_gravities)):
+#                plot_data_points(
+#                    axes_dict[ax], attr,
+#                    star_transition_offsets[eras['pre'], :, col],
+#                    star_transition_offsets_EotWM[eras['pre'], :, col],
+#                    star_transition_offsets_EotM[eras['pre'], :, col],
+#                    era='pre')
+#
+#            for ax, attr in zip(('temp_post', 'mtl_post',
+#                                 'mag_post', 'logg_post'),
+#                                (star_temperatures,
+#                                 star_metallicities,
+#                                 star_magnitudes,
+#                                 star_gravities)):
+#                plot_data_points(
+#                    axes_dict[ax], attr,
+#                    star_transition_offsets[eras['post'], :, col],
+#                    star_transition_offsets_EotWM[eras['post'], :, col],
+#                    star_transition_offsets_EotM[eras['post'], :, col],
+#                    era='post')
 
             # Perform the ODR fitting and plot the resulting functions.
             for time in eras.keys():
@@ -425,11 +436,8 @@ def main():
 #                print(data.x)
 #                print(data.y)
                 odr_instance = odr.ODR(data, hypersurface,
-                                       beta0=[median,
-                                              5e3, 1, 1,
-                                              -1, -1, -1])#,
-                                              #1, 1])
-                odr_instance.maxit = 10000
+                                       beta0=[median, 1, 1, 1, 1, 1, 1])
+                odr_instance.maxit = 100000
                 # Create log files for output:
                 outfile = plots_folder / 'ODR_output.txt'
                 errfile = plots_folder / 'ODR_errors.txt'
@@ -443,13 +451,23 @@ def main():
                     output.pprint()
                 params = output.beta
 
+                results = u.unyt_array(offset_model(params, x_data),
+                                       units=u.m/u.s)
+#                print(type(results))
+#                print(results)
+#                print(offsets)
+                diffs = results - offsets
+
                 for plot_type, lims, xs in zip(('temp', 'mtl', 'mag'),
                                                (temp_lims, mtl_lims, mag_lims),
                                                (x_temps, x_mtls, x_mags)):
 #                    print(offset_model(params, xs[:, :3]))
                     axes_dict[f'{plot_type}_{time}'].plot(
-                            xs[param_dict[plot_type]],
-                            offset_model(params, xs), color='Black')
+                            x_data[param_dict[plot_type]],
+                            diffs,
+                            color='LightGray', markeredgecolor='Black',
+                            linestyle='', markersize=4,
+                            marker='o')
 
             file_name = plots_folder / f'{label}.png'
             vprint(f'Saving file {label}.png')
@@ -465,13 +483,33 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Print out more information about the script.')
 
+    func = parser.add_mutually_exclusive_group(required=True)
+    func.add_argument('--constant', action='store_true',
+                      help='Use a constant function.')
+    func.add_argument('--linear-temp', action='store_true',
+                      help='Use a function linear in temperature:\n'
+                      'a + b1 T')
+    func.add_argument('--quad-temp', action='store_true',
+                      help='Use a quadratic function in temperature:\n'
+                      'a + b1 T + b2 T^2')
+    func.add_argument('--linear-mtl', action='store_true',
+                      help='Use a function linear in metallicity:\n'
+                      'a + c1 Ml')
+    func.add_argument('--quad-mtl', action='store_true',
+                      help='Use a function quadratic in metallicity:\n'
+                      'a + c1 Ml + c2 Ml^2')
+    func.add_argument('--linear-mag', action='store_true',
+                      help='Use a function linear in magnitude:\n'
+                      'a + d1 Mg')
+    func.add_argument('--quad-mag', action='store_true',
+                      help='Use a function quadratic in magnitude:\n'
+                      'a + d1 Mg + d2 Mg^2')
+    func.add_argument('--linear', action='store_true',
+                      help='Use a function linear in all three variables:\n'
+                      'a + b1 T + c1 Ml + d1 Mg')
+
     args = parser.parse_args()
 
     vprint = vcl.verbose_print(args.verbose)
-
-    # Define offsets in temperature and metallicity to applly to stars from the
-    # GCS survey.
-    temp_offset = 97 * u.K
-    mtl_offset = 0.12
 
     main()
