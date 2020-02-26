@@ -69,7 +69,7 @@ if args.plot_moon_separation:
 
     ax.set_xlabel('Angular distance between star and Moon (degrees)')
 
-    ax.hist(angular_distances.value, bins=15, color='HoneyDew',
+    ax.hist(angular_distances.value, bins=18, color='HoneyDew',
             edgecolor='Indigo')
     plt.show()
 
