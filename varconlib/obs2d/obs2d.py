@@ -203,7 +203,8 @@ class HARPSFile2DScience(HARPSFile2D):
 
         if not self._filename.exists():
             tqdm.write(str(self._filename))
-            raise FileNotFoundError('The given path does not exist!')
+            raise FileNotFoundError('The given path does not exist: \n'
+                                    f'{self._filename}')
 
         if update:
             file_open_mode = 'update'
