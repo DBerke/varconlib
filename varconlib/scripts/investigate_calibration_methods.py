@@ -233,14 +233,12 @@ if args.paper_figure:
         ax.set_ylabel(ylabel)
         ax.set_xlabel(xlabel)
         ax.axhline(0, color='Black', linewidth=2, alpha=1)
-        ax.yaxis.set_minor_locator(ticker.MultipleLocator(
-                                   base=10))
+        ax.yaxis.set_minor_locator(ticker.MultipleLocator(base=10))
         ax.yaxis.grid(which='major', color='SlateGray', alpha=0.7,
                       linestyle='-')
         ax.yaxis.grid(which='minor', color='Gray', alpha=0.5,
                       linestyle='-.')
-        ax.xaxis.set_minor_locator(ticker.MultipleLocator(
-                                   base=50))
+        ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=50))
         ax.xaxis.grid(which='major', color='SlateGray', alpha=0.7,
                       linestyle='--')
         ax.xaxis.grid(which='minor', color='Gray', alpha=0.5,
