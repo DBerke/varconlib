@@ -7,3 +7,4 @@ Created on Mon Feb 25 09:46:33 2019
 """
 
 from .model_fits import GaussianFit
+from .fitting import *
