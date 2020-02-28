@@ -253,7 +253,7 @@ def offset_model(beta, data):
     elif args.linear_temp:
         return beta[0] + beta[1] * data[0]
     elif args.quad_temp:
-        return beta[0] + beta[1] * data[0] + beta[2] * data[0] ** 2
+        return beta[0] + beta[1] * data[0] + beta[2] * data[0] * data[0]
     elif args.linear_mtl:
         return beta[0] + beta[1] * data[1]
     elif args.quad_mtl:
@@ -456,7 +456,7 @@ def main():
 #                print(type(results))
 #                print(results)
 #                print(offsets)
-                diffs = results - offsets
+                diffs = offsets - results
 
                 for plot_type, lims, xs in zip(('temp', 'mtl', 'mag'),
                                                (temp_lims, mtl_lims, mag_lims),
@@ -468,6 +468,12 @@ def main():
                             color='LightGray', markeredgecolor='Black',
                             linestyle='', markersize=4,
                             marker='o')
+                    axes_dict[f'{plot_type}_{time}'].annotate(
+                            [format(p, '.3e') for p in params if not
+                             np.isclose(p, 1)],
+                            (0.01, 0.01),
+                            xycoords='axes fraction',
+                            color='Red')
 
             file_name = plots_folder / f'{label}.png'
             vprint(f'Saving file {label}.png')
@@ -483,6 +489,16 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Print out more information about the script.')
 
+    parser.add_argument('--temp', action='store', type=float, nargs=2,
+                        metavar=('T_low', 'T_high'),
+                        help='The limits in temperature of stars to use.')
+    parser.add_argument('--mtl', action='store', type=float, nargs=2,
+                        metavar=('FeH_low', 'FeH_high'),
+                        help='The limits in metallicity of stars to use.')
+    parser.add_argument('--mag', action='store', type=float, nargs=2,
+                        metavar=('M_low', 'M_high'),
+                        help='The limits in magnitude of stars to use.')
+
     func = parser.add_mutually_exclusive_group(required=True)
     func.add_argument('--constant', action='store_true',
                       help='Use a constant function.')
@@ -494,19 +510,19 @@ if __name__ == '__main__':
                       'a + b1 T + b2 T^2')
     func.add_argument('--linear-mtl', action='store_true',
                       help='Use a function linear in metallicity:\n'
-                      'a + c1 Ml')
+                      'a + c1 FeH')
     func.add_argument('--quad-mtl', action='store_true',
                       help='Use a function quadratic in metallicity:\n'
-                      'a + c1 Ml + c2 Ml^2')
+                      'a + c1 FeH + c2 FeH^2')
     func.add_argument('--linear-mag', action='store_true',
                       help='Use a function linear in magnitude:\n'
-                      'a + d1 Mg')
+                      'a + d1 M')
     func.add_argument('--quad-mag', action='store_true',
                       help='Use a function quadratic in magnitude:\n'
-                      'a + d1 Mg + d2 Mg^2')
+                      'a + d1 M + d2 M^2')
     func.add_argument('--linear', action='store_true',
                       help='Use a function linear in all three variables:\n'
-                      'a + b1 T + c1 Ml + d1 Mg')
+                      'a + b1 T + c1 FeH + d1 M')
 
     args = parser.parse_args()
 
