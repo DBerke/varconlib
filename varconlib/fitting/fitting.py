@@ -12,7 +12,41 @@ data to a model, as well as creating synthetic data.
 
 import functools
 
+import numpy as np
 from scipy.optimize import curve_fit
+
+
+def gaussian_noise(ydata, sigma=None):
+    """Return an array of normally-distributed noise values.
+
+    Parameters
+    ----------
+    ydata : array_like
+        An array of data values.
+
+    Optional
+    --------
+    sigma : float
+        The standard deviation of the Gaussian to sample from. The default is
+        *None*. If not given, the scale will be the square root of each
+        individual data point.
+
+    Returns
+    -------
+    `np.ndarray`
+        An array of noise values of the same shape as the input `ydata`, to be
+        added to a data set.
+
+    """
+
+    if sigma is not None:
+        assert isinstance(sigma, (float, int, np.ndarray)), 'sigma is not' +\
+            f' an appropriate type! type: {type(sigma)}'
+        scale = sigma
+    else:
+        scale = np.sqrt(np.abs(ydata))
+
+    return np.random.normal(loc=0., scale=scale, size=ydata.size)
 
 
 def add_noise(noise_func, *noise_args, **noise_kwargs):
