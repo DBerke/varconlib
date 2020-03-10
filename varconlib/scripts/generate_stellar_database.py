@@ -108,8 +108,13 @@ def get_transition_data_point(star, time_slice, col_index):
     Returns
     -------
     tuple
-        Returns a 3-tuple of the weighted mean, the error on the
-        weighted mean, and the standard deviation.
+        Returns a 4-tuple of the weighted mean, the error on the
+        weighted mean, the error on the mean (standard deviation / sqrt(N))
+        and the standard deviation.
+
+        If there is only one observation for the star, the standard deviation
+        returned will be zero and the error on the mean will instead be the
+        error from the fit itself.
 
     """
 
@@ -118,10 +123,14 @@ def get_transition_data_point(star, time_slice, col_index):
     weighted_mean, weight_sum = np.average(offsets.value,
                                            weights=errs.value**-2,
                                            returned=True)
-    weighted_mean * u.m/u.s
+    weighted_mean *= u.m/u.s
     error_on_weighted_mean = (1 / np.sqrt(weight_sum)) * u.m / u.s
-    stddev = np.std(offsets)
-    error_on_mean = stddev / np.sqrt(star.getNumObs(time_slice))
+    if len(offsets) > 1:
+        stddev = np.std(offsets)
+        error_on_mean = stddev / np.sqrt(star.getNumObs(time_slice))
+    else:
+        stddev = 0
+        error_on_mean = errs[0]
 
     return (weighted_mean, error_on_weighted_mean, error_on_mean, stddev)
 
@@ -160,7 +169,7 @@ if __name__ == '__main__':
         if star is None:
             pass
         else:
-            vprint(f'Added {star.name}.')
+            vprint(f'Added {star.name}')
             star_list.append(star)
 
     tqdm.write(f'Found {len(star_list)} usable stars in total.')
@@ -168,6 +177,7 @@ if __name__ == '__main__':
     tqdm.write('Unpickling transitions list..')
     with open(vcl.final_selection_file, 'r+b') as f:
         transitions_list = pickle.load(f)
+    vprint(f'Found {len(transitions_list)} transitions in the list.')
 
     transition_labels = []
     for transition in transitions_list:
@@ -199,7 +209,8 @@ if __name__ == '__main__':
     # Iterate over all the stars collected:
     tqdm.write('Collecting data from stars...')
     for i, star in enumerate(tqdm(star_list)):
-        vprint(f'Working on {star.name}')
+        vprint(f'Collating data from {star.name:8} with {star.getNumObs():4}'
+               ' observations.')
         for j, label in enumerate(transition_labels):
             pre_slice = slice(None, star.fiberSplitIndex)
             post_slice = slice(star.fiberSplitIndex, None)
@@ -236,11 +247,10 @@ if __name__ == '__main__':
     unyt_arrays = ('star_transition_offsets', 'star_transition_offsets_EotWM',
                    'star_transition_offsets_EotM', 'star_standard_deviations',
                    'star_temperatures')
-    other_arrays = ('star_metallicities', 'star_magnitudes', 'star_gravities',
-                    'transition_column_index')
+    other_arrays = ('star_metallicities', 'star_magnitudes', 'star_gravities')
 
     db_file = vcl.stellar_results_file
-    tqdm.write(f'Writing output to {str(db_file)}')
+    vprint(f'Writing output to {str(db_file)}')
     if db_file.exists():
         backup_path = db_file.with_name(db_file.stem + '.bak')
         os.replace(db_file, backup_path)
@@ -251,9 +261,13 @@ if __name__ == '__main__':
                                 star_transition_offsets_EotM,
                                 star_transition_offsets_stds,
                                 star_temperatures)):
+            vprint(f'{name}: {array.shape}')
             array.write_hdf5(db_file, dataset_name=f'/{name}')
+
         for name, array in zip(other_arrays, (star_metallicities,
                                               star_magnitudes,
-                                              star_gravities,
-                                              column_dict)):
+                                              star_gravities)):
             hickle.dump(array, f, path=f'/{name}')
+            vprint(f'{name}: {array.shape}')
+        hickle.dump(column_dict, f, path='/transition_column_index')
+    vprint('Done!')
