@@ -18,6 +18,7 @@ from astropy import units
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
 import matplotlib.pyplot as plt
+import numpy as np
 from tqdm import tqdm
 import unyt as u
 
@@ -63,6 +64,8 @@ if args.plot_moon_separation:
                         frame='fk5')
 
     angular_distances = obs_pos.separation(moon_pos)
+
+    tqdm.write(f'Minimum separation is {np.min(np.array(angular_distances))}')
 
     fig = plt.figure(figsize=(7, 7))
     ax = fig.add_subplot(1, 1, 1)
