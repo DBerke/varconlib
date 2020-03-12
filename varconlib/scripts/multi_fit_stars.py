@@ -10,6 +10,8 @@ from a database, and perform multi-component fitting to it.
 """
 
 import argparse
+import csv
+from inspect import signature
 import os
 from pathlib import Path
 import pickle
@@ -21,12 +23,11 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 import numpy.ma as ma
-import scipy.odr as odr
 from tqdm import tqdm
 import unyt as u
 
 import varconlib as vcl
-
+import varconlib.fitting.fitting as fit
 
 # Define style parameters to use for stellar parameter plots.
 style_pre = {'color': 'Chocolate',
@@ -86,8 +87,8 @@ def create_parameter_comparison_figures(ylims=None,
 
     """
 
-    comp_fig = plt.figure(figsize=(16, 8), tight_layout=True)
-    gs = GridSpec(ncols=4, nrows=2, figure=comp_fig)
+    comp_fig = plt.figure(figsize=(12, 8), tight_layout=True)
+    gs = GridSpec(ncols=3, nrows=2, figure=comp_fig)
 
     temp_ax_pre = comp_fig.add_subplot(gs[0, 0])
     temp_ax_post = comp_fig.add_subplot(gs[1, 0],
@@ -103,14 +104,14 @@ def create_parameter_comparison_figures(ylims=None,
     mag_ax_post = comp_fig.add_subplot(gs[1, 2],
                                        sharex=mag_ax_pre,
                                        sharey=mag_ax_pre)
-    logg_ax_pre = comp_fig.add_subplot(gs[0, 3],
-                                       sharey=temp_ax_pre)
-    logg_ax_post = comp_fig.add_subplot(gs[1, 3],
-                                        sharex=logg_ax_pre,
-                                        sharey=logg_ax_pre)
+#    logg_ax_pre = comp_fig.add_subplot(gs[0, 3],
+#                                       sharey=temp_ax_pre)
+#    logg_ax_post = comp_fig.add_subplot(gs[1, 3],
+#                                        sharex=logg_ax_pre,
+#                                        sharey=logg_ax_pre)
 
     all_axes = (temp_ax_pre, temp_ax_post, mtl_ax_pre, mtl_ax_post,
-                mag_ax_pre, mag_ax_post, logg_ax_pre, logg_ax_post)
+                mag_ax_pre, mag_ax_post)#, logg_ax_pre, logg_ax_post)
     # Set the plot limits here. The y-limits for temp_ax1 are
     # used for all subplots.
     if ylims is not None:
@@ -122,8 +123,8 @@ def create_parameter_comparison_figures(ylims=None,
                         right=mtl_lims[1])
     mag_ax_pre.set_xlim(left=mag_lims[0],
                         right=mag_lims[1])
-    logg_ax_pre.set_xlim(left=logg_lims[0],
-                         right=logg_lims[1])
+#    logg_ax_pre.set_xlim(left=logg_lims[0],
+#                         right=logg_lims[1])
 
     # Axis styles for all subplots.
     for ax in all_axes:
@@ -133,11 +134,11 @@ def create_parameter_comparison_figures(ylims=None,
 #                                   base=50))
         ax.axhline(y=0, color='Black', linestyle='--')
         ax.yaxis.grid(which='major', color='Gray',
-                      linestyle='--', alpha=0.85)
+                      linestyle='--', alpha=0.65)
         ax.xaxis.grid(which='major', color='Gray',
-                      linestyle='--', alpha=0.85)
+                      linestyle='--', alpha=0.65)
         ax.yaxis.grid(which='minor', color='Gray',
-                      linestyle=':', alpha=0.75)
+                      linestyle=':', alpha=0.5)
 
     for ax in (temp_ax_pre, temp_ax_post):
         ax.set_xlabel('Temperature (K)')
@@ -145,17 +146,18 @@ def create_parameter_comparison_figures(ylims=None,
         ax.set_xlabel('Metallicity [Fe/H]')
     for ax in (mag_ax_pre, mag_ax_post):
         ax.set_xlabel('Absolute Magnitude')
-    for ax in (logg_ax_pre, logg_ax_post):
-        ax.set_xlabel(r'$\log(g)$')
+#    for ax in (logg_ax_pre, logg_ax_post):
+#        ax.set_xlabel(r'$\log(g)$')
 
     # Just label the left-most two subplots' y-axes.
-    for ax in (temp_ax_pre, temp_ax_post):
-        ax.set_ylabel('Pre-fiber change offset (m/s)')
+    for ax, era in zip((temp_ax_pre, temp_ax_post),
+                       ('Pre', 'Post')):
+        ax.set_ylabel(f'{era}-fiber change offset (m/s)')
 
     axes_dict = {'temp_pre': temp_ax_pre, 'temp_post': temp_ax_post,
                  'mtl_pre': mtl_ax_pre, 'mtl_post': mtl_ax_post,
-                 'mag_pre': mag_ax_pre, 'mag_post': mag_ax_post,
-                 'logg_pre': logg_ax_pre, 'logg_post': logg_ax_post}
+                 'mag_pre': mag_ax_pre, 'mag_post': mag_ax_post}
+#                 'logg_pre': logg_ax_pre, 'logg_post': logg_ax_post}
 
     return comp_fig, axes_dict
 
@@ -171,14 +173,17 @@ def plot_data_points(axis, x_pos, y_pos, thick_err, thin_err, era=None,
     x_pos : iterable of floats or `unyt.unyt_quantity`
         The x-positions of the points to plot.
     y_pos : iterable of floats or `unyt.unyt_quantity`
-        The y-positions of the points to plot.
+        The y-positions of the points to plot. The length must match the length
+        of `x_pos`.
     thick_err : iterable of floats or `unyt.unyt_quantity`
-        The values of the thick error bars to plot.
+        The values of the thick error bars to plot. The length must match the
+        length of `x_pos`.
     thin_err : iterable of floats or `unyt.unyt_quantity`
-        The values of the thin error bars to plot.
-    era : string, ['pre', 'post'], Default : None
+        The values of the thin error bars to plot. The length must match the
+        length of `x_pos`.
+    era : string, ['pre', 'post'], or None, Default : None
         Whether the time period of the plot is pre- or post-fiber
-        change. Only allowed values are 'pre' and 'post'. Controls
+        change. The only allowed string values are 'pre' and 'post'. Controls
         color of the points. If `ref` is *True*, the value of `era` is
         ignored, and can be left unspecified, otherwise it needs a
         value to be given.
@@ -222,74 +227,70 @@ def plot_data_points(axis, x_pos, y_pos, thick_err, thin_err, era=None,
                   capthick=style_caps['cap_thick'])
 
 
-def offset_model(beta, data):
-    """Function representing the model for multi-parameter fits of offsets.
+def constant_model(data, a):
 
-    ODR appears to need return values specified as indices from given vectors,
-    so as a reference:
-        data[0] = temperature
-        data[1] = metallicity
-        data[2] = absolute magnitude
-
-    Parameters
-    ----------
-
-    beta : iterable (length 8)
-        A vector of coefficients for use in the equation.
-
-    data : iterable (length 3)
-        A vector containing a data point (or equal-length iterables of data
-        points) for each of the three variables to consider.
-
-    """
-
-#    return beta[0] + beta[1] * data[0]# + beta[2] * data[1] +\
-#        beta[3] * data[2]# + beta[4] * data[0] ** 2 +\
-#        beta[5] * data[1] ** 2 + beta[6] * data[2] ** 2# +\
-#        beta[7] * data[1] / data[0] +\
-#        beta[8] * data[1] / data[2]
-    if args.constant:
-        return beta[0] + 0 * data[0]
-    elif args.linear_temp:
-        return beta[0] + beta[1] * data[0]
-    elif args.quad_temp:
-        return beta[0] + beta[1] * data[0] + beta[2] * data[0] * data[0]
-    elif args.linear_mtl:
-        return beta[0] + beta[1] * data[1]
-    elif args.quad_mtl:
-        return beta[0] + beta[1] * data[1] + beta[2] * data[1] ** 2
-    elif args.linear_mag:
-        return beta[0] + beta[1] * data[2]
-    elif args.quad_mag:
-        return beta[0] + beta[1] * data[2] + beta[2] * data[2] ** 2
-    elif args.linear:
-        return beta[0] + beta[1] * data[0] + beta[2] * data[1] +\
-            beta[3] * data[2]
+    return a
 
 
-def make_x_values(limits, num_points, position):
-    """Create an array to use as x-values when plotting slices of hypersurface.
+def linear_model(data, a, b, c, d):
 
-    Parameters
-    ----------
-    limits : iterable, length-2
-        A pair of (lower, upper) limits to use for the extremes.
-    num_points : int or float
-        The number of points to use in `np.linspace`.
-    position : int, [0, 1, 2]
-        The row index (out of three rows) to place the generated points in. The
-        other rows will be zeros.
+    return a + b * data[0] + c * data[1] + d * data[2]
 
-    """
 
-    temp = np.full([num_points], 5777 * u.K)
-    mtl = np.zeros([num_points])
-    mag = np.full([num_points], 4.83)
+def quadratic_model(data, a, b, c, d, e, f, g):
 
-    array = np.stack((temp, mtl, mag), axis=0)
-    array[position] = np.linspace(limits[0], limits[1], num_points)
+    return a + b * data[0] + c * data[1] + d * data[2] +\
+           e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2
 
-    return array
+
+def cubic_model(data, a, b, c, d, e, f, g, h, i, j):
+
+    return a + b * data[0] + c * data[1] + d * data[2] +\
+           e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2 +\
+           h * data[0] ** 3 + i * data[1] ** 3 + j * data[2] ** 3
+
+
+def quartic_model(data, a, b, c, d, e, f, g, h, i, j, k, l, m):
+
+    return a + b * data[0] + c * data[1] + d * data[2] +\
+           e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2 +\
+           h * data[0] ** 3 + i * data[1] ** 3 + j * data[2] ** 3 +\
+           k * data[0] ** 4 + l * data[1] ** 4 + m * data[2] ** 4
+
+
+def quintic_model(data, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p):
+
+    return a + b * data[0] + c * data[1] + d * data[2] +\
+           e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2 +\
+           h * data[0] ** 3 + i * data[1] ** 3 + j * data[2] ** 3 +\
+           k * data[0] ** 4 + l * data[1] ** 4 + m * data[2] ** 4 +\
+           n * data[0] ** 5 + o * data[1] ** 5 + p * data[2] ** 5
+
+
+def cross_term_model(data, a, b, c, d, e):
+
+    return a + b * data[0] + c * data[1] + d * data[2] + e * data[1] * data[0]
+
+
+def quadratic_cross_term_model(data, a, b, c, d, e, f, g, h, i):
+
+    return a + b * data[0] + c * data[1] + d * data[2] + e * data[1]/data[0] +\
+           f * data[0] ** 2 + g * data[1] ** 2 + h * data[2] ** 2 +\
+           i * (data[1]/data[0]) ** 2
+
+
+def quadratic_mag_model(data, a, b, c, d, e, f):
+
+    return a + b * data[0] + c * data[1] + d * data[2] +\
+           e * data[1] * data[0] + f * data[2] ** 2
+
+
+def quad_cross_terms_model(data, a, b, c, d, e, f, g, h, i, j):
+
+    return a + b * data[0] + c * data[1] + d * data[2] +\
+           e * data[0] * data[1] + f * data[0] * data[2] +\
+           g * data[1] * data[2] +\
+           h * data[0] ** 2 + i * data[1] ** 2 + j * data[2] ** 2
 
 
 def main():
@@ -305,11 +306,6 @@ def main():
     with open(vcl.final_selection_file, 'r+b') as f:
         transitions_list = pickle.load(f)
     vprint(f'Found {len(transitions_list)} transitions.')
-
-    plots_folder = Path(vcl.config['PATHS']['output_dir']) /\
-        'stellar_parameter_fits'
-    if not plots_folder.exists():
-        os.makedirs(plots_folder)
 
     db_file = vcl.stellar_results_file
 
@@ -330,90 +326,105 @@ def main():
 
         star_metallicities = hickle.load(f, path='/star_metallicities')
         star_magnitudes = hickle.load(f, path='/star_magnitudes')
-        star_gravities = hickle.load(f, path='/star_gravities')
+#        star_gravities = hickle.load(f, path='/star_gravities')
         column_dict = hickle.load(f, path='transition_column_index')
 
     # Handle various fitting and plotting setup:
-    # Define the model to fit.
-    hypersurface = odr.Model(offset_model)
-
     eras = {'pre': 0, 'post': 1}
     param_dict = {'temp': 0, 'mtl': 1, 'mag': 2}
 
-    # Create some x values for plotting later:
-    numpoints = 50
-    x_temps = make_x_values(temp_lims.to_value(), numpoints,
-                            param_dict['temp'])
-    x_mtls = make_x_values(mtl_lims, numpoints, param_dict['mtl'])
-    x_mags = make_x_values(mag_lims, numpoints, param_dict['mag'])
+    # Create lists to store information about each fit in:
+    index_nums = []
+    chi_squareds_pre, sigmas_pre = [], []
+    chi_squareds_post, sigmas_post = [], []
+    index_num = 0
+
+    if args.constant:
+        model_func = constant_model
+    elif args.linear:
+        model_func = linear_model
+    elif args.quadratic:
+        model_func = quadratic_model
+    elif args.cubic:
+        model_func = cubic_model
+    elif args.quartic:
+        model_func = quartic_model
+    elif args.quintic:
+        model_func = quintic_model
+    elif args.cross_term:
+        model_func = cross_term_model
+    elif args.quadratic_cross_term:
+        model_func = quadratic_cross_term_model
+    elif args.quadratic_magnitude:
+        model_func = quadratic_mag_model
+    elif args.quad_cross_terms:
+        model_func = quad_cross_terms_model
+
+    model_name = '_'.join(model_func.__name__.split('_')[:-1])
+
+    params_list = []
+    for i in range(len(signature(model_func).parameters)-1):
+        params_list.append(0.)
+
+    # Define the folder to put plots in.
+    plots_folder = Path(vcl.config['PATHS']['output_dir']) /\
+        f'stellar_parameter_fits_{model_name}'
+    if not plots_folder.exists():
+        os.makedirs(plots_folder)
 
     tqdm.write('Creating plots for each transition...')
-    for transition in tqdm(transitions_list[:]):
+    for transition in tqdm(transitions_list):
         for order_num in transition.ordersToFitIn:
+            index_nums.append(index_num)
+            index_num += 1
             label = '_'.join([transition.label, str(order_num)])
 
             # The column number to use for this transition:
             col = column_dict[label]
 
-            median = np.nanmedian(star_transition_offsets[:, :,
-                                  col])
-
             comp_fig, axes_dict = create_parameter_comparison_figures(
-#                            ylims=(median - 300 * u.m / u.s,
-#                                   median + 300 * u.m / u.s),
+                            ylims=(-300 * u.m / u.s,
+                                   300 * u.m / u.s),
                             temp_lims=(5400 * u.K, 6300 * u.K),
                             mtl_lims=(-0.63, 0.52))
 
-            for ax in axes_dict.values():
-                ax.annotate(f'Blendedness: {transition.blendedness}',
-                            (0.01, 0.95),
-                            xycoords='axes fraction')
-
-#            for ax, attr in zip(('temp_pre', 'mtl_pre',
-#                                 'mag_pre', 'logg_pre'),
-#                                (star_temperatures,
-#                                 star_metallicities,
-#                                 star_magnitudes,
-#                                 star_gravities)):
-#                plot_data_points(
-#                    axes_dict[ax], attr,
-#                    star_transition_offsets[eras['pre'], :, col],
-#                    star_transition_offsets_EotWM[eras['pre'], :, col],
-#                    star_transition_offsets_EotM[eras['pre'], :, col],
-#                    era='pre')
-#
-#            for ax, attr in zip(('temp_post', 'mtl_post',
-#                                 'mag_post', 'logg_post'),
-#                                (star_temperatures,
-#                                 star_metallicities,
-#                                 star_magnitudes,
-#                                 star_gravities)):
-#                plot_data_points(
-#                    axes_dict[ax], attr,
-#                    star_transition_offsets[eras['post'], :, col],
-#                    star_transition_offsets_EotWM[eras['post'], :, col],
-#                    star_transition_offsets_EotM[eras['post'], :, col],
-#                    era='post')
-
-            # Perform the ODR fitting and plot the resulting functions.
             for time in eras.keys():
+
+                median = np.nanmedian(star_transition_offsets[eras[time],
+                                                              :, col])
 
                 # First, create a masked version to catch any missing entries:
                 m_offsets = ma.masked_invalid(star_transition_offsets[
                             eras[time], :, col])
                 m_offsets = m_offsets.reshape([len(m_offsets), 1])
                 # Then create a new array from the non-masked data:
-                offsets = m_offsets[~m_offsets.mask]
+                offsets = u.unyt_array(m_offsets[~m_offsets.mask],
+                                       units=u.m/u.s)
+#                print(offsets.shape)
+#                print(m_offsets)
 
-                m_stds = ma.masked_invalid(star_transition_offsets_stds[
-                            eras[time], :, col])
-                m_stds = m_stds.reshape([len(m_stds), 1])
-                stds = m_stds[~m_stds.mask]
+#                m_stds = ma.masked_invalid(star_transition_offsets_stds[
+#                            eras[time], :, col])
+#                m_stds = m_stds.reshape([len(m_stds), 1])
+#                stds = u.unyt_array(m_stds[~m_stds.mask],
+#                                    units=u.m/u.s)
+#                print(stds.shape)
+#                print(m_stds)
+#
+#                m_eotwms = ma.masked_invalid(star_transition_offsets_EotWM[
+#                        eras[time], :, col])
+#                m_eotwms = m_eotwms.reshape([len(m_eotwms), 1])
+#                eotwms = u.unyt_array(m_eotwms[~m_eotwms.mask],
+#                                      units=u.m/u.s)
+#                print(eotwms.shape)
+#                print(m_eotwms)
 
-                m_eotwms = ma.masked_invalid(star_transition_offsets_EotWM[
+                m_eotms = ma.masked_invalid(star_transition_offsets_EotM[
                         eras[time], :, col])
-                m_eotwms = m_eotwms.reshape([len(m_eotwms), 1])
-                eotwms = m_eotwms[~m_eotwms.mask]
+                m_eotms = m_eotms.reshape([len(m_eotms), 1])
+                # Use the same mask as for the offsets.
+                eotms = u.unyt_array(m_eotms[~m_offsets.mask],
+                                     units=u.m/u.s)
 
                 temperatures = ma.masked_array(star_temperatures)
                 temps = temperatures[~m_offsets.mask]
@@ -422,64 +433,83 @@ def main():
                 magnitudes = ma.masked_array(star_magnitudes)
                 mags = magnitudes[~m_offsets.mask]
 
-#                for array in (temps, metals, mags):
-#                    print(array)
-
                 x_data = np.stack((temps, metals, mags), axis=0)
-#                print(x_data.shape)
-#                print(x_data[:, :5])
-                data = odr.RealData(x_data, y=offsets, sy=eotwms)
-#                data = odr.RealData(x=temps,
-#                                    y=offsets)
-#                print(list(data.x.shape))
-#                print(list(data.y.shape))
-#                print(data.x)
-#                print(data.y)
-                odr_instance = odr.ODR(data, hypersurface,
-                                       beta0=[median, 1, 1, 1, 1, 1, 1])
-                odr_instance.maxit = 100000
-                # Create log files for output:
-                outfile = plots_folder / 'ODR_output.txt'
-                errfile = plots_folder / 'ODR_errors.txt'
-                for f in (outfile, errfile):
-                    if f.exists():
-                        os.unlink(f)
-                odr_instance.rptfile = str(outfile)
-                odr_instance.errfile = str(errfile)
-                output = odr_instance.run()
-                if args.verbose:
-                    output.pprint()
-                params = output.beta
 
-                results = u.unyt_array(offset_model(params, x_data),
+                # Create the parameter list for this run of fitting.
+                params_list[0] = float(median.value)
+
+                beta0 = tuple(params_list)
+                popt, pcov = fit.curve_fit_data(model_func, x_data,
+                                                offsets, beta0,
+                                                sigma=eotms)
+                results = u.unyt_array(model_func(x_data, *popt),
                                        units=u.m/u.s)
-#                print(type(results))
-#                print(results)
-#                print(offsets)
-                diffs = offsets - results
+                residuals = offsets - results
 
-                for plot_type, lims, xs in zip(('temp', 'mtl', 'mag'),
-                                               (temp_lims, mtl_lims, mag_lims),
-                                               (x_temps, x_mtls, x_mags)):
-#                    print(offset_model(params, xs[:, :3]))
-                    axes_dict[f'{plot_type}_{time}'].plot(
+                # Find the chi^2 value for this distribution:
+                chi_squared = np.sum((residuals / eotms) ** 2)
+                dof = len(offsets) - len(popt)
+                vprint(f'DOF = {len(offsets)} - {len(popt)} = {dof}')
+                chi_squared_nu = chi_squared / dof
+                sigma = np.std(residuals)
+
+                if time == 'pre':
+                    chi_squareds_pre.append(chi_squared_nu.value)
+                    sigmas_pre.append(sigma.value)
+                else:
+                    chi_squareds_post.append(chi_squared_nu.value)
+                    sigmas_post.append(sigma.value)
+
+                for plot_type, lims in zip(('temp', 'mtl', 'mag'),
+                                           (temp_lims, mtl_lims, mag_lims)):
+                    ax = axes_dict[f'{plot_type}_{time}']
+                    if time == 'pre':
+                        color = style_pre['color']
+                        ecolor = style_pre['ecolor_thick']
+                    else:
+                        color = style_post['color']
+                        ecolor = style_post['ecolor_thick']
+                    ax.errorbar(
                             x_data[param_dict[plot_type]],
-                            diffs,
-                            color='LightGray', markeredgecolor='Black',
-                            linestyle='', markersize=4,
+                            residuals, yerr=eotms,
+                            ecolor=ecolor,
+                            color=color,
+                            markeredgecolor=style_markers['markeredgecolor'],
+                            linestyle='',
+                            markersize=style_markers['markersize'],
+                            markeredgewidth=style_markers['markeredgewidth'],
+                            alpha=style_markers['alpha'],
                             marker='o')
-                    axes_dict[f'{plot_type}_{time}'].annotate(
-                            [format(p, '.3e') for p in params if not
-                             np.isclose(p, 1)],
-                            (0.01, 0.01),
-                            xycoords='axes fraction',
-                            color='Red')
 
-            file_name = plots_folder / f'{label}.png'
+                    ax.annotate(f'Blendedness: {transition.blendedness}',
+                                (0.01, 0.99),
+                                xycoords='axes fraction',
+                                verticalalignment='top')
+                    ax.annotate(fr'$\chi^2_\nu$: {chi_squared_nu.value:.2f}'
+                                '\n'
+                                fr'$\sigma$: {sigma:.2f}',
+                                (0.99, 0.99),
+                                xycoords='axes fraction',
+                                horizontalalignment='right',
+                                verticalalignment='top')
+
+            file_name = plots_folder / f'{label}_{model_name}.png'
             vprint(f'Saving file {label}.png')
 
             comp_fig.savefig(str(file_name))
             plt.close('all')
+
+    # Save metadata from this run's fits to CSV:
+    csv_file = plots_folder / f'{model_name}_fit_results.csv'
+
+    with open(csv_file, 'w', newline='') as f:
+        datawriter = csv.writer(f)
+        header = ('#index', 'chi_squared_pre', 'sigma_pre',
+                  'chi_squared_post', 'sigma_post')
+        datawriter.writerow(header)
+        for row in zip(index_nums, chi_squareds_pre, sigmas_pre,
+                       chi_squareds_post, sigmas_post):
+            datawriter.writerow(row)
 
 
 if __name__ == '__main__':
@@ -502,27 +532,25 @@ if __name__ == '__main__':
     func = parser.add_mutually_exclusive_group(required=True)
     func.add_argument('--constant', action='store_true',
                       help='Use a constant function.')
-    func.add_argument('--linear-temp', action='store_true',
-                      help='Use a function linear in temperature:\n'
-                      'a + b1 T')
-    func.add_argument('--quad-temp', action='store_true',
-                      help='Use a quadratic function in temperature:\n'
-                      'a + b1 T + b2 T^2')
-    func.add_argument('--linear-mtl', action='store_true',
-                      help='Use a function linear in metallicity:\n'
-                      'a + c1 FeH')
-    func.add_argument('--quad-mtl', action='store_true',
-                      help='Use a function quadratic in metallicity:\n'
-                      'a + c1 FeH + c2 FeH^2')
-    func.add_argument('--linear-mag', action='store_true',
-                      help='Use a function linear in magnitude:\n'
-                      'a + d1 M')
-    func.add_argument('--quad-mag', action='store_true',
-                      help='Use a function quadratic in magnitude:\n'
-                      'a + d1 M + d2 M^2')
     func.add_argument('--linear', action='store_true',
-                      help='Use a function linear in all three variables:\n'
-                      'a + b1 T + c1 FeH + d1 M')
+                      help='Use a function linear in all three variables.')
+    func.add_argument('--quadratic', action='store_true',
+                      help='Use a function quadratic in all three variables.')
+    func.add_argument('--cubic', action='store_true',
+                      help='Use a cubic function for all three variables.')
+    func.add_argument('--quartic', action='store_true',
+                      help='Use a quartic function for all three variables.')
+    func.add_argument('--quintic', action='store_true',
+                      help='Use a quintic function for all three variables.')
+    func.add_argument('--cross-term', action='store_true',
+                      help='Use a linear model with cross term ([Fe/H]/Teff).')
+    func.add_argument('--quadratic-cross-term', action='store_true',
+                      help='Use a quadratic model with cross terms between'
+                      ' metallicity and temperature.')
+    func.add_argument('--quadratic-magnitude', action='store_true',
+                      help='Use a cross term with quadratic magnitude.')
+    func.add_argument('--quad-cross-terms', action='store_true',
+                      help='Use a quadratic model with full cross terms.')
 
     args = parser.parse_args()
 
