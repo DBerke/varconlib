@@ -16,6 +16,67 @@ import numpy as np
 from scipy.optimize import curve_fit
 
 
+def linear_model(data, a, b, c, d):
+
+    return a + b * data[0] + c * data[1] + d * data[2]
+
+
+def quadratic_model(data, a, b, c, d, e, f, g):
+
+    return a + b * data[0] + c * data[1] + d * data[2] +\
+           e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2
+
+
+def cubic_model(data, a, b, c, d, e, f, g, h, i, j):
+
+    return a + b * data[0] + c * data[1] + d * data[2] +\
+           e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2 +\
+           h * data[0] ** 3 + i * data[1] ** 3 + j * data[2] ** 3
+
+
+def quartic_model(data, a, b, c, d, e, f, g, h, i, j, k, l, m):
+
+    return a + b * data[0] + c * data[1] + d * data[2] +\
+           e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2 +\
+           h * data[0] ** 3 + i * data[1] ** 3 + j * data[2] ** 3 +\
+           k * data[0] ** 4 + l * data[1] ** 4 + m * data[2] ** 4
+
+
+def quintic_model(data, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p):
+
+    return a + b * data[0] + c * data[1] + d * data[2] +\
+           e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2 +\
+           h * data[0] ** 3 + i * data[1] ** 3 + j * data[2] ** 3 +\
+           k * data[0] ** 4 + l * data[1] ** 4 + m * data[2] ** 4 +\
+           n * data[0] ** 5 + o * data[1] ** 5 + p * data[2] ** 5
+
+
+def cross_term_model(data, a, b, c, d, e):
+
+    return a + b * data[0] + c * data[1] + d * data[2] + e * data[1] * data[0]
+
+
+def quadratic_cross_term_model(data, a, b, c, d, e, f, g, h, i):
+
+    return a + b * data[0] + c * data[1] + d * data[2] + e * data[1]/data[0] +\
+           f * data[0] ** 2 + g * data[1] ** 2 + h * data[2] ** 2 +\
+           i * (data[1]/data[0]) ** 2
+
+
+def quadratic_mag_model(data, a, b, c, d, e, f):
+
+    return a + b * data[0] + c * data[1] + d * data[2] +\
+           e * data[1] * data[0] + f * data[2] ** 2
+
+
+def quad_full_cross_terms_model(data, a, b, c, d, e, f, g, h, i, j):
+
+    return a + b * data[0] + c * data[1] + d * data[2] +\
+           e * data[0] * data[1] + f * data[0] * data[2] +\
+           g * data[1] * data[2] +\
+           h * data[0] ** 2 + i * data[1] ** 2 + j * data[2] ** 2
+
+
 def gaussian_noise(ydata, sigma=None):
     """Return an array of normally-distributed noise values.
 
