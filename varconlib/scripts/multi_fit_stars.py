@@ -227,72 +227,6 @@ def plot_data_points(axis, x_pos, y_pos, thick_err, thin_err, era=None,
                   capthick=style_caps['cap_thick'])
 
 
-def constant_model(data, a):
-
-    return a
-
-
-def linear_model(data, a, b, c, d):
-
-    return a + b * data[0] + c * data[1] + d * data[2]
-
-
-def quadratic_model(data, a, b, c, d, e, f, g):
-
-    return a + b * data[0] + c * data[1] + d * data[2] +\
-           e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2
-
-
-def cubic_model(data, a, b, c, d, e, f, g, h, i, j):
-
-    return a + b * data[0] + c * data[1] + d * data[2] +\
-           e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2 +\
-           h * data[0] ** 3 + i * data[1] ** 3 + j * data[2] ** 3
-
-
-def quartic_model(data, a, b, c, d, e, f, g, h, i, j, k, l, m):
-
-    return a + b * data[0] + c * data[1] + d * data[2] +\
-           e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2 +\
-           h * data[0] ** 3 + i * data[1] ** 3 + j * data[2] ** 3 +\
-           k * data[0] ** 4 + l * data[1] ** 4 + m * data[2] ** 4
-
-
-def quintic_model(data, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p):
-
-    return a + b * data[0] + c * data[1] + d * data[2] +\
-           e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2 +\
-           h * data[0] ** 3 + i * data[1] ** 3 + j * data[2] ** 3 +\
-           k * data[0] ** 4 + l * data[1] ** 4 + m * data[2] ** 4 +\
-           n * data[0] ** 5 + o * data[1] ** 5 + p * data[2] ** 5
-
-
-def cross_term_model(data, a, b, c, d, e):
-
-    return a + b * data[0] + c * data[1] + d * data[2] + e * data[1] * data[0]
-
-
-def quadratic_cross_term_model(data, a, b, c, d, e, f, g, h, i):
-
-    return a + b * data[0] + c * data[1] + d * data[2] + e * data[1]/data[0] +\
-           f * data[0] ** 2 + g * data[1] ** 2 + h * data[2] ** 2 +\
-           i * (data[1]/data[0]) ** 2
-
-
-def quadratic_mag_model(data, a, b, c, d, e, f):
-
-    return a + b * data[0] + c * data[1] + d * data[2] +\
-           e * data[1] * data[0] + f * data[2] ** 2
-
-
-def quad_cross_terms_model(data, a, b, c, d, e, f, g, h, i, j):
-
-    return a + b * data[0] + c * data[1] + d * data[2] +\
-           e * data[0] * data[1] + f * data[0] * data[2] +\
-           g * data[1] * data[2] +\
-           h * data[0] ** 2 + i * data[1] ** 2 + j * data[2] ** 2
-
-
 def main():
     """The main routine of the script."""
 
@@ -339,26 +273,24 @@ def main():
     chi_squareds_post, sigmas_post = [], []
     index_num = 0
 
-    if args.constant:
-        model_func = constant_model
-    elif args.linear:
-        model_func = linear_model
+    if args.linear:
+        model_func = fit.linear_model
     elif args.quadratic:
-        model_func = quadratic_model
+        model_func = fit.quadratic_model
     elif args.cubic:
-        model_func = cubic_model
+        model_func = fit.cubic_model
     elif args.quartic:
-        model_func = quartic_model
+        model_func = fit.quartic_model
     elif args.quintic:
-        model_func = quintic_model
+        model_func = fit.quintic_model
     elif args.cross_term:
-        model_func = cross_term_model
+        model_func = fit.cross_term_model
     elif args.quadratic_cross_term:
-        model_func = quadratic_cross_term_model
+        model_func = fit.quadratic_cross_term_model
     elif args.quadratic_magnitude:
-        model_func = quadratic_mag_model
+        model_func = fit.quadratic_mag_model
     elif args.quad_cross_terms:
-        model_func = quad_cross_terms_model
+        model_func = fit.quad_full_cross_terms_model
 
     model_name = '_'.join(model_func.__name__.split('_')[:-1])
 
@@ -367,10 +299,14 @@ def main():
         params_list.append(0.)
 
     # Define the folder to put plots in.
-    plots_folder = Path(vcl.config['PATHS']['output_dir']) /\
-        f'stellar_parameter_fits_{model_name}'
+    output_dir = Path(vcl.config['PATHS']['output_dir'])
+    plots_folder = output_dir / f'stellar_parameter_fits/{model_name}'
     if not plots_folder.exists():
         os.makedirs(plots_folder)
+
+    # Create a dictionary of fit parameters assigned to each transition's label
+    parameters_dict = {}
+    covariance_dict = {}
 
     tqdm.write('Creating plots for each transition...')
     for transition in tqdm(transitions_list):
@@ -446,6 +382,11 @@ def main():
                                        units=u.m/u.s)
                 residuals = offsets - results
 
+                # Add the optimized parameters and covariances to the
+                # dictionary. Make sure we separate them by time period.
+                parameters_dict[label + '_' + time] = popt
+                covariance_dict[label + '_' + time] = pcov
+
                 # Find the chi^2 value for this distribution:
                 chi_squared = np.sum((residuals / eotms) ** 2)
                 dof = len(offsets) - len(popt)
@@ -510,6 +451,23 @@ def main():
         for row in zip(index_nums, chi_squareds_pre, sigmas_pre,
                        chi_squareds_post, sigmas_post):
             datawriter.writerow(row)
+
+    # Save the function used and the parameters found for each transition to
+    # an HDF5 file for use in other scripts.
+    hdf5_file = output_dir / f'fit_params/{model_name}_params.hdf5'
+    if not hdf5_file.parent.exists():
+        os.mkdir(hdf5_file.parent)
+
+    vprint(f'Writing HDF5 file with fit parameters at {hdf5_file}')
+    if hdf5_file.exists():
+        os.unlink(hdf5_file)
+    with h5py.File(hdf5_file, mode='a') as f:
+        f.attrs['type'] = 'A file containing a fitting function and the' +\
+                          ' parameters for it for each transition in' +\
+                          '/params_dict'
+        hickle.dump(model_func, f, path='/fitting_function')
+        hickle.dump(parameters_dict, f, path='/params_dict')
+        hickle.dump(covariance_dict, f, path='/covariance_dict')
 
 
 if __name__ == '__main__':
