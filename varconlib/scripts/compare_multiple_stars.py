@@ -10,9 +10,13 @@ transition offset pattern for multiple stars.
 """
 
 import argparse
+import csv
 from pathlib import Path
 import pickle
+from pprint import pprint
 
+import h5py
+import hickle
 from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -22,6 +26,7 @@ import unyt as u
 
 import varconlib as vcl
 from varconlib.exceptions import HDF5FileNotFoundError
+import varconlib.fitting.fitting
 from varconlib.star import Star
 
 
@@ -257,40 +262,126 @@ def plot_data_points(axis, x_pos, y_pos, thick_err, thin_err, era=None,
                   capthick=style_caps['cap_thick'])
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Create a plot of the'
-                                     ' transition offset pattern for multiple'
-                                     ' stars.')
-    parser.add_argument('main_dir', action='store', type=str, nargs=1,
-                        help='The main directory within which to find'
-                        ' additional star directories.')
-    parser.add_argument('star_names', action='store', type=str, nargs='+',
-                        help='The names of stars (directories) containing the'
-                        ' stars to be used in the plot.')
-    parser.add_argument('--reference-star', action='store', type=str,
-                        metavar='star_name',
-                        help='The star to be used as a reference when using'
-                        ' the --compare-stellar-parameters flag (unnecessary'
-                        ' otherwise).')
+def get_pair_data_point(star, time_slice, pair_label):
+    """Return the pair separation for a given star and pair.
 
-    parser.add_argument('--compare-offset-patterns', action='store_true',
-                        help='Create a plot of all the transition offset'
-                        ' patterns for the given stars.')
+    The returned values will be the weighted mean value of the pair
+    separation, the standard deviation of all the pair separation
+    values for that star in the given time period (pre- or post-fiber
+    chage), and the error on the weighted mean.
 
-    parser.add_argument('--compare-stellar-parameters-pairs',
-                        action='store_true',
-                        help='Create plots for each pair of transitions'
-                        ' with stars sorted by parameters such as temperature'
-                        ' or metallicity.')
-    parser.add_argument('--compare-stellar-parameters-transitions',
-                        action='store_true',
-                        help='Create plots for each transition with stars'
-                        ' sorted by parameters such as temperature or'
-                        ' metallicity.')
-    parser.add_argument('-v', '--verbose', action='store_true',
-                        help="Print more output about what's happening.")
+    Parameters
+    ----------
+    star : `star.Star`
+        The star get the data from.
+    time_slice : slice
+        A slice object specifying the data to use from the star.
+    pair_label : str
+        The label to use to select a particular pair.
 
-    args = parser.parse_args()
+    Returns
+    -------
+    tuple
+        Returns a 3-tuple of the weighted mean, the error on the
+        weighted mean, and the standard deviation.
+
+    """
+
+    col_index = star.p_index(pair_label)
+
+    separations = star.pairSeparationsArray[time_slice, col_index]
+    errs = star.pairSepErrorsArray[time_slice, col_index]
+    weighted_mean, weight_sum = np.average(separations,
+                                           weights=errs**-2,
+                                           returned=True)
+    weighted_mean.convert_to_units(u.m / u.s)
+    error_on_weighted_mean = 1 / np.sqrt(weight_sum)
+    error_on_mean = np.std(separations) / np.sqrt(
+        star.getNumObs(time_slice))
+
+    return (weighted_mean, error_on_weighted_mean, error_on_mean)
+
+
+def get_transition_data_point(star, time_slice, transition_label):
+    """Return the pair separation for a given star and pair.
+
+    The returned values will be the weighted mean value of the pair
+    separation, the standard deviation of all the pair separation
+    values for that star in the given time period (pre- or post-fiber
+    chage), and the error on the weighted mean.
+
+    Parameters
+    ----------
+    star : `star.Star`
+        The star get the data from.
+    time_slice : slice
+        A slice object specifying the data to use from the star.
+    transition_label : str
+        The label to use to select a particular transition.
+
+    Returns
+    -------
+    tuple
+        Returns a 3-tuple of the weighted mean, the error on the
+        weighted mean, and the standard deviation.
+
+    """
+
+    col_index = star.t_index(transition_label)
+
+    offsets = star.fitOffsetsNormalizedArray[time_slice, col_index]
+    errs = star.fitErrorsArray[time_slice, col_index]
+    weighted_mean, weight_sum = np.average(offsets,
+                                           weights=errs**-2,
+                                           returned=True)
+    weighted_mean.convert_to_units(u.m/u.s)
+    error_on_weighted_mean = 1 / np.sqrt(weight_sum)
+    error_on_mean = np.std(offsets) / np.sqrt(
+        star.getNumObs(time_slice))
+
+    return (weighted_mean, error_on_weighted_mean, error_on_mean)
+
+
+def get_params_file(filename, parent_dir):
+    """Return the fitting function and parameters from a given HDF5 file.
+
+    This functions takes what is assumed to be a valid filename, checks it to
+    be sure, then extracts a function used for fitting transition offsets and
+    the parameters found for each transition.
+
+    Parameters
+    ----------
+    filename : str
+        A string representing an HDF5 filename. Just the name is necessary,
+        as it will be searched for in the appropriate directory automatically.
+    parent_dir : `pathlib.Path` object
+        A filename representing the parent directory containing a 'fit_params'
+        directory within with the `filename` file resides.
+
+    Returns
+    -------
+    tuple of length 2
+        The first element will be a `function` object, the second
+        element will be a `dict` object containing keys of transition labels
+        with values of tuples of fit parameters.
+
+    """
+
+    hdf5_file = parent_dir / f'fit_params/{filename}'
+    if not hdf5_file.exists():
+        raise FileNotFoundError('The given filename could not be found:\n'
+                                f'{hdf5_file}')
+
+    with h5py.File(hdf5_file, 'r') as f:
+        function = hickle.load(f, path='/fitting_function')
+        params_dict = hickle.load(f, path='/params_dict')
+
+#    return function, params_dict
+    return function, params_dict
+
+
+def main():
+    """The main function for the script."""
 
     # Define vprint to only print when the verbose flag is given.
     vprint = vcl.verbose_print(args.verbose)
@@ -300,6 +391,12 @@ if __name__ == '__main__':
         raise FileNotFoundError(f'{main_dir} does not exist!')
 
     tqdm.write(f'Looking in main directory {main_dir}')
+
+    apply_corrections = False
+    if args.fit_params_file:
+        vprint(f'Reading params file at {args.fit_params_file}...')
+        model_func, params = get_params_file(args.fit_params_file, main_dir)
+        apply_corrections = True
 
     if args.reference_star:
         ref_star = get_star(main_dir / args.reference_star)
@@ -387,47 +484,6 @@ if __name__ == '__main__':
         plt.show()
 
     if args.compare_stellar_parameters_pairs:
-
-        def get_pair_data_point(star, time_slice, pair_label):
-            """Return the pair separation for a given star and pair.
-
-            The returned values will be the weighted mean value of the pair
-            separation, the standard deviation of all the pair separation
-            values for that star in the given time period (pre- or post-fiber
-            chage), and the error on the weighted mean.
-
-            Parameters
-            ----------
-            star : `star.Star`
-                The star get the data from.
-            time_slice : slice
-                A slice object specifying the data to use from the star.
-            pair_label : str
-                The label to use to select a particular pair.
-
-            Returns
-            -------
-            tuple
-                Returns a 3-tuple of the weighted mean, the error on the
-                weighted mean, and the standard deviation.
-
-            """
-
-            col_index = star.p_index(pair_label)
-
-            separations = star.pairSeparationsArray[time_slice, col_index]
-            errs = star.pairSepErrorsArray[time_slice, col_index]
-            weighted_mean, weight_sum = np.average(separations,
-                                                   weights=1/errs**2,
-                                                   returned=True)
-            weighted_mean.convert_to_units(u.m / u.s)
-            error_on_weighted_mean = 1 / np.sqrt(weight_sum)
-            error_on_mean = np.std(separations) / np.sqrt(
-                star.getNumObs(time_slice))
-
-            return (weighted_mean, error_on_weighted_mean, error_on_mean)
-
-        # -----------------
         tqdm.write('Unpickling pairs list...')
         with open(vcl.final_pair_selection_file, 'r+b') as f:
             pairs_list = pickle.load(f)
@@ -556,60 +612,31 @@ if __name__ == '__main__':
                 plt.close('all')
 
     if args.compare_stellar_parameters_transitions:
-
-        def get_transition_data_point(star, time_slice, transition_label):
-            """Return the pair separation for a given star and pair.
-
-            The returned values will be the weighted mean value of the pair
-            separation, the standard deviation of all the pair separation
-            values for that star in the given time period (pre- or post-fiber
-            chage), and the error on the weighted mean.
-
-            Parameters
-            ----------
-            star : `star.Star`
-                The star get the data from.
-            time_slice : slice
-                A slice object specifying the data to use from the star.
-            transition_label : str
-                The label to use to select a particular transition.
-
-            Returns
-            -------
-            tuple
-                Returns a 3-tuple of the weighted mean, the error on the
-                weighted mean, and the standard deviation.
-
-            """
-
-            col_index = star.t_index(transition_label)
-
-            offsets = star.fitOffsetsNormalizedArray[time_slice, col_index]
-            errs = star.fitErrorsArray[time_slice, col_index]
-            weighted_mean, weight_sum = np.average(offsets,
-                                                   weights=1/errs**2,
-                                                   returned=True)
-            weighted_mean.convert_to_units(u.m/u.s)
-            error_on_weighted_mean = 1 / np.sqrt(weight_sum)
-            error_on_mean = np.std(offsets) / np.sqrt(
-                star.getNumObs(time_slice))
-
-            return (weighted_mean, error_on_weighted_mean, error_on_mean)
-
-        # ------------------
         tqdm.write('Unpickling transitions list..')
         with open(vcl.final_selection_file, 'r+b') as f:
             transitions_list = pickle.load(f)
 
         plots_folder = main_dir / "star_comparisons/transitions"
+        if apply_corrections:
+            model_name = '_'.join(model_func.__name__.split('_')[:-1])
+        else:
+            model_name = 'uncorrected'
+        plots_folder /= model_name
         if not plots_folder.exists():
             import os
             os.makedirs(plots_folder)
+
+        index_nums = []
+        index_num = 0
+        sigma_list_pre, sigma_list_post = [], []
 
         tqdm.write('Creating plots for each transition...')
         for transition in tqdm(transitions_list):
             for order_num in transition.ordersToFitIn:
                 transition_label = '_'.join([transition.label, str(order_num)])
+
+                index_nums.append(index_num)
+                index_num += 1
 
                 means_pre, means_post = [], []
                 errs_pre, errs_post = [], []
@@ -648,18 +675,56 @@ if __name__ == '__main__':
                         mag_post.append(star.absoluteMagnitude)
                         logg_post.append(star.logG)
 
+                # Correct for trends in stellar parameters here.
+                if apply_corrections:
+                    data_pre = np.stack((temp_pre, mtl_pre, mag_pre),
+                                        axis=0)
+                    params_pre = params[transition_label + '_pre']
+                    corrections = u.unyt_array(model_func(data_pre,
+                                                          *params_pre),
+                                               units=u.m/u.s)
+                    means_pre -= corrections
+
+                    data_post = np.stack((temp_post, mtl_post, mag_post),
+                                         axis=0)
+                    params_post = params[transition_label + '_post']
+                    corrections = u.unyt_array(model_func(data_post,
+                                                          *params_post),
+                                               units=u.m/u.s)
+                    means_post -= corrections
+
+#                    chi_squared_pre = np.sum((means_pre / stds_pre) ** 2)
+#                    chi_squared_post = np.sum((means_post / stds_post) ** 2)
+#                    dof_pre = len(means_pre) - len(params_pre)
+#                    dof_post = len(means_post) - len(params_post)
+#                    chi_squared_pre /= dof_pre
+#                    chi_squared_post /= dof_post
+
+                means_pre = u.unyt_array(means_pre, units=u.m/u.s)
+                means_post = u.unyt_array(means_post, units=u.m/u.s)
+
+                sigma_pre = np.nanstd(means_pre)
+                sigma_post = np.nanstd(means_post)
+                sigma_list_pre.append(sigma_pre.value)
+                sigma_list_post.append(sigma_post.value)
+
                 # Create the figure and subplots:
-                median = np.nanmedian(means_pre + means_post)
+                if not apply_corrections:
+                    total_means = np.concatenate((means_pre, means_post))
+                    median = np.nanmedian(total_means)
+                    y_limits = (median - 300, median + 300)
+                else:
+                    y_limits = (-300, 300)
 
                 comp_fig, axes_dict = create_parameter_comparison_figures(
-                        ylims=(median - 300, median + 300),
+                        ylims=y_limits,
                         temp_lims=(5400 * u.K, 6300 * u.K),
                         mtl_lims=(-0.63, 0.52))
 
-                for ax in axes_dict.values():
-                    ax.annotate(f'Blendedness: {transition.blendedness}',
-                                (0.01, 0.95),
-                                xycoords='axes fraction')
+#                for ax in axes_dict.values():
+#                    ax.annotate(f'Blendedness: {transition.blendedness}',
+#                                (0.01, 0.95),
+#                                xycoords='axes fraction')
 
                 for ax, attr in zip(('temp_pre', 'mtl_pre',
                                      'mag_pre', 'logg_pre'),
@@ -668,6 +733,16 @@ if __name__ == '__main__':
                     plot_data_points(axes_dict[ax], attr,
                                      means_pre, errs_pre,
                                      stds_pre, era='pre')
+                    axes_dict[ax].annotate(
+                            f'Blendedness: {transition.blendedness}'
+                            '\n'
+#                           fr'$\chi^2_\nu$: {chi_squared_post.value:.2f}'
+#                           '\n'
+                            fr'$\sigma$: {sigma_pre:.2f}',
+                            (0.01, 0.99),
+                            xycoords='axes fraction',
+                            horizontalalignment='left',
+                            verticalalignment='top')
 
                 for ax, attr in zip(('temp_post', 'mtl_post',
                                      'mag_post', 'logg_post'),
@@ -676,9 +751,71 @@ if __name__ == '__main__':
                     plot_data_points(axes_dict[ax], attr,
                                      means_post, errs_post,
                                      stds_post, era='post')
+                    axes_dict[ax].annotate(
+                            f'Blendedness: {transition.blendedness}'
+                            '\n'
+#                            fr'$\chi^2_\nu$: {chi_squared_pre.value:.2f}'
+#                            '\n'
+                            fr'$\sigma$: {sigma_post:.2f}',
+                            (0.01, 0.99),
+                            xycoords='axes fraction',
+                            horizontalalignment='left',
+                            verticalalignment='top')
 
                 file_name = plots_folder / f'{transition_label}.png'
                 vprint(f'Saving file {transition_label}.png')
 
                 comp_fig.savefig(str(file_name))
                 plt.close('all')
+
+        csv_file = plots_folder / f'{model_name}_sigmas.csv'
+        with open(csv_file, 'w', newline='') as f:
+            datawriter = csv.writer(f)
+            header = ('#index', 'sigma_pre', 'sigma_post')
+            datawriter.writerow(header)
+            for row in zip(index_nums, sigma_list_pre, sigma_list_post):
+                datawriter.writerow(row)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Create a plot of the'
+                                     ' transition offset pattern for multiple'
+                                     ' stars.')
+    parser.add_argument('main_dir', action='store', type=str, nargs=1,
+                        help='The main directory within which to find'
+                        ' additional star directories.')
+    parser.add_argument('star_names', action='store', type=str, nargs='+',
+                        help='The names of stars (directories) containing the'
+                        ' stars to be used in the plot.')
+    parser.add_argument('--reference-star', action='store', type=str,
+                        metavar='star_name',
+                        help='The star to be used as a reference when using'
+                        ' the --compare-stellar-parameters flag (unnecessary'
+                        ' otherwise).')
+
+    parser.add_argument('--compare-offset-patterns', action='store_true',
+                        help='Create a plot of all the transition offset'
+                        ' patterns for the given stars.')
+
+    parser.add_argument('--compare-stellar-parameters-pairs',
+                        action='store_true',
+                        help='Create plots for each pair of transitions'
+                        ' with stars sorted by parameters such as temperature'
+                        ' or metallicity.')
+    parser.add_argument('--compare-stellar-parameters-transitions',
+                        action='store_true',
+                        help='Create plots for each transition with stars'
+                        ' sorted by parameters such as temperature or'
+                        ' metallicity.')
+    parser.add_argument('--correct-transitions', action='store',
+                        type=str, dest='fit_params_file',
+                        help='The name of the file containing the fitting'
+                        ' function and parameters for each transition. It will'
+                        ' automatically be looked for in the fit_params folder'
+                        ' in the output data directory.')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help="Print more output about what's happening.")
+
+    args = parser.parse_args()
+
+    main()
