@@ -293,12 +293,14 @@ class Star(object):
             # Iterate through all the fits in the pickled list and save their
             # values only if the fit was 'good' (i.e., a mean value exists and
             # the amplitude of the fitted Gaussian is negative).
-            star_means = []
-            star_errors = []
-            star_offsets = []
-            star_chi_squareds = []
+            obs_means = []
+            obs_errors = []
+            obs_offsets = []
+            obs_chi_squareds = []
             for fit in fits_list:
                 if (fit is not None) and (fit.amplitude < 0):
+                    # TODO : Add code for checking if offset is acceptably
+                    # close to master template here?
                     fit_mean = fit.mean.to(u.angstrom).value
                     fit_error = fit.meanErrVel.to(u.m/u.s).value
                     fit_offset = fit.velocityOffset.to(u.m/u.s).value
@@ -309,16 +311,16 @@ class Star(object):
                     fit_offset = float('nan')
                     fit_chi_squared = float('nan')
 
-                star_means.append(fit_mean)
-                star_errors.append(fit_error)
-                star_offsets.append(fit_offset)
-                star_chi_squareds.append(fit_chi_squared)
+                obs_means.append(fit_mean)
+                obs_errors.append(fit_error)
+                obs_offsets.append(fit_offset)
+                obs_chi_squareds.append(fit_chi_squared)
 
-            means_list.append(star_means)
-            errors_list.append(star_errors)
-            offsets_list.append(star_offsets)
-            chi_squared_list.append(star_chi_squareds)
-            self.obsRVOffsetsArray[obs_num] = np.nanmedian(star_offsets)
+            means_list.append(obs_means)
+            errors_list.append(obs_errors)
+            offsets_list.append(obs_offsets)
+            chi_squared_list.append(obs_chi_squareds)
+            self.obsRVOffsetsArray[obs_num] = np.nanmedian(obs_offsets)
 
         self.fitMeansArray = u.unyt_array(np.asarray(means_list),
                                           u.angstrom)
