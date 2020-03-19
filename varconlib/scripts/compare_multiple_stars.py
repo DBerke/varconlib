@@ -376,7 +376,6 @@ def get_params_file(filename, parent_dir):
         function = hickle.load(f, path='/fitting_function')
         params_dict = hickle.load(f, path='/params_dict')
 
-#    return function, params_dict
     return function, params_dict
 
 
