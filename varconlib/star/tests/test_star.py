@@ -119,10 +119,10 @@ class TestStar(object):
             == len(test_star._transition_bidict.keys())
 
     def testTemperature(self, test_star):
-        assert test_star.temperature == pytest.approx(5929 * u.K, abs=10)
+        assert test_star.temperature == pytest.approx(6026 * u.K, abs=10)
 
     def testMetallicity(self, test_star):
-        assert test_star.metallicity == pytest.approx(-0.05)
+        assert test_star.metallicity == pytest.approx(0.07)
 
     def testRadialVelocity(self, test_star):
         assert test_star.radialVelocity == pytest.approx(1.1 * u.km / u.s)
