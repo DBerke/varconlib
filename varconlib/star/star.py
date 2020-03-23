@@ -43,41 +43,6 @@ class Star(object):
     metallicity, color, etc.) and information about the fits of given
     transitions in the spectra of observations of that star.
 
-    Parameters
-    ----------
-    name : str
-        A name for the star to identify it.
-
-    Optional
-    --------
-    star_dir : `pathlib.Path`
-        A Path object specifying the root directory to look in for fits of
-        the star's spectra. If given, will be passed to the
-        `initializeFromFits` method.
-    suffix : str, Default: 'int'
-        A string to be added to the subdirectory names to distinguish
-        between different reduction methods. Defaults to 'int' for
-        'integrated Gaussian' fits.
-    transitions_list : list
-        A list of `transition_line.Transition` objects. If `star_dir` is
-        given, will be passed to `initializeFromFits`, otherwise no effect.
-    pairs_list : list
-        A list of `transition_pair.TransitionPair` objects. If `star_dir`
-        is given, will be passed to `initializeFromFits`, otherwise no
-        effect.
-    load_data : bool or None, Default : None
-        Controls whether to attempt to read a file containing data for the
-        star or create it from scratch from observations in the `star_dir`.
-        If *False*, the Star will be created from observations, regardless of
-        whether an HDF5 file already exists.
-        If *True*, the Star will *only* be created from an HDF5 file if one
-        exists, and will fail if one does not (even if it could have been
-        created from the observations in the directory).
-        If *None*, then the code will first attempt to create a Star using a
-        previously-created HDF5 file, and if one does not exist will attempt to
-        create one using observations. This is essentially the 'pragmatic'
-        option, and is also the default behavior.
-
     Attributes
     ----------
     fitMeansArray : `unyt.unyt_array`
@@ -163,6 +128,41 @@ class Star(object):
                  transitions_list=None, pairs_list=None,
                  load_data=None):
         """Instantiate a `star.Star` object.
+
+        Parameters
+        ----------
+        name : str
+            A name for the star to identify it.
+
+        Optional
+        --------
+        star_dir : `pathlib.Path`
+            A Path object specifying the root directory to look in for fits of
+            the star's spectra. If given, will be passed to the
+            `initializeFromFits` method.
+        suffix : str, Default: 'int'
+            A string to be added to the subdirectory names to distinguish
+            between different reduction methods. Defaults to 'int' for
+            'integrated Gaussian' fits.
+        transitions_list : list
+            A list of `transition_line.Transition` objects. If `star_dir` is
+            given, will be passed to `initializeFromFits`, otherwise no effect.
+        pairs_list : list
+            A list of `transition_pair.TransitionPair` objects. If `star_dir`
+            is given, will be passed to `initializeFromFits`, otherwise no
+            effect.
+        load_data : bool or None, Default : None
+            Controls whether to attempt to read a file containing data for the
+            star or create it from scratch from observations in the `star_dir`.
+            If *False*, the Star will be created from observations, regardless
+            of whether an HDF5 file already exists.
+            If *True*, the Star will *only* be created from an HDF5 file if one
+            exists, and will fail if one does not (even if it could have been
+            created from the observations in the directory).
+            If *None*, then the code will first attempt to create a Star using
+            a previously-created HDF5 file, and if one does not exist will
+            attempt to create one using observations. This is essentially the
+            'pragmatic' option, and is also the default behavior.
 
         """
 
@@ -449,6 +449,7 @@ class Star(object):
 
     @property
     def transitionsList(self):
+        """Return the list of transitions used by this `Star`."""
         if not hasattr(self, '_transitions_list'):
             # Read the default list of chosen transitions.
             with open(vcl.final_selection_file, 'r+b') as f:
@@ -463,6 +464,7 @@ class Star(object):
 
     @property
     def pairsList(self):
+        """Return the list of transition pairs used by this `Star`."""
         if not hasattr(self, '_pairs_list'):
             # Read the default list of chosen pairs.
             with open(vcl.final_pair_selection_file, 'r+b') as f:
@@ -479,6 +481,7 @@ class Star(object):
 
     @property
     def radialVelocity(self):
+        """Return the radial velocity of this star."""
         if self._radialVelocity is None:
             rv_file = vcl.data_dir / 'StellarRadialVelocities.txt'
             rv_dict = {}
@@ -502,6 +505,7 @@ class Star(object):
 
     @property
     def temperature(self):
+        """Return the temperature of this star."""
         if self._temperature is None:
             self._temperature = self._getStellarProperty('temperature')
         return self._temperature
@@ -514,6 +518,7 @@ class Star(object):
 
     @property
     def metallicity(self):
+        """Return the metallicity of this star."""
         if self._metallicity is None:
             self._metallicity = self._getStellarProperty('metallicity')
         return self._metallicity
@@ -527,6 +532,7 @@ class Star(object):
 
     @property
     def absoluteMagnitude(self):
+        """Return the absolute magnitude of this star."""
         if self._absoluteMagnitude is None:
             self._absoluteMagnitude = self._getStellarProperty(
                     'absoluteMagnitude')
@@ -540,6 +546,7 @@ class Star(object):
 
     @property
     def logG(self):
+        """Return the logarithm of the surface gravity of this star."""
         if self._logG is None:
             self._logG = self._getStellarProperty('logG')
         return self._logG
@@ -553,6 +560,7 @@ class Star(object):
     # TODO: Add an exposure time array?
     @property
     def fiberSplitIndex(self):
+        """Find the point to split between pre- and post-fiber change dates."""
         if not hasattr(self, '_fiberSplitIndex'):
             self._fiberSplitIndex = self._getFiberSplitIndex()
 
