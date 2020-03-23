@@ -21,6 +21,7 @@ from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
+import numpy.ma as ma
 from tqdm import tqdm
 import unyt as u
 
@@ -131,7 +132,8 @@ def create_parameter_comparison_figures(ylims=None,
     """
 
     comp_fig = plt.figure(figsize=(16, 8), tight_layout=True)
-    gs = GridSpec(ncols=4, nrows=2, figure=comp_fig)
+    gs = GridSpec(ncols=5, nrows=2, figure=comp_fig,
+                  width_ratios=(5, 5, 5, 5, 3))
 
     temp_ax_pre = comp_fig.add_subplot(gs[0, 0])
     temp_ax_post = comp_fig.add_subplot(gs[1, 0],
@@ -152,6 +154,11 @@ def create_parameter_comparison_figures(ylims=None,
     logg_ax_post = comp_fig.add_subplot(gs[1, 3],
                                         sharex=logg_ax_pre,
                                         sharey=logg_ax_pre)
+    hist_ax_pre = comp_fig.add_subplot(gs[0, 4],
+                                       sharey=temp_ax_pre)
+    hist_ax_post = comp_fig.add_subplot(gs[1, 4],
+                                        sharex=hist_ax_pre,
+                                        sharey=hist_ax_pre)
 
     all_axes = (temp_ax_pre, temp_ax_post, mtl_ax_pre, mtl_ax_post,
                 mag_ax_pre, mag_ax_post, logg_ax_pre, logg_ax_post)
@@ -167,10 +174,11 @@ def create_parameter_comparison_figures(ylims=None,
 
     # Axis styles for all subplots.
     for ax in all_axes:
-        ax.yaxis.set_major_locator(ticker.MultipleLocator(
-                                   base=100))
-        ax.yaxis.set_minor_locator(ticker.MultipleLocator(
-                                   base=50))
+        if not args.full_range:
+            ax.yaxis.set_major_locator(ticker.MultipleLocator(
+                                       base=100))
+            ax.yaxis.set_minor_locator(ticker.MultipleLocator(
+                                       base=50))
         ax.axhline(y=0, color='Black', linestyle='--')
         ax.yaxis.grid(which='major', color='Gray',
                       linestyle='--', alpha=0.85)
@@ -195,7 +203,8 @@ def create_parameter_comparison_figures(ylims=None,
     axes_dict = {'temp_pre': temp_ax_pre, 'temp_post': temp_ax_post,
                  'mtl_pre': mtl_ax_pre, 'mtl_post': mtl_ax_post,
                  'mag_pre': mag_ax_pre, 'mag_post': mag_ax_post,
-                 'logg_pre': logg_ax_pre, 'logg_post': logg_ax_post}
+                 'logg_pre': logg_ax_pre, 'logg_post': logg_ax_post,
+                 'hist_pre': hist_ax_pre, 'hist_post': hist_ax_post}
 
     return comp_fig, axes_dict
 
@@ -231,7 +240,6 @@ def plot_data_points(axis, x_pos, y_pos, thick_err, thin_err, era=None,
     None.
 
     """
-
     if ref:
         params = style_ref
     elif era == 'pre':
@@ -692,13 +700,6 @@ def main():
                                                units=u.m/u.s)
                     means_post -= corrections
 
-#                    chi_squared_pre = np.sum((means_pre / stds_pre) ** 2)
-#                    chi_squared_post = np.sum((means_post / stds_post) ** 2)
-#                    dof_pre = len(means_pre) - len(params_pre)
-#                    dof_post = len(means_post) - len(params_post)
-#                    chi_squared_pre /= dof_pre
-#                    chi_squared_post /= dof_post
-
                 means_pre = u.unyt_array(means_pre, units=u.m/u.s)
                 means_post = u.unyt_array(means_post, units=u.m/u.s)
 
@@ -716,14 +717,9 @@ def main():
                     y_limits = (-300, 300)
 
                 comp_fig, axes_dict = create_parameter_comparison_figures(
-                        ylims=y_limits,
+                        ylims=None if args.full_range else y_limits,
                         temp_lims=(5400 * u.K, 6300 * u.K),
                         mtl_lims=(-0.63, 0.52))
-
-#                for ax in axes_dict.values():
-#                    ax.annotate(f'Blendedness: {transition.blendedness}',
-#                                (0.01, 0.95),
-#                                xycoords='axes fraction')
 
                 for ax, attr in zip(('temp_pre', 'mtl_pre',
                                      'mag_pre', 'logg_pre'),
@@ -735,13 +731,18 @@ def main():
                     axes_dict[ax].annotate(
                             f'Blendedness: {transition.blendedness}'
                             '\n'
-#                           fr'$\chi^2_\nu$: {chi_squared_post.value:.2f}'
-#                           '\n'
                             fr'$\sigma$: {sigma_pre:.2f}',
                             (0.01, 0.99),
                             xycoords='axes fraction',
                             horizontalalignment='left',
                             verticalalignment='top')
+                data = np.array(ma.masked_invalid(means_pre).compressed())
+                axes_dict['hist_pre'].hist(
+                    data,
+                    bins='fd',
+                    color='Black',
+                    histtype='step',
+                    orientation='horizontal')
 
                 for ax, attr in zip(('temp_post', 'mtl_post',
                                      'mag_post', 'logg_post'),
@@ -753,13 +754,18 @@ def main():
                     axes_dict[ax].annotate(
                             f'Blendedness: {transition.blendedness}'
                             '\n'
-#                            fr'$\chi^2_\nu$: {chi_squared_pre.value:.2f}'
-#                            '\n'
                             fr'$\sigma$: {sigma_post:.2f}',
                             (0.01, 0.99),
                             xycoords='axes fraction',
                             horizontalalignment='left',
                             verticalalignment='top')
+                data = np.array(ma.masked_invalid(means_post).compressed())
+                axes_dict['hist_post'].hist(
+                    data,
+                    bins='fd',
+                    color='Black',
+                    histtype='step',
+                    orientation='horizontal')
 
                 file_name = plots_folder / f'{transition_label}.png'
                 vprint(f'Saving file {transition_label}.png')
@@ -812,6 +818,9 @@ if __name__ == '__main__':
                         ' function and parameters for each transition. It will'
                         ' automatically be looked for in the fit_params folder'
                         ' in the output data directory.')
+    parser.add_argument('--full-range', action='store_true',
+                        help='Plot the full vertical range of transition'
+                        ' offsets instead of a fixed range.')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help="Print more output about what's happening.")
 
