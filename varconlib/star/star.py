@@ -389,6 +389,43 @@ class Star(object):
                 self.pairSepErrorsArray = u.unyt_array(pairSepErrorsArray,
                                                        units='m/s')
 
+    def getOutliersMask(self, function, coefficients, covar_dict, n_sigma):
+        """Return a 2D mask for values in this star's transition measurments.
+
+        This method takes a function of three stellar parameters (temperature,
+        metallicity, and absolute magnitude) and a variable number of
+        coefficients. These coefficients are provided in a dictionary for each
+        transition, for pre- and post-fiber change instances.
+
+        function: callable
+            A function that has been fitted to the transition velocity offsets
+            to use to correct them, and find outliers.
+        coef_dict: dict
+            A dictionary with keys consisting of labels uniquely specifying each
+            transition, for pre- and post-fiber change, with as many
+            coefficients as are needed for the provided function.
+        covar_dict: dict
+            A dictionary containing the estimated covariances from the fitting
+            procedure used to create `function`.
+
+        Optional
+        --------
+        n_sigma : float, Default : 2.5
+            The number of standard deviations a point must be away from the
+            value for this transition found by correcting using the fitting
+            function to be considered an outlier (and thus masked).
+
+        Returns
+        -------
+        2D np.array
+            An array of True and False which can be used as a mask for this
+            `Star`'s `fitMeansArray`, `fitErrorsArray`, or `fitOffsetsArray`
+            and which mark outliers greater than `n_sigma` away from the mean.
+
+        """
+
+        pass
+
     def dumpDataToDisk(self, file_path):
         """Save important data arrays to disk in HDF5 format.
 
