@@ -53,7 +53,7 @@ def quintic_model(data, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p):
 
 def cross_term_model(data, a, b, c, d, e):
 
-    return a + b * data[0] + c * data[1] + d * data[2] + e * data[1] * data[0]
+    return a + b * data[0] + c * data[1] + d * data[2] + e * data[1] / data[0]
 
 
 def quadratic_cross_term_model(data, a, b, c, d, e, f, g, h, i):
@@ -66,7 +66,7 @@ def quadratic_cross_term_model(data, a, b, c, d, e, f, g, h, i):
 def quadratic_mag_model(data, a, b, c, d, e, f):
 
     return a + b * data[0] + c * data[1] + d * data[2] +\
-           e * data[1] * data[0] + f * data[2] ** 2
+           e * data[1] / data[0] + f * data[2] ** 2
 
 
 def quad_full_cross_terms_model(data, a, b, c, d, e, f, g, h, i, j):
