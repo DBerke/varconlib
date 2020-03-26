@@ -983,7 +983,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--create-offset-plot', action='store_true',
                         help='Create a plot of the average offset for all'
-                        'transitions from their expected laboratory position.')
+                        ' transitions from their expected laboratory position.')
 
     parser.add_argument('--create-chi-squared-plots', action='store_true',
                         help='Create plots showing the distribution of chi^2'
