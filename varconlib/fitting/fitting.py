@@ -16,6 +16,11 @@ import numpy as np
 from scipy.optimize import curve_fit
 
 
+def constant_model(data, a):
+
+    return a
+
+
 def linear_model(data, a, b, c, d):
 
     return a + b * data[0] + c * data[1] + d * data[2]
