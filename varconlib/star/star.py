@@ -298,7 +298,14 @@ class Star(object):
             obs_offsets = []
             obs_chi_squareds = []
             for fit in fits_list:
-                if (fit is not None) and (fit.amplitude < 0):
+                # Check that a fit 1) exists, 2) has a negative amplitude (since
+                # amplitude is unconstrained, a positive amplitude is a failed
+                # fit because it's ended up fitting a peak), and 3) within
+                # 5 km/s of its expected wavelength (since the fit only looks
+                # within that range, if it's outside it MUST be wrong).
+                if (fit is not None) and (fit.amplitude < 0) and\
+                    abs(wave2vel(fit.mean,
+                                 fit.correctedWavelength)) < 5 * u.km / u.s:
                     # TODO : Add code for checking if offset is acceptably
                     # close to master template here?
                     fit_mean = fit.mean.to(u.angstrom).value
@@ -389,7 +396,8 @@ class Star(object):
                 self.pairSepErrorsArray = u.unyt_array(pairSepErrorsArray,
                                                        units='m/s')
 
-    def getOutliersMask(self, function, coefficients, covar_dict, n_sigma):
+    def getOutliersMask(self, function, coeff_dict, sigmas_dict,
+                        n_sigma):
         """Return a 2D mask for values in this star's transition measurments.
 
         This method takes a function of three stellar parameters (temperature,
@@ -400,13 +408,13 @@ class Star(object):
         function: callable
             A function that has been fitted to the transition velocity offsets
             to use to correct them, and find outliers.
-        coef_dict: dict
+        coeff_dict: dict
             A dictionary with keys consisting of labels uniquely specifying each
             transition, for pre- and post-fiber change, with as many
             coefficients as are needed for the provided function.
-        covar_dict: dict
-            A dictionary containing the estimated covariances from the fitting
-            procedure used to create `function`.
+        sigmas_dict : dict
+            A dictionary containing the standard deviation of the residuals from
+            the fitting function for each transition.
 
         Optional
         --------
@@ -424,7 +432,46 @@ class Star(object):
 
         """
 
-        pass
+        stellar_params = np.stack((self.temperature, self.metallicity,
+                                   self.absoluteMagnitude), axis=0)
+
+        # Initialize the mask to False (not masked) with the same shape
+        # as the data for this star:
+        mask_array = np.full_like(self.fitOffsetsNormalizedArray,
+                                  fill_value=1, dtype=int)
+
+        for key in self._transition_bidict.keys():
+            col_num = self._transition_bidict.index_for[key]
+
+            if self.hasObsPre:
+                label = key + '_pre'
+                pre_slice = slice(None, self.fiberSplitIndex)
+                data_slice = self.fitOffsetsNormalizedArray[pre_slice, col_num]
+                coeffs_pre = coeff_dict[label]
+                sigma_pre = sigmas_dict[label]
+                correction = u.unyt_array(function(stellar_params,
+                                                   *coeffs_pre), units=u.m/u.s)
+                data_slice -= correction
+                sigma_lim = n_sigma * sigma_pre
+                for i in range(len(data_slice)):
+                    if abs(data_slice[i]) > sigma_lim:
+                        mask_array[i, col_num] = 0
+
+            if self.hasObsPost:
+                label = key + '_post'
+                post_slice = slice(self.fiberSplitIndex, None)
+                data_slice = self.fitOffsetsNormalizedArray[post_slice, col_num]
+                coeffs_post = coeff_dict[label]
+                sigma_post = sigmas_dict[label]
+                correction = u.unyt_array(function(stellar_params,
+                                                   *coeffs_post), units=u.m/u.s)
+                data_slice -= correction
+                sigma_lim = n_sigma * sigma_post
+                for i in range(len(data_slice)):
+                    if abs(data_slice[i]) > sigma_lim:
+                        mask_array[i, col_num] = 0
+
+        return mask_array
 
     def dumpDataToDisk(self, file_path):
         """Save important data arrays to disk in HDF5 format.
