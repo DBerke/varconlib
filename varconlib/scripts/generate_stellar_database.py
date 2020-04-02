@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import pickle
 
+from bidict import bidict
 import h5py
 import hickle
 import numpy as np
@@ -206,11 +207,20 @@ if __name__ == '__main__':
     star_magnitudes = np.full([row_len, 1], np.nan)
     star_gravities = np.full([row_len, 1], np.nan)
 
+    star_names = bidict()
+
+    total_obs = 0
+
     # Iterate over all the stars collected:
     tqdm.write('Collecting data from stars...')
+
     for i, star in enumerate(tqdm(star_list)):
-        vprint(f'Collating data from {star.name:8} with {star.getNumObs():4}'
+        star_num_obs = star.getNumObs()
+        vprint(f'Collating data from {star.name:9} with {star_num_obs:4}'
                ' observations.')
+        total_obs += star_num_obs
+        star_names[star.name] = i
+
         for j, label in enumerate(transition_labels):
             pre_slice = slice(None, star.fiberSplitIndex)
             post_slice = slice(star.fiberSplitIndex, None)
@@ -270,4 +280,6 @@ if __name__ == '__main__':
             hickle.dump(array, f, path=f'/{name}')
             vprint(f'{name}: {array.shape}')
         hickle.dump(column_dict, f, path='/transition_column_index')
-    vprint('Done!')
+        hickle.dump(star_names, f, path='/star_row_index')
+    tqdm.write(f'Collected {total_obs} observations in total from'
+               f' {len(star_list)} stars.')
