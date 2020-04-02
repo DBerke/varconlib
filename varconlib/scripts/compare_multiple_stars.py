@@ -11,9 +11,11 @@ transition offset pattern for multiple stars.
 
 import argparse
 import csv
+from itertools import zip_longest
 from pathlib import Path
 import pickle
 from pprint import pprint
+import sys
 
 import h5py
 import hickle
@@ -161,7 +163,8 @@ def create_parameter_comparison_figures(ylims=None,
                                         sharey=hist_ax_pre)
 
     all_axes = (temp_ax_pre, temp_ax_post, mtl_ax_pre, mtl_ax_post,
-                mag_ax_pre, mag_ax_post, logg_ax_pre, logg_ax_post)
+                mag_ax_pre, mag_ax_post, logg_ax_pre, logg_ax_post,
+                hist_ax_pre, hist_ax_post)
     # Set the plot limits here. The y-limits for temp_ax1 are
     # used for all subplots.
     if ylims is not None:
@@ -179,13 +182,17 @@ def create_parameter_comparison_figures(ylims=None,
                                        base=100))
             ax.yaxis.set_minor_locator(ticker.MultipleLocator(
                                        base=50))
+        else:
+            ax.yaxis.set_major_locator(ticker.AutoLocator())
+            ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax.axhline(y=0, color='Black', linestyle='--')
         ax.yaxis.grid(which='major', color='Gray',
                       linestyle='--', alpha=0.85)
-        ax.xaxis.grid(which='major', color='Gray',
-                      linestyle='--', alpha=0.85)
         ax.yaxis.grid(which='minor', color='Gray',
                       linestyle=':', alpha=0.75)
+        if ax not in (hist_ax_pre, hist_ax_post):
+            ax.xaxis.grid(which='major', color='Gray',
+                          linestyle='--', alpha=0.85)
 
     for ax in (temp_ax_pre, temp_ax_post):
         ax.set_xlabel('Temperature (K)')
@@ -641,6 +648,7 @@ def main():
         for transition in tqdm(transitions_list):
             for order_num in transition.ordersToFitIn:
                 transition_label = '_'.join([transition.label, str(order_num)])
+                vprint(f'Analysing {transition_label}...')
 
                 index_nums.append(index_num)
                 index_num += 1
@@ -684,6 +692,7 @@ def main():
 
                 # Correct for trends in stellar parameters here.
                 if apply_corrections:
+                    vprint(f'Applying corrections from {model_name} model')
                     data_pre = np.stack((temp_pre, mtl_pre, mag_pre),
                                         axis=0)
                     params_pre = params[transition_label + '_pre']
@@ -707,6 +716,18 @@ def main():
                 sigma_post = np.nanstd(means_post)
                 sigma_list_pre.append(sigma_pre.value)
                 sigma_list_post.append(sigma_post.value)
+
+                # Write out data into a CSV file for checking.
+                csv_file = plots_folder /\
+                    f'Data_{transition_label}_{model_name}.csv'
+                with open(csv_file, 'w', newline='') as f:
+                    datawriter = csv.writer(f)
+                    header = ('weighted_means_pre', 'EoWM_pre', 'EoM_pre',
+                              'weighted_means_post', 'EoWM_post', 'EoM_post')
+                    datawriter.writerow(header)
+                    for row in zip_longest(means_pre, errs_pre, stds_pre,
+                                           means_post, errs_post, stds_post):
+                        datawriter.writerow(row)
 
                 # Create the figure and subplots:
                 if not apply_corrections:
@@ -737,12 +758,11 @@ def main():
                             horizontalalignment='left',
                             verticalalignment='top')
                 data = np.array(ma.masked_invalid(means_pre).compressed())
-                axes_dict['hist_pre'].hist(
-                    data,
-                    bins='fd',
-                    color='Black',
-                    histtype='step',
-                    orientation='horizontal')
+                axes_dict['hist_pre'].hist(data,
+                                           bins='fd',
+                                           color='Black',
+                                           histtype='step',
+                                           orientation='horizontal')
 
                 for ax, attr in zip(('temp_post', 'mtl_post',
                                      'mag_post', 'logg_post'),
@@ -760,14 +780,14 @@ def main():
                             horizontalalignment='left',
                             verticalalignment='top')
                 data = np.array(ma.masked_invalid(means_post).compressed())
-                axes_dict['hist_post'].hist(
-                    data,
-                    bins='fd',
-                    color='Black',
-                    histtype='step',
-                    orientation='horizontal')
+                axes_dict['hist_post'].hist(data,
+                                            bins='fd',
+                                            color='Black',
+                                            histtype='step',
+                                            orientation='horizontal')
 
-                file_name = plots_folder / f'{transition_label}.png'
+                file_name = plots_folder /\
+                    f'{transition_label}_{model_name}.png'
                 vprint(f'Saving file {transition_label}.png')
 
                 comp_fig.savefig(str(file_name))
