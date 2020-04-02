@@ -186,16 +186,27 @@ def create_transition_offset_plots(plots_dir):
                          alpha=0.6)
 
         vs_ax.errorbar(x=fit_chis, y=offsets, yerr=errors,
-                       label=f'Mean: {mean_measured * u.angstrom:.4f},'
-                       f' {w_mean * u.m/u.s:.1f} $\\pm$'
-                       f' {std_dev * u.m/u.s:.1f}\n'
+                       label=f'$\mu$: {mean_measured * u.angstrom:.4f},'
+                       f' {w_mean * u.m/u.s:.2f} $\\pm$'
+                       f' {std_dev * u.m/u.s:.3f}\n'
                        r'$\chi^2_\nu=$'
-                       f'{reduced_chi_squared:.3f}',
+                       f'{reduced_chi_squared:.3f},'
+                       f' $N=${len(offsets)}',
                        **params)
 
         vs_ax.legend(loc='lower right', markerscale=0.7,
                          framealpha=1, mode='expand',
                          bbox_to_anchor=(-0.04, -0.35, 1.04, -0.35))
+
+        hist_ax.yaxis.grid(which='major', color='Gray', alpha=0.6,
+                           linestyle='--')
+        hist_ax.axhline(w_mean, color='Black', alpha=0.7)
+        hist_ax.axhline(y=w_mean + std_dev, color='DimGray', linestyle='-',
+                        alpha=0.6)
+        hist_ax.axhline(y=w_mean - std_dev, color='DimGray', linestyle='-',
+                        alpha=0.6)
+        hist_ax.hist(offsets, bins='fd', color='Black',
+                     histtype='step', orientation='horizontal')
 
     # Define slice objects to capture time periods.
     pre_slice = slice(None, star.fiberSplitIndex)
@@ -208,9 +219,9 @@ def create_transition_offset_plots(plots_dir):
 
             if star.fiberSplitIndex not in (0, None):
                 fig = plt.figure(figsize=(11, 8), tight_layout=True)
-                gs = GridSpec(nrows=5, ncols=2, figure=fig, hspace=0,
+                gs = GridSpec(nrows=5, ncols=3, figure=fig, hspace=0,
                               height_ratios=[11, 3, 3, 11, 3],
-                              width_ratios=[1, 1])
+                              width_ratios=[5, 5, 1])
 
                 offset_ax1 = fig.add_subplot(gs[0, 0])
                 offset_ax2 = fig.add_subplot(gs[3, 0])
@@ -223,25 +234,29 @@ def create_transition_offset_plots(plots_dir):
                 vs_ax2 = fig.add_subplot(gs[3:4, 1], sharex=vs_ax1,
                                          sharey=offset_ax2)
 
-                axes1 = (offset_ax1, chi_ax1, vs_ax1)
-                axes2 = (offset_ax2, chi_ax2, vs_ax2)
+                hist_ax1 = fig.add_subplot(gs[0, 2], sharey=offset_ax1)
+                hist_ax2 = fig.add_subplot(gs[3, 2], sharey=offset_ax2)
+
+                axes1 = (offset_ax1, chi_ax1, vs_ax1, hist_ax1)
+                axes2 = (offset_ax2, chi_ax2, vs_ax2, hist_ax2)
 
                 for axes, time_slice, params in zip((axes1, axes2),
                                                     (pre_slice, post_slice),
                                                     (style_params_pre,
                                                      style_params_post)):
-                    offset_ax, chi_ax, vs_ax = axes
+                    offset_ax, chi_ax, vs_ax, hist_ax = axes
                     # Do the statistics and create the plots.
                     layout_plots()
 
             else:
-                fig = plt.figure(figsize=(9, 5), tight_layout=True)
-                gs = GridSpec(nrows=2, ncols=2, figure=fig, hspace=0,
+                fig = plt.figure(figsize=(11, 5), tight_layout=True)
+                gs = GridSpec(nrows=2, ncols=3, figure=fig, hspace=0,
                               height_ratios=[11, 3],
-                              width_ratios=[1, 1])
+                              width_ratios=[5, 5, 1])
                 offset_ax = fig.add_subplot(gs[0, 0])
                 chi_ax = fig.add_subplot(gs[1, 0])
-                vs_ax = fig.add_subplot(gs[0, 1])
+                vs_ax = fig.add_subplot(gs[0, 1], sharey=offset_ax)
+                hist_ax = fig.add_subplot(gs[0, 2], sharey=offset_ax)
 
                 if star.fiberSplitIndex == 0:
                     params = style_params_post
