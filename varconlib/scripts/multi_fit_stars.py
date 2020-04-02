@@ -15,6 +15,7 @@ from inspect import signature
 import os
 from pathlib import Path
 import pickle
+from pprint import pprint
 
 import h5py
 import hickle
@@ -23,6 +24,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 import numpy.ma as ma
+from scipy.optimize import curve_fit
 from tqdm import tqdm
 import unyt as u
 
@@ -56,7 +58,7 @@ def create_parameter_comparison_figures(ylims=None,
                                         mtl_lims=(-0.75, 0.4),
                                         mag_lims=(4, 5.8),
                                         logg_lims=(4.1, 4.6)):
-    """Creates and returns a figure with pre-set subplots.
+    """Create and returns a figure with pre-set subplots.
 
     This function creates the background figure and subplots for use with the
     --compare-stellar-parameter-* flags.
@@ -88,7 +90,8 @@ def create_parameter_comparison_figures(ylims=None,
     """
 
     comp_fig = plt.figure(figsize=(12, 8), tight_layout=True)
-    gs = GridSpec(ncols=3, nrows=2, figure=comp_fig)
+    gs = GridSpec(ncols=4, nrows=2, figure=comp_fig,
+                  width_ratios=(5, 5, 5, 3))
 
     temp_ax_pre = comp_fig.add_subplot(gs[0, 0])
     temp_ax_post = comp_fig.add_subplot(gs[1, 0],
@@ -104,14 +107,14 @@ def create_parameter_comparison_figures(ylims=None,
     mag_ax_post = comp_fig.add_subplot(gs[1, 2],
                                        sharex=mag_ax_pre,
                                        sharey=mag_ax_pre)
-#    logg_ax_pre = comp_fig.add_subplot(gs[0, 3],
-#                                       sharey=temp_ax_pre)
-#    logg_ax_post = comp_fig.add_subplot(gs[1, 3],
-#                                        sharex=logg_ax_pre,
-#                                        sharey=logg_ax_pre)
+    hist_ax_pre = comp_fig.add_subplot(gs[0, 3],
+                                       sharey=temp_ax_pre)
+    hist_ax_post = comp_fig.add_subplot(gs[1, 3],
+                                        sharex=hist_ax_pre,
+                                        sharey=hist_ax_pre)
 
     all_axes = (temp_ax_pre, temp_ax_post, mtl_ax_pre, mtl_ax_post,
-                mag_ax_pre, mag_ax_post)#, logg_ax_pre, logg_ax_post)
+                mag_ax_pre, mag_ax_post, hist_ax_pre, hist_ax_post)
     # Set the plot limits here. The y-limits for temp_ax1 are
     # used for all subplots.
     if ylims is not None:
@@ -123,22 +126,25 @@ def create_parameter_comparison_figures(ylims=None,
                         right=mtl_lims[1])
     mag_ax_pre.set_xlim(left=mag_lims[0],
                         right=mag_lims[1])
-#    logg_ax_pre.set_xlim(left=logg_lims[0],
-#                         right=logg_lims[1])
 
     # Axis styles for all subplots.
     for ax in all_axes:
-#        ax.yaxis.set_major_locator(ticker.MultipleLocator(
-#                                   base=100))
-#        ax.yaxis.set_minor_locator(ticker.MultipleLocator(
-#                                   base=50))
+        if not args.full_range:
+            ax.yaxis.set_major_locator(ticker.MultipleLocator(
+                                      base=100))
+            ax.yaxis.set_minor_locator(ticker.MultipleLocator(
+                                      base=50))
+        else:
+            ax.yaxis.set_major_locator(ticker.AutoLocator())
+            ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax.axhline(y=0, color='Black', linestyle='--')
         ax.yaxis.grid(which='major', color='Gray',
                       linestyle='--', alpha=0.65)
-        ax.xaxis.grid(which='major', color='Gray',
-                      linestyle='--', alpha=0.65)
         ax.yaxis.grid(which='minor', color='Gray',
                       linestyle=':', alpha=0.5)
+        if ax not in (hist_ax_pre, hist_ax_post):
+            ax.xaxis.grid(which='major', color='Gray',
+                          linestyle='--', alpha=0.65)
 
     for ax in (temp_ax_pre, temp_ax_post):
         ax.set_xlabel('Temperature (K)')
@@ -146,8 +152,6 @@ def create_parameter_comparison_figures(ylims=None,
         ax.set_xlabel('Metallicity [Fe/H]')
     for ax in (mag_ax_pre, mag_ax_post):
         ax.set_xlabel('Absolute Magnitude')
-#    for ax in (logg_ax_pre, logg_ax_post):
-#        ax.set_xlabel(r'$\log(g)$')
 
     # Just label the left-most two subplots' y-axes.
     for ax, era in zip((temp_ax_pre, temp_ax_post),
@@ -156,8 +160,8 @@ def create_parameter_comparison_figures(ylims=None,
 
     axes_dict = {'temp_pre': temp_ax_pre, 'temp_post': temp_ax_post,
                  'mtl_pre': mtl_ax_pre, 'mtl_post': mtl_ax_post,
-                 'mag_pre': mag_ax_pre, 'mag_post': mag_ax_post}
-#                 'logg_pre': logg_ax_pre, 'logg_post': logg_ax_post}
+                 'mag_pre': mag_ax_pre, 'mag_post': mag_ax_post,
+                 'hist_pre': hist_ax_pre, 'hist_post': hist_ax_post}
 
     return comp_fig, axes_dict
 
@@ -251,8 +255,8 @@ def main():
             db_file, dataset_name='star_transition_offsets_EotWM')
     star_transition_offsets_EotM = u.unyt_array.from_hdf5(
             db_file, dataset_name='star_transition_offsets_EotM')
-    star_transition_offsets_stds = u.unyt_array.from_hdf5(
-            db_file, dataset_name='star_standard_deviations')
+    # star_transition_offsets_stds = u.unyt_array.from_hdf5(
+    #         db_file, dataset_name='star_standard_deviations')
     star_temperatures = u.unyt_array.from_hdf5(
             db_file, dataset_name='star_temperatures')
 
@@ -261,7 +265,7 @@ def main():
         star_metallicities = hickle.load(f, path='/star_metallicities')
         star_magnitudes = hickle.load(f, path='/star_magnitudes')
 #        star_gravities = hickle.load(f, path='/star_gravities')
-        column_dict = hickle.load(f, path='transition_column_index')
+        column_dict = hickle.load(f, path='/transition_column_index')
 
     # Handle various fitting and plotting setup:
     eras = {'pre': 0, 'post': 1}
@@ -273,7 +277,9 @@ def main():
     chi_squareds_post, sigmas_post = [], []
     index_num = 0
 
-    if args.linear:
+    if args.constant:
+        model_func = fit.constant_model
+    elif args.linear:
         model_func = fit.linear_model
     elif args.quadratic:
         model_func = fit.quadratic_model
@@ -307,6 +313,7 @@ def main():
     # Create a dictionary of fit parameters assigned to each transition's label
     parameters_dict = {}
     covariance_dict = {}
+    sigmas_dict = {}
 
     tqdm.write('Creating plots for each transition...')
     for transition in tqdm(transitions_list):
@@ -314,13 +321,16 @@ def main():
             index_nums.append(index_num)
             index_num += 1
             label = '_'.join([transition.label, str(order_num)])
+            vprint(20 * '-')
+            vprint(f'Analyzing {label}...')
 
             # The column number to use for this transition:
             col = column_dict[label]
+            ylimits = (-300 * u.m / u.s,
+                       300 * u.m / u.s) if not args.full_range else None
 
             comp_fig, axes_dict = create_parameter_comparison_figures(
-                            ylims=(-300 * u.m / u.s,
-                                   300 * u.m / u.s),
+                            ylims=ylimits,
                             temp_lims=(5400 * u.K, 6300 * u.K),
                             mtl_lims=(-0.63, 0.52))
 
@@ -328,6 +338,8 @@ def main():
 
                 median = np.nanmedian(star_transition_offsets[eras[time],
                                                               :, col])
+                mean = np.nanmean(star_transition_offsets[eras[time],
+                                  :, col])
 
                 # First, create a masked version to catch any missing entries:
                 m_offsets = ma.masked_invalid(star_transition_offsets[
@@ -336,6 +348,7 @@ def main():
                 # Then create a new array from the non-masked data:
                 offsets = u.unyt_array(m_offsets[~m_offsets.mask],
                                        units=u.m/u.s)
+                vprint(f'Median of offsets is {np.nanmedian(offsets)}')
 #                print(offsets.shape)
 #                print(m_offsets)
 
@@ -347,13 +360,11 @@ def main():
 #                print(stds.shape)
 #                print(m_stds)
 #
-#                m_eotwms = ma.masked_invalid(star_transition_offsets_EotWM[
-#                        eras[time], :, col])
-#                m_eotwms = m_eotwms.reshape([len(m_eotwms), 1])
-#                eotwms = u.unyt_array(m_eotwms[~m_eotwms.mask],
-#                                      units=u.m/u.s)
-#                print(eotwms.shape)
-#                print(m_eotwms)
+                m_eotwms = ma.masked_invalid(star_transition_offsets_EotWM[
+                        eras[time], :, col])
+                m_eotwms = m_eotwms.reshape([len(m_eotwms), 1])
+                eotwms = u.unyt_array(m_eotwms[~m_eotwms.mask],
+                                      units=u.m/u.s)
 
                 m_eotms = ma.masked_invalid(star_transition_offsets_EotM[
                         eras[time], :, col])
@@ -361,6 +372,15 @@ def main():
                 # Use the same mask as for the offsets.
                 eotms = u.unyt_array(m_eotms[~m_offsets.mask],
                                      units=u.m/u.s)
+                # Create an error array which uses the greater of the error on
+                # the mean or the error on the weighted mean.
+                err_array = np.maximum(eotwms, eotms)
+
+                vprint(f'Mean is {np.mean(offsets)}')
+                weighted_mean = np.average(offsets, weights=err_array**-2)
+                vprint(f'Weighted mean is {weighted_mean}')
+                # pprint(offsets)
+                # pprint(eotms)
 
                 temperatures = ma.masked_array(star_temperatures)
                 temps = temperatures[~m_offsets.mask]
@@ -372,15 +392,25 @@ def main():
                 x_data = np.stack((temps, metals, mags), axis=0)
 
                 # Create the parameter list for this run of fitting.
-                params_list[0] = float(median.value)
+                params_list[0] = float(mean)
 
                 beta0 = tuple(params_list)
+                vprint(beta0)
                 popt, pcov = fit.curve_fit_data(model_func, x_data,
                                                 offsets, beta0,
-                                                sigma=eotms)
+                                                sigma=err_array)
+
+                # popt, pcov = curve_fit(model_func, x_data, offsets,
+                #                        sigma=eotms,
+                #                        p0=beta0,
+                #                        absolute_sigma=True,
+                #                        method='lm', maxfev=10000)
+                vprint(popt)
                 results = u.unyt_array(model_func(x_data, *popt),
                                        units=u.m/u.s)
                 residuals = offsets - results
+                vprint(f'  Mean for {time} is {np.nanmean(residuals):.3f},'
+                       f' median is {np.nanmedian(residuals)}')
 
                 # Add the optimized parameters and covariances to the
                 # dictionary. Make sure we separate them by time period.
@@ -388,11 +418,13 @@ def main():
                 covariance_dict[label + '_' + time] = pcov
 
                 # Find the chi^2 value for this distribution:
-                chi_squared = np.sum((residuals / eotms) ** 2)
+                chi_squared = np.sum((residuals / err_array) ** 2)
                 dof = len(offsets) - len(popt)
-                vprint(f'DOF = {len(offsets)} - {len(popt)} = {dof}')
+                vprint(f'  DOF = {len(offsets)} - {len(popt)} = {dof}')
                 chi_squared_nu = chi_squared / dof
-                sigma = np.std(residuals)
+                sigma = np.nanstd(residuals)
+
+                sigmas_dict[label + '_' + time] = sigma
 
                 if time == 'pre':
                     chi_squareds_pre.append(chi_squared_nu.value)
@@ -412,7 +444,7 @@ def main():
                         ecolor = style_post['ecolor_thick']
                     ax.errorbar(
                             x_data[param_dict[plot_type]],
-                            residuals, yerr=eotms,
+                            residuals, yerr=err_array,
                             ecolor=ecolor,
                             color=color,
                             markeredgecolor=style_markers['markeredgecolor'],
@@ -433,6 +465,13 @@ def main():
                                 xycoords='axes fraction',
                                 horizontalalignment='right',
                                 verticalalignment='top')
+                    data = np.array(ma.masked_invalid(residuals).compressed())
+                    axes_dict[f'hist_{time}'].hist(data,
+                                                   bins='fd',
+                                                   color='Black',
+                                                   histtype='step',
+                                                   orientation='horizontal')
+
 
             file_name = plots_folder / f'{label}_{model_name}.png'
             vprint(f'Saving file {label}.png')
@@ -468,24 +507,28 @@ def main():
         hickle.dump(model_func, f, path='/fitting_function')
         hickle.dump(parameters_dict, f, path='/params_dict')
         hickle.dump(covariance_dict, f, path='/covariance_dict')
+        hickle.dump(sigmas_dict, f, path='/sigmas_dict')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Use stored data from stars'
                                      ' to fit transition offsets to stellar'
                                      ' parameters.')
+    parser.add_argument('--full-range', action='store_true',
+                        help='Plot the full range of values instead of'
+                        ' restricting to a  fixed range.')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Print out more information about the script.')
 
-    parser.add_argument('--temp', action='store', type=float, nargs=2,
-                        metavar=('T_low', 'T_high'),
-                        help='The limits in temperature of stars to use.')
-    parser.add_argument('--mtl', action='store', type=float, nargs=2,
-                        metavar=('FeH_low', 'FeH_high'),
-                        help='The limits in metallicity of stars to use.')
-    parser.add_argument('--mag', action='store', type=float, nargs=2,
-                        metavar=('M_low', 'M_high'),
-                        help='The limits in magnitude of stars to use.')
+    # parser.add_argument('--temp', action='store', type=float, nargs=2,
+    #                     metavar=('T_low', 'T_high'),
+    #                     help='The limits in temperature of stars to use.')
+    # parser.add_argument('--mtl', action='store', type=float, nargs=2,
+    #                     metavar=('FeH_low', 'FeH_high'),
+    #                     help='The limits in metallicity of stars to use.')
+    # parser.add_argument('--mag', action='store', type=float, nargs=2,
+    #                     metavar=('M_low', 'M_high'),
+    #                     help='The limits in magnitude of stars to use.')
 
     func = parser.add_mutually_exclusive_group(required=True)
     func.add_argument('--constant', action='store_true',
