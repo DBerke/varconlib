@@ -5,7 +5,7 @@ Created on Mon Oct 21 11:13:37 2019
 
 @author: dberke
 
-A script to measure the angular distance bewteen a star observation and the
+A script to measure the angular distance between a star observation and the
 position of the Moon, to see if the Moon was avoided during observations.
 
 """
@@ -35,6 +35,10 @@ parser.add_argument('--plot-moon-separation', action='store_true',
 parser.add_argument('--plot-light-contamination', action='store_true',
                     help="Create a plot of the various sources of light"
                     " contamination present calculated by SkyCalc.")
+
+parser.add_argument('--plot-star-magnitude-distribution', action='store_true',
+                    help='Create a histogram of the star magnitudes in our'
+                    ' sample.')
 
 args = parser.parse_args()
 
@@ -74,6 +78,24 @@ if args.plot_moon_separation:
 
     ax.hist(angular_distances.value, bins=18, color='HoneyDew',
             edgecolor='Indigo')
+    plt.show()
+
+
+if args.plot_star_magnitude_distribution:
+
+    data_file = Path(varconlib.data_dir) /\
+        'StellarSampleData.csv'
+
+    data = np.loadtxt(data_file, delimiter=',', usecols=6)
+    # Exclude the sun:
+    data = data[:-1]
+
+    fig = plt.figure(figsize=(8, 7))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.set_title('Stars in our sample')
+    ax.set_xlabel('Visual apparent magnitude')
+    ax.hist(data, color='HoneyDew', edgecolor='Indigo',
+            bins='fd')
     plt.show()
 
 
