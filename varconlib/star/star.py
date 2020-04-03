@@ -398,12 +398,15 @@ class Star(object):
 
     def getOutliersMask(self, function, coeff_dict, sigmas_dict,
                         n_sigma):
-        """Return a 2D mask for values in this star's transition measurments.
+        """Return a 2D mask for values in this star's transition measurements.
 
         This method takes a function of three stellar parameters (temperature,
         metallicity, and absolute magnitude) and a variable number of
         coefficients. These coefficients are provided in a dictionary for each
-        transition, for pre- and post-fiber change instances.
+        transition, for pre- and post-fiber change instances. It then calculates
+        a correction for each observation's fitted wavelength and checks if the
+        resultant position is more than `n_sigma` times the standard deviation
+        for that transition given in `sigmas_dict` from zero.
 
         function: callable
             A function that has been fitted to the transition velocity offsets
