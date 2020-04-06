@@ -17,6 +17,7 @@ import lzma
 import os
 from pathlib import Path
 import pickle
+import re
 
 from bidict import namedbidict
 import h5py
@@ -126,7 +127,7 @@ class Star(object):
 
     def __init__(self, name, star_dir=None, suffix='int',
                  transitions_list=None, pairs_list=None,
-                 load_data=None):
+                 load_data=None, init_params="Casagrande2011"):
         """Instantiate a `star.Star` object.
 
         Parameters
@@ -163,10 +164,14 @@ class Star(object):
             a previously-created HDF5 file, and if one does not exist will
             attempt to create one using observations. This is essentially the
             'pragmatic' option, and is also the default behavior.
+        init_params : str, ['Nordstrom2004', 'Casagrande2011'], Default :
+                    'Casagrande2011'
+            Which paper's derivation of the stellar parameters for this star to
+            use.
 
         """
 
-        self.name = name
+        self.name = str(name)
 
         # Initialize some attributes to be filled later.
         self._obs_date_bidict = self.DateMap()
@@ -220,6 +225,10 @@ class Star(object):
         else:
             self.hasObsPre = True
             self.hasObsPost = True
+
+        assert init_params in ('Nordstrom2004', 'Casagrande2011'),\
+            f'{init_params} is not a valid paper name.'
+        self.getStellarParameters(init_params)
 
     def constructFromDir(self, star_dir, suffix='int', transitions_list=None,
                          pairs_list=None):
@@ -653,6 +662,35 @@ class Star(object):
 
         return self._fiberSplitIndex
 
+    def getStellarParameters(self, paper_name):
+        """
+        Set the stellar parameters based on the paper given.
+
+        Parameters
+        ----------
+        paper_name : str, ['Nordstrom2004', 'Casagrande2011']
+            The name of the paper from which to use the stellar parameters.
+
+        Returns
+        -------
+        None.
+
+        """
+
+        hd_name = re.compile(r'^HD')
+        if hd_name.match(self.name):
+            star_name = self.name[:2] + ' ' + self.name[2:]
+        else:
+            # If it's Vesta/the Sun:
+            star_name = self.name
+
+        if paper_name == 'Nordstrom2004':
+            self._getNordstrom2004(star_name)
+        elif paper_name == 'Casagrande2011':
+            self._getCasagrande2011(star_name)
+        else:
+            f'{paper_name} is not a valid paper name!'
+
     def _getStellarProperty(self, value):
         """Load file containing stellar properties and return the requested
         value.
@@ -691,6 +729,53 @@ class Star(object):
                     return float(row[row_values[value]])
         # If the star isn't found in any row, throw an error.
         raise RuntimeError(f"Couldn't find {self.name} in table!")
+
+    def _getNordstrom2004(self, star_name):
+        """
+        Return values from Nordstrom et al. 2004 and set them in the star.
+
+        star_name : str
+            The name of the star to look for.
+
+        Returns
+        -------
+        None.
+
+        """
+
+        stellar_props_file = vcl.data_dir / 'StellarSampleData.csv'
+        data = np.loadtxt(stellar_props_file, delimiter=',', dtype=str)
+        for row in data:
+            if row[8] == star_name:
+                self._temperature = round((10 ** float(row[3])) * u.K)
+                self._metallicity = float(row[4])
+                self._absoluteMagnitude = float(row[5])
+                self._logG = float(row[9])
+                break
+
+    def _getCasagrande2011(self, star_name):
+        """
+        Return values from Casagrande et al. 2011 and set them in the star.
+
+        star_name : str
+            The name of the star to look for.
+
+        Returns
+        -------
+        None.
+
+        """
+
+        stellar_props_file = vcl.data_dir /\
+            'Casagrande2011_GCS_updated_values.tsv'
+        data = np.loadtxt(stellar_props_file, delimiter=';', dtype=str,
+                          comments='#', skiprows=48)
+        for row in data:
+            if row[1].strip() == star_name:
+                self._temperature = int(row[3].strip()) * u.K
+                self._metallicity = float(row[5].strip())
+                self._logG = float(row[2].strip())
+                break
 
     def _getFiberSplitIndex(self):
         """Return the index of the first observation after the HARPS fiber
