@@ -50,7 +50,7 @@ class TestStar(object):
     @pytest.fixture(scope='class')
     def test_star(self, test_dir):
         return Star('HD117618', star_dir=test_dir, suffix='int',
-                    load_data=False)
+                    load_data=False, init_params='Nordstrom2004')
 
     def testNonExistentDir(self):
         with pytest.raises(StarDirectoryNotFoundError):
