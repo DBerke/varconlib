@@ -423,8 +423,15 @@ def main():
         if star is None:
             pass
         else:
-            vprint(f'Added {star.name}.')
+            if args.casagrande2011:
+                vprint('Applying values from Casagrande et al. 2011.')
+                star.getStellarParameters('Casagrande2011')
+            elif args.nordstrom2004:
+                vprint('Applying values from Nordstrom et al. 2004.')
+                star.getStellarParameters('Nordstrom2004')
             star_list.append(star)
+            vprint(f'Added {star.name}.')
+
     tqdm.write(f'Found {len(star_list)} usable stars in total.')
 
     if args.compare_offset_patterns:
@@ -843,6 +850,12 @@ if __name__ == '__main__':
                         ' offsets instead of a fixed range.')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help="Print more output about what's happening.")
+
+    paper = parser.add_mutually_exclusive_group()
+    paper.add_argument('--casagrande2011', action='store_true',
+                       help='Use values from Casagrande et al. 2011.')
+    paper.add_argument('--nordstrom2004', action='store_true',
+                       help='Use values from Nordstrom et al. 2004.')
 
     args = parser.parse_args()
 
