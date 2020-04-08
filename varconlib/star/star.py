@@ -127,7 +127,7 @@ class Star(object):
 
     def __init__(self, name, star_dir=None, suffix='int',
                  transitions_list=None, pairs_list=None,
-                 load_data=None, init_params="Casagrande2011"):
+                 load_data=None, init_params="Nordstrom2004"):
         """Instantiate a `star.Star` object.
 
         Parameters
@@ -772,10 +772,13 @@ class Star(object):
                           comments='#', skiprows=48)
         for row in data:
             if row[1].strip() == star_name:
-                self._temperature = int(row[3].strip()) * u.K
-                self._metallicity = float(row[5].strip())
-                self._logG = float(row[2].strip())
-                break
+                try:
+                    self._temperature = int(row[3].strip()) * u.K
+                    self._metallicity = float(row[5].strip())
+                    self._logG = float(row[2].strip())
+                    break
+                except ValueError:
+                    tqdm.write(f'Missing value for {row[1]}!')
 
     def _getFiberSplitIndex(self):
         """Return the index of the first observation after the HARPS fiber
