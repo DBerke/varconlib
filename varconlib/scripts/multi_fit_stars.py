@@ -148,10 +148,16 @@ def create_parameter_comparison_figures(ylims=None,
 
     for ax in (temp_ax_pre, temp_ax_post):
         ax.set_xlabel('Temperature (K)')
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(base=200))
+        ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
     for ax in (mtl_ax_pre, mtl_ax_post):
         ax.set_xlabel('Metallicity [Fe/H]')
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(base=0.2))
+        ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=0.1))
     for ax in (mag_ax_pre, mag_ax_post):
         ax.set_xlabel('Absolute Magnitude')
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(base=0.5))
+        ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=0.25))
 
     # Just label the left-most two subplots' y-axes.
     for ax, era in zip((temp_ax_pre, temp_ax_post),
@@ -236,7 +242,7 @@ def main():
 
     # Define the limits to plot in the various stellar parameters.
     temp_lims = (5400, 6300) * u.K
-    mtl_lims = (-0.63, 0.52)
+    mtl_lims = (-0.75, 0.45)
     mag_lims = (4, 5.8)
     logg_lims = (4.1, 4.6)
 
@@ -331,13 +337,14 @@ def main():
 
             comp_fig, axes_dict = create_parameter_comparison_figures(
                             ylims=ylimits,
-                            temp_lims=(5400 * u.K, 6300 * u.K),
-                            mtl_lims=(-0.63, 0.52))
+                            temp_lims=temp_lims,
+                            mtl_lims=mtl_lims,
+                            mag_lims=mag_lims)
 
             for time in eras.keys():
 
-                median = np.nanmedian(star_transition_offsets[eras[time],
-                                                              :, col])
+                # median = np.nanmedian(star_transition_offsets[eras[time],
+                #                                               :, col])
                 mean = np.nanmean(star_transition_offsets[eras[time],
                                   :, col])
 
