@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import pickle
 from pprint import pprint
+from time import sleep
 
 import h5py
 import hickle
@@ -343,6 +344,8 @@ def main():
 
             for time in eras.keys():
 
+                vprint(20 * '=')
+                vprint(f'Working on {time}-change era.')
                 # median = np.nanmedian(star_transition_offsets[eras[time],
                 #                                               :, col])
                 mean = np.nanmean(star_transition_offsets[eras[time],
@@ -403,32 +406,68 @@ def main():
 
                 beta0 = tuple(params_list)
                 vprint(beta0)
-                popt, pcov = fit.curve_fit_data(model_func, x_data,
-                                                offsets, beta0,
-                                                sigma=err_array)
 
-                # popt, pcov = curve_fit(model_func, x_data, offsets,
-                #                        sigma=eotms,
-                #                        p0=beta0,
-                #                        absolute_sigma=True,
-                #                        method='lm', maxfev=10000)
-                vprint(popt)
-                results = u.unyt_array(model_func(x_data, *popt),
-                                       units=u.m/u.s)
-                residuals = offsets - results
-                vprint(f'  Mean for {time} is {np.nanmean(residuals):.3f},'
-                       f' median is {np.nanmedian(residuals)}')
+                # Iterate to find what additional systematic error is needed
+                # to get a chi^2 of ~1.
+                chi_tol = 0.001
+                chi_squared_nu = 1.5
+                sys_err = 0 * u.m / u.s
+                num_iters = 0
+                sigma_sys_change_amount = 0.25
 
+                while abs(chi_squared_nu - 1) > chi_tol:
+
+                    num_iters += 1
+
+                    vprint(f'Applying sys_err of {sys_err}')
+                    iter_err_array = np.sqrt(np.square(err_array) +
+                                             np.square(sys_err))
+                    popt, pcov = fit.curve_fit_data(model_func, x_data,
+                                                    offsets, beta0,
+                                                    sigma=iter_err_array)
+
+                    # popt, pcov = curve_fit(model_func, x_data, offsets,
+                    #                        sigma=eotms,
+                    #                        p0=beta0,
+                    #                        absolute_sigma=True,
+                    #                        method='lm', maxfev=10000)
+                    vprint(popt)
+                    results = u.unyt_array(model_func(x_data, *popt),
+                                           units=u.m/u.s)
+                    residuals = offsets - results
+
+                    # Find the chi^2 value for this distribution:
+                    chi_squared = np.sum((residuals / iter_err_array) ** 2)
+                    dof = len(offsets) - len(popt)
+                    vprint(f'  DOF = {len(offsets)} - {len(popt)} = {dof}')
+                    chi_squared_nu = chi_squared / dof
+
+                    vprint(f'  Mean for {time} is {np.nanmean(residuals):.3f},'
+                           f'  median is {np.nanmedian(residuals)},\n'
+                           f'  chi^2_nu is {chi_squared_nu}')
+
+                    if chi_squared_nu > 1:
+                        if sys_err.value == 0:
+                            sys_err = np.sqrt(chi_squared_nu) * u.m / u.s
+                        else:
+                            sys_err = sys_err * (1 + sigma_sys_change_amount)
+                    elif chi_squared_nu < 1:
+                        if sys_err.value == 0:
+                            # If the chi-squared value is naturally lower
+                            # than 1, don't change anything, just exit.
+                            break
+                        else:
+                            sys_err = sys_err * (1 - sigma_sys_change_amount)
+                    if args.verbose:
+                        sleep(1)
+
+                vprint(f'Terminated with sys_err = {sys_err}')
+                tqdm.write(f'Finished {label}_{time} in {num_iters} steps.')
                 # Add the optimized parameters and covariances to the
                 # dictionary. Make sure we separate them by time period.
                 parameters_dict[label + '_' + time] = popt
                 covariance_dict[label + '_' + time] = pcov
 
-                # Find the chi^2 value for this distribution:
-                chi_squared = np.sum((residuals / err_array) ** 2)
-                dof = len(offsets) - len(popt)
-                vprint(f'  DOF = {len(offsets)} - {len(popt)} = {dof}')
-                chi_squared_nu = chi_squared / dof
                 sigma = np.nanstd(residuals)
 
                 sigmas_dict[label + '_' + time] = sigma
@@ -443,29 +482,35 @@ def main():
                 for plot_type, lims in zip(('temp', 'mtl', 'mag'),
                                            (temp_lims, mtl_lims, mag_lims)):
                     ax = axes_dict[f'{plot_type}_{time}']
-                    if time == 'pre':
-                        color = style_pre['color']
-                        ecolor = style_pre['ecolor_thick']
-                    else:
-                        color = style_post['color']
-                        ecolor = style_post['ecolor_thick']
-                    ax.errorbar(
-                            x_data[param_dict[plot_type]],
-                            residuals, yerr=err_array,
-                            ecolor=ecolor,
-                            color=color,
-                            markeredgecolor=style_markers['markeredgecolor'],
-                            linestyle='',
-                            markersize=style_markers['markersize'],
-                            markeredgewidth=style_markers['markeredgewidth'],
-                            alpha=style_markers['alpha'],
-                            marker='o')
+                    # if time == 'pre':
+                    #     color = style_pre['color']
+                    #     ecolor = style_pre['ecolor_thick']
+                    # else:
+                    #     color = style_post['color']
+                    #     ecolor = style_post['ecolor_thick']
+                    plot_data_points(ax, x_data[param_dict[plot_type]],
+                                     residuals, thick_err=err_array,
+                                     thin_err=iter_err_array,
+                                     era=time)
+                    # ax.errorbar(
+                    #         x_data[param_dict[plot_type]],
+                    #         residuals, yerr=err_array,
+                    #         ecolor=ecolor,
+                    #         color=color,
+                    #         markeredgecolor=style_markers['markeredgecolor'],
+                    #         linestyle='',
+                    #         markersize=style_markers['markersize'],
+                    #         markeredgewidth=style_markers['markeredgewidth'],
+                    #         alpha=style_markers['alpha'],
+                    #         marker='o')
 
-                    ax.annotate(f'Blendedness: {transition.blendedness}',
+                    ax.annotate(f'Blendedness: {transition.blendedness}\n'
+                                r'$\sigma_\mathrm{sys}$:'
+                                f' {sys_err:.2f}',
                                 (0.01, 0.99),
                                 xycoords='axes fraction',
                                 verticalalignment='top')
-                    ax.annotate(fr'$\chi^2_\nu$: {chi_squared_nu.value:.2f}'
+                    ax.annotate(fr'$\chi^2_\nu$: {chi_squared_nu.value:.4f}'
                                 '\n'
                                 fr'$\sigma$: {sigma:.2f}',
                                 (0.99, 0.99),
@@ -479,9 +524,9 @@ def main():
                                                    histtype='step',
                                                    orientation='horizontal')
 
-
             file_name = plots_folder / f'{label}_{model_name}.png'
             vprint(f'Saving file {label}.png')
+            vprint('\n')
 
             comp_fig.savefig(str(file_name))
             plt.close('all')
