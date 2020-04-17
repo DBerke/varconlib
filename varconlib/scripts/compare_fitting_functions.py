@@ -20,9 +20,17 @@ import sys
 
 import varconlib as vcl
 
+cols = {'index': 0,
+        'chi_squared_pre': 1,
+        'sigma_pre': 2,
+        'sigma_sys_pre': 3,
+        'chi_squared_post': 4,
+        'sigma_post': 5,
+        'sigma_sys_post': 6}
+
 
 def main():
-    """The main routine for this script.
+    """Run the main routine for this script.
 
     Returns
     -------
@@ -55,9 +63,11 @@ def main():
     for file, function in zip(files, functions.keys()):
         with open(file, 'r', newline='') as f:
             data = np.loadtxt(f, delimiter=',')
-        ax_pre.hist(data[:, 1], cumulative=False, histtype='step',
+        ax_pre.hist(data[:, cols['chi_squared_pre']],
+                    cumulative=False, histtype='step',
                     label=functions[function], bins=bin_edges)
-        ax_post.hist(data[:, 2], cumulative=False, histtype='step',
+        ax_post.hist(data[:, cols['chi_squared_post']],
+                     cumulative=False, histtype='step',
                      label=functions[function], bins=bin_edges)
 
     ax_pre.legend(loc='upper right')
