@@ -400,7 +400,7 @@ def create_offset_plot(star):
 
     """
 
-    def layout_plots(time_slice, time_str):
+    def layout_plots(time_slice, time_str, color):
         """Layout data onto the current axis.
 
         Parameters
@@ -480,7 +480,7 @@ def create_offset_plot(star):
                                                            (ecolor_pre,
                                                             ecolor_post)):
             vprint(f'Creating "{time_str}" plot.')
-            layout_plots(time_slice, time_str)
+            layout_plots(time_slice, time_str, color)
 
         ax1.tick_params(labelbottom=False)
 
@@ -489,15 +489,17 @@ def create_offset_plot(star):
             params = style_params_post
             time_str = 'post'
             ax = ax2
+            color = ecolor_post
             vprint(f'Creating "{time_str}" plot.')
         else:
             params = style_params_pre
             time_str = 'pre'
             ax = ax1
+            color = ecolor_pre
             vprint(f'Creating "{time_str}" plot.')
         time_slice = slice(None, None)
 
-        layout_plots(time_slice, time_str)
+        layout_plots(time_slice, time_str, color)
 
     ax2.set_xlabel('Index number')
 
