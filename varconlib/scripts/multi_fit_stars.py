@@ -280,8 +280,8 @@ def main():
 
     # Create lists to store information about each fit in:
     index_nums = []
-    chi_squareds_pre, sigmas_pre = [], []
-    chi_squareds_post, sigmas_post = [], []
+    chi_squareds_pre, sigmas_pre, sigma_sys_pre = [], [], []
+    chi_squareds_post, sigmas_post, sigma_sys_post = [], [], []
     index_num = 0
 
     if args.constant:
@@ -321,6 +321,7 @@ def main():
     parameters_dict = {}
     covariance_dict = {}
     sigmas_dict = {}
+    sigma_sys_dict = {}
 
     tqdm.write('Creating plots for each transition...')
     for transition in tqdm(transitions_list):
@@ -413,7 +414,7 @@ def main():
                 chi_squared_nu = 1.5
                 sys_err = 0 * u.m / u.s
                 num_iters = 0
-                sigma_sys_change_amount = 0.25
+                sigma_sys_change_amount = 0.25  # Range (0, 1)
 
                 while abs(chi_squared_nu - 1) > chi_tol:
 
@@ -446,22 +447,28 @@ def main():
                            f'  median is {np.nanmedian(residuals)},\n'
                            f'  chi^2_nu is {chi_squared_nu}')
 
+                    diff = abs(chi_squared_nu - 1)
+                    if diff > 1:
+                        sigma_sys_change_amount = 0.5
+                    else:
+                        sigma_sys_change_amount = 0.25
+
                     if chi_squared_nu > 1:
                         if sys_err.value == 0:
                             sys_err = np.sqrt(chi_squared_nu) * u.m / u.s
                         else:
-                            sys_err = sys_err * (1 + sigma_sys_change_amount)
+                            sys_err *= (1 + sigma_sys_change_amount)
                     elif chi_squared_nu < 1:
                         if sys_err.value == 0:
                             # If the chi-squared value is naturally lower
                             # than 1, don't change anything, just exit.
                             break
                         else:
-                            sys_err = sys_err * (1 - sigma_sys_change_amount)
+                            sys_err *= (1 - sigma_sys_change_amount)
                     if args.verbose:
                         sleep(1)
 
-                vprint(f'Terminated with sys_err = {sys_err}')
+                tqdm.write(f'Terminated with sys_err = {sys_err}')
                 tqdm.write(f'Finished {label}_{time} in {num_iters} steps.')
                 # Add the optimized parameters and covariances to the
                 # dictionary. Make sure we separate them by time period.
@@ -471,13 +478,16 @@ def main():
                 sigma = np.nanstd(residuals)
 
                 sigmas_dict[label + '_' + time] = sigma
+                sigma_sys_dict[label + '_' + time] = sys_err
 
                 if time == 'pre':
                     chi_squareds_pre.append(chi_squared_nu.value)
                     sigmas_pre.append(sigma.value)
+                    sigma_sys_pre.append(sys_err.value)
                 else:
                     chi_squareds_post.append(chi_squared_nu.value)
                     sigmas_post.append(sigma.value)
+                    sigma_sys_post.append(sys_err.value)
 
                 for plot_type, lims in zip(('temp', 'mtl', 'mag'),
                                            (temp_lims, mtl_lims, mag_lims)):
@@ -536,11 +546,11 @@ def main():
 
     with open(csv_file, 'w', newline='') as f:
         datawriter = csv.writer(f)
-        header = ('#index', 'chi_squared_pre', 'sigma_pre',
-                  'chi_squared_post', 'sigma_post')
+        header = ('#index', 'chi_squared_pre', 'sigma_pre', 'sigma_sys_pre',
+                  'chi_squared_post', 'sigma_post', 'sigma_sys_post')
         datawriter.writerow(header)
-        for row in zip(index_nums, chi_squareds_pre, sigmas_pre,
-                       chi_squareds_post, sigmas_post):
+        for row in zip(index_nums, chi_squareds_pre, sigmas_pre, sigma_sys_pre,
+                       chi_squareds_post, sigmas_post, sigma_sys_post):
             datawriter.writerow(row)
 
     # Save the function used and the parameters found for each transition to
@@ -560,6 +570,7 @@ def main():
         hickle.dump(parameters_dict, f, path='/params_dict')
         hickle.dump(covariance_dict, f, path='/covariance_dict')
         hickle.dump(sigmas_dict, f, path='/sigmas_dict')
+        hickle.dump(sigma_sys_dict, f, path='/sigma_sys_dict')
 
 
 if __name__ == '__main__':
