@@ -406,7 +406,7 @@ class Star(object):
                                                        units='m/s')
 
     def getOutliersMask(self, function, coeff_dict, sigmas_dict,
-                        n_sigma):
+                        sigma_sys_dict, n_sigma):
         """Return a 2D mask for values in this star's transition measurements.
 
         This method takes a function of three stellar parameters (temperature,
@@ -427,6 +427,9 @@ class Star(object):
         sigmas_dict : dict
             A dictionary containing the standard deviation of the residuals from
             the fitting function for each transition.
+        sigma_sys_dict : dict
+            A ditionary containing the empirically-derived additional systematic
+            error found for this transition and era.
 
         Optional
         --------
@@ -447,6 +450,7 @@ class Star(object):
         stellar_params = np.stack((self.temperature, self.metallicity,
                                    self.absoluteMagnitude), axis=0)
 
+        corrected_array = np.zeros_like(self.fitOffsetsArray, dtype=float)
         # Initialize the mask to False (not masked) with the same shape
         # as the data for this star:
         mask_array = np.full_like(self.fitOffsetsNormalizedArray,
@@ -458,13 +462,18 @@ class Star(object):
             if self.hasObsPre:
                 label = key + '_pre'
                 pre_slice = slice(None, self.fiberSplitIndex)
-                data_slice = self.fitOffsetsNormalizedArray[pre_slice, col_num]
                 coeffs_pre = coeff_dict[label]
                 sigma_pre = sigmas_dict[label]
+                sigma_sys_pre = sigma_sys_dict[label]
                 correction = u.unyt_array(function(stellar_params,
                                                    *coeffs_pre), units=u.m/u.s)
-                data_slice -= correction
-                sigma_lim = n_sigma * sigma_pre
+                # data_slice -= correction
+                corrected_array[pre_slice, col_num] =\
+                    self.fitOffsetsNormalizedArray[pre_slice, col_num] -\
+                    correction
+                data_slice = corrected_array[pre_slice, col_num]
+                sigma_lim = n_sigma * np.sqrt(np.square(sigma_pre) +
+                                              np.square(sigma_sys_pre))
                 for i in range(len(data_slice)):
                     if abs(data_slice[i]) > sigma_lim:
                         mask_array[i, col_num] = 0
@@ -475,15 +484,18 @@ class Star(object):
                 data_slice = self.fitOffsetsNormalizedArray[post_slice, col_num]
                 coeffs_post = coeff_dict[label]
                 sigma_post = sigmas_dict[label]
+                sigma_sys_post = sigma_sys_dict[label]
                 correction = u.unyt_array(function(stellar_params,
                                                    *coeffs_post), units=u.m/u.s)
                 data_slice -= correction
-                sigma_lim = n_sigma * sigma_post
+                corrected_array[post_slice, col_num] = data_slice
+                sigma_lim = n_sigma * np.sqrt(np.square(sigma_post) +
+                                              np.square(sigma_sys_post))
                 for i in range(len(data_slice)):
                     if abs(data_slice[i]) > sigma_lim:
                         mask_array[i, col_num] = 0
 
-        return mask_array
+        return corrected_array, mask_array
 
     def dumpDataToDisk(self, file_path):
         """Save important data arrays to disk in HDF5 format.
