@@ -405,8 +405,8 @@ class Star(object):
                 self.pairSepErrorsArray = u.unyt_array(pairSepErrorsArray,
                                                        units='m/s')
 
-    def getOutliersMask(self, function, coeff_dict, sigmas_dict,
-                        sigma_sys_dict, n_sigma):
+    def getOutliersMask(self, function, coeffs_dict, sigmas_dict,
+                        sigma_sys_dict, n_sigma=2.5):
         """Return a 2D mask for values in this star's transition measurements.
 
         This method takes a function of three stellar parameters (temperature,
@@ -420,7 +420,7 @@ class Star(object):
         function: callable
             A function that has been fitted to the transition velocity offsets
             to use to correct them, and find outliers.
-        coeff_dict: dict
+        coeffs_dict: dict
             A dictionary with keys consisting of labels uniquely specifying each
             transition, for pre- and post-fiber change, with as many
             coefficients as are needed for the provided function.
@@ -462,7 +462,7 @@ class Star(object):
             if self.hasObsPre:
                 label = key + '_pre'
                 pre_slice = slice(None, self.fiberSplitIndex)
-                coeffs_pre = coeff_dict[label]
+                coeffs_pre = coeffs_dict[label]
                 sigma_pre = sigmas_dict[label]
                 sigma_sys_pre = sigma_sys_dict[label]
                 correction = u.unyt_array(function(stellar_params,
@@ -482,7 +482,7 @@ class Star(object):
                 label = key + '_post'
                 post_slice = slice(self.fiberSplitIndex, None)
                 data_slice = self.fitOffsetsNormalizedArray[post_slice, col_num]
-                coeffs_post = coeff_dict[label]
+                coeffs_post = coeffs_dict[label]
                 sigma_post = sigmas_dict[label]
                 sigma_sys_post = sigma_sys_dict[label]
                 correction = u.unyt_array(function(stellar_params,
