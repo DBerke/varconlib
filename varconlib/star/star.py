@@ -60,6 +60,13 @@ class Star(object):
         of the measured mean of each absorption feature in each observation of
         the star. Rows correspond to observations, columns to transitions.
         Units are m/s.
+    fitOffsetsNormalizedArray : 'unyt.unyt_array'
+        A two dimensional array holding the offset from the expected wavelength
+        of the measured mean of each absorption feature in each observations of
+        the star, with each row (corresponding to an observation) having been
+        corrected by the measured radial velocity offset for that observation,
+        determined as the mean value of the offsets of all transitions for that
+        observation.
     pairSeparationsArray : `unyt.unyt_array`
         A two-dimensional array holding the velocity separation values for each
         pair of transitions for each observation of the star. Rows correspond
@@ -454,7 +461,7 @@ class Star(object):
         # Initialize the mask to False (not masked) with the same shape
         # as the data for this star:
         mask_array = np.full_like(self.fitOffsetsNormalizedArray,
-                                  fill_value=1, dtype=int)
+                                  fill_value=0, dtype=int)
 
         for key in self._transition_bidict.keys():
             col_num = self._transition_bidict.index_for[key]
@@ -462,38 +469,40 @@ class Star(object):
             if self.hasObsPre:
                 label = key + '_pre'
                 pre_slice = slice(None, self.fiberSplitIndex)
-                coeffs_pre = coeffs_dict[label]
-                sigma_pre = sigmas_dict[label]
-                sigma_sys_pre = sigma_sys_dict[label]
+                # coeffs_pre = coeffs_dict[label]
+                # sigma_pre = sigmas_dict[label]
+                # sigma_sys_pre = sigma_sys_dict[label]
                 correction = u.unyt_array(function(stellar_params,
-                                                   *coeffs_pre), units=u.m/u.s)
-                # data_slice -= correction
+                                                   *coeffs_dict[label]),
+                                          units=u.m/u.s)
                 corrected_array[pre_slice, col_num] =\
                     self.fitOffsetsNormalizedArray[pre_slice, col_num] -\
                     correction
                 data_slice = corrected_array[pre_slice, col_num]
-                sigma_lim = n_sigma * np.sqrt(np.square(sigma_pre) +
-                                              np.square(sigma_sys_pre))
+                sigma_lim = n_sigma * np.sqrt(np.square(sigmas_dict[label]) +
+                                              np.square(sigma_sys_dict[label]))
                 for i in range(len(data_slice)):
                     if abs(data_slice[i]) > sigma_lim:
-                        mask_array[i, col_num] = 0
+                        mask_array[i, col_num] = 1
 
             if self.hasObsPost:
                 label = key + '_post'
                 post_slice = slice(self.fiberSplitIndex, None)
-                data_slice = self.fitOffsetsNormalizedArray[post_slice, col_num]
-                coeffs_post = coeffs_dict[label]
-                sigma_post = sigmas_dict[label]
-                sigma_sys_post = sigma_sys_dict[label]
+                # coeffs_post = coeffs_dict[label]
+                # sigma_post = sigmas_dict[label]
+                # sigma_sys_post = sigma_sys_dict[label]
                 correction = u.unyt_array(function(stellar_params,
-                                                   *coeffs_post), units=u.m/u.s)
-                data_slice -= correction
-                corrected_array[post_slice, col_num] = data_slice
-                sigma_lim = n_sigma * np.sqrt(np.square(sigma_post) +
-                                              np.square(sigma_sys_post))
+                                                   *coeffs_dict[label]),
+                                          units=u.m/u.s)
+                corrected_array[post_slice, col_num] =\
+                    self.fitOffsetsNormalizedArray[post_slice, col_num] -\
+                    correction
+                data_slice = corrected_array[post_slice, col_num]
+                sigma_lim = n_sigma * np.sqrt(np.square(sigmas_dict[label]) +
+                                              np.square(sigma_sys_dict[label]))
                 for i in range(len(data_slice)):
                     if abs(data_slice[i]) > sigma_lim:
-                        mask_array[i, col_num] = 0
+                        mask_array[i+self.fiberSplitIndex, col_num] = 1
 
         return corrected_array, mask_array
 
