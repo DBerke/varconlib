@@ -317,8 +317,8 @@ def main():
     if not plots_folder.exists():
         os.makedirs(plots_folder)
 
-    # Create a dictionary of fit parameters assigned to each transition's label
-    parameters_dict = {}
+    # Create a dictionary of fit coefficients assigned to each transition's label
+    coefficients_dict = {}
     covariance_dict = {}
     sigmas_dict = {}
     sigma_sys_dict = {}
@@ -468,11 +468,11 @@ def main():
                     if args.verbose:
                         sleep(1)
 
-                tqdm.write(f'Terminated with sys_err = {sys_err}')
-                tqdm.write(f'Finished {label}_{time} in {num_iters} steps.')
+                vprint(f'Terminated with sys_err = {sys_err}')
+                vprint(f'Finished {label}_{time} in {num_iters} steps.')
                 # Add the optimized parameters and covariances to the
                 # dictionary. Make sure we separate them by time period.
-                parameters_dict[label + '_' + time] = popt
+                coefficients_dict[label + '_' + time] = popt
                 covariance_dict[label + '_' + time] = pcov
 
                 sigma = np.nanstd(residuals)
@@ -567,7 +567,7 @@ def main():
                           ' parameters for it for each transition in' +\
                           '/params_dict'
         hickle.dump(model_func, f, path='/fitting_function')
-        hickle.dump(parameters_dict, f, path='/params_dict')
+        hickle.dump(coefficients_dict, f, path='/coeffs_dict')
         hickle.dump(covariance_dict, f, path='/covariance_dict')
         hickle.dump(sigmas_dict, f, path='/sigmas_dict')
         hickle.dump(sigma_sys_dict, f, path='/sigma_sys_dict')
