@@ -114,7 +114,7 @@ def create_transition_offset_plots(plots_dir):
                                    weights=(1/errors**2))
 
         vprint(f'Mean for {star.t_label(column_index)} is'
-               ' {mean_measured * u.angstrom:.4f}')
+               f' {mean_measured * u.angstrom:.4f}')
 
         w_mean, weight_sum = np.average(offsets,
                                         weights=(1/errors**2),
