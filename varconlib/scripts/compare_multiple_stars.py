@@ -389,9 +389,10 @@ def get_params_file(filename, parent_dir):
 
     with h5py.File(hdf5_file, 'r') as f:
         function = hickle.load(f, path='/fitting_function')
-        params_dict = hickle.load(f, path='/params_dict')
+        coeffs_dict = hickle.load(f, path='/coeffs_dict')
+        sigma_sys_dict = hickle.load(f, path='/sigma_sys_dict')
 
-    return function, params_dict
+    return function, coeffs_dict, sigma_sys_dict
 
 
 def main():
@@ -409,7 +410,8 @@ def main():
     apply_corrections = False
     if args.fit_params_file:
         vprint(f'Reading params file at {args.fit_params_file}...')
-        model_func, params = get_params_file(args.fit_params_file, main_dir)
+        model_func, coeffs, sigma_sys = get_params_file(args.fit_params_file,
+                                                        main_dir)
         apply_corrections = True
 
     if args.reference_star:
@@ -650,6 +652,7 @@ def main():
         index_nums = []
         index_num = 0
         sigma_list_pre, sigma_list_post = [], []
+        sigma_sys_pre, sigma_sys_post = [], []
 
         tqdm.write('Creating plots for each transition...')
         for transition in tqdm(transitions_list):
@@ -702,19 +705,26 @@ def main():
                     vprint(f'Applying corrections from {model_name} model')
                     data_pre = np.stack((temp_pre, mtl_pre, mag_pre),
                                         axis=0)
-                    params_pre = params[transition_label + '_pre']
+                    params_pre = coeffs[transition_label + '_pre']
                     corrections = u.unyt_array(model_func(data_pre,
                                                           *params_pre),
                                                units=u.m/u.s)
                     means_pre -= corrections
+                    sigma_sys_pre.append(sigma_sys[transition_label +
+                                                   '_pre'].value)
 
                     data_post = np.stack((temp_post, mtl_post, mag_post),
                                          axis=0)
-                    params_post = params[transition_label + '_post']
+                    params_post = coeffs[transition_label + '_post']
                     corrections = u.unyt_array(model_func(data_post,
                                                           *params_post),
                                                units=u.m/u.s)
                     means_post -= corrections
+                    sigma_sys_post.append(sigma_sys[transition_label +
+                                                    '_post'].value)
+                else:
+                    sigma_sys_pre.append(0)
+                    sigma_sys_post.append(0)
 
                 means_pre = u.unyt_array(means_pre, units=u.m/u.s)
                 means_post = u.unyt_array(means_post, units=u.m/u.s)
@@ -803,9 +813,11 @@ def main():
         csv_file = plots_folder / f'{model_name}_sigmas.csv'
         with open(csv_file, 'w', newline='') as f:
             datawriter = csv.writer(f)
-            header = ('#index', 'sigma_pre', 'sigma_post')
+            header = ('#index', 'sigma_pre', 'sigma_sys_pre',
+                      'sigma_post', 'sigma_sys_post')
             datawriter.writerow(header)
-            for row in zip(index_nums, sigma_list_pre, sigma_list_post):
+            for row in zip(index_nums, sigma_list_pre, sigma_sys_pre,
+                           sigma_list_post, sigma_sys_post):
                 datawriter.writerow(row)
 
 
