@@ -32,7 +32,7 @@ from varconlib.exceptions import (PositiveAmplitudeError,
 from varconlib.fitting import GaussianFit
 import varconlib.obs2d as obs2d
 from varconlib.miscellaneous import (wavelength2index, blueCCDpath,
-                                     redCCDpath)
+                                     redCCDpath, shift_wavelength)
 
 desc = ("Fit absorption features in spectra.\n\n"
         "Example usage:\n"
@@ -87,6 +87,8 @@ parser.add_argument('--verbose', action='store_true', default=False,
                     help='Print out additional information while running.')
 
 args = parser.parse_args()
+
+vprint = vcl.verbose_print(args.verbose)
 
 if args.radial_velocity:
     rv = args.radial_velocity * u.km / u.s
@@ -243,15 +245,16 @@ for obs_path in tqdm(files_to_work_on) if\
 
     # Create some lists to hold x,y coordinates for the CCD position plot.
     transitions_x, transitions_y, labels = [], [], []
+    # Create a second set for failed measurments.
+    bad_x, bad_y, bad_labels = [], [], []
 
     fits_list = []
     fit_transitions = 0
     tqdm.write('Fitting transitions...')
     for transition in tqdm(transitions_list):
         for order_num in transition.ordersToFitIn:
-            if args.verbose:
-                tqdm.write(f'Attempting fit of {transition} in order'
-                           f' {order_num}')
+            vprint(f'Attempting fit of {transition} in order'
+                   f' {order_num}')
             plot_closeup = closeup_dir / '{}_{}_{}_close.png'.format(
                     obs_path.stem, transition.label, order_num)
             plot_context = context_dir / '{}_{}_{}_context.png'.format(
@@ -282,6 +285,18 @@ for obs_path in tqdm(files_to_work_on) if\
                 tqdm.write(err_msg)
                 logger.warning(err_msg)
                 fits_list.append(None)
+                if args.create_ccd_plots:
+                    bad_y.append(order_num + 1)
+                    if rv is None:
+                        corrected_wavelength = shift_wavelength(
+                            transition.wavelength, obs.radialVelocity)
+                    else:
+                        corrected_wavelength = shift_wavelength(
+                            transition.wavelength, rv)
+                    bad_x.append(wavelength2index(corrected_wavelength,
+                                 obs.barycentricArray[order_num]))
+                    bad_labels.append('_'.join((transition.label,
+                                               str(order_num))))
                 continue
 
             # Assuming the fit didn't fail, continue on:
@@ -290,6 +305,8 @@ for obs_path in tqdm(files_to_work_on) if\
             if args.create_plots:
                 # Plot the fit.
                 fit.plotFit(plot_closeup, plot_context)
+            if args.create_ccd_plots:
+                # Save the x and y pixel positions of the transitions on the CCD
                 transitions_y.append(fit.order + 1)
                 transitions_x.append(wavelength2index(fit.correctedWavelength,
                                      obs.barycentricArray[order_num]))
@@ -299,14 +316,14 @@ for obs_path in tqdm(files_to_work_on) if\
     # them out.
     info_msg = (f'Fit {fit_transitions}/{len(fits_list)} transitions'
                 f' in {obs_path.name}.')
-    tqdm.write(info_msg)
+    vprint(info_msg)
     logger.info(info_msg)
     outfile = output_pickle_dir / '{}_gaussian_fits.lzma'.format(
             obs._filename.stem)
     if not outfile.parent.exists():
         os.mkdir(outfile.parent)
     with lzma.open(outfile, 'wb') as f:
-        tqdm.write(f'Pickling and compressing list of fits at {outfile}')
+        vprint(f'Pickling and compressing list of fits at {outfile}')
         f.write(pickle.dumps(fits_list))
 
     # Create a plot to show locations of transitions on the CCD for this
@@ -321,6 +338,9 @@ for obs_path in tqdm(files_to_work_on) if\
         ax.xaxis.set_major_locator(ticks.MultipleLocator(base=512))
         ax.xaxis.set_minor_locator(ticks.MultipleLocator(base=64))
 
+        ax.set_xlabel('Position across CCD (pixels)')
+        ax.set_ylabel('Order number')
+
         ax.grid(which='major', axis='x', color='Gray', alpha=0.8)
         ax.grid(which='minor', axis='x', color='LightGray', alpha=0.9)
 
@@ -330,15 +350,24 @@ for obs_path in tqdm(files_to_work_on) if\
 #        for j in edges:
 #            ax.axvline(j, linestyle='-', color='SlateGray', alpha=0.8)
 
-        ax.axhline(46.5, linestyle='-.', color='Peru', alpha=0.6)
+        ax.axhline(46.5, linestyle='-.', color='Peru', alpha=0.8)
 
-        ax.plot(transitions_x, transitions_y, marker='+', color='Sienna',
-                linestyle='')
+        ax.plot(transitions_x, transitions_y, marker='+', color='RoyalBlue',
+                linestyle='', markersize=8)
+        ax.plot(bad_x, bad_y, marker='+', color='FireBrick',
+                linestyle='', markersize=10)
+
         texts = [plt.text(transitions_x[i], transitions_y[i], labels[i],
                           ha='center', va='center')
                  for i in range(len(labels))]
+        bad_texts = [plt.text(bad_x[i], bad_y[i], bad_labels[i],
+                              ha='center', va='center', color='DarkRed')
+                     for i in range(len(bad_labels))]
         tqdm.write('Adjusting label text positions...')
-        adjust_text(texts, arrowprops=dict(arrowstyle='-', color='OliveDrab'),
+        # Add all the text labels together to adjust them.
+        texts.extend(bad_texts)
+        adjust_text(texts,
+                    arrowprops=dict(arrowstyle='-', color='OliveDrab'),
                     lim=1000, fontsize=9)
 
         ccd_position_filename = ccd_positions_dir /\
