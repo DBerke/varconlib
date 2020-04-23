@@ -834,8 +834,8 @@ if __name__ == '__main__':
     parser.add_argument('--reference-star', action='store', type=str,
                         metavar='star_name',
                         help='The star to be used as a reference when using'
-                        ' the --compare-stellar-parameters flag (unnecessary'
-                        ' otherwise).')
+                        ' the --compare-stellar-parameters-pairs flag
+                        ' (unnecessary otherwise).')
 
     parser.add_argument('--compare-offset-patterns', action='store_true',
                         help='Create a plot of all the transition offset'
