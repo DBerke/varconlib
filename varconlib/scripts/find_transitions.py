@@ -17,6 +17,7 @@ import lzma
 import os
 from pathlib import Path
 import pickle
+import sys
 
 from adjustText import adjust_text
 import matplotlib.pyplot as plt
@@ -83,6 +84,9 @@ parser.add_argument('--create-ccd-plots', action='store_true',
                     help='Create plots of the CCD positions of each transiton'
                     'for each observation.')
 
+parser.add_argument('-p', '--preview', action='store_true',
+                    help='Show which observations will be selected to work on,'
+                    ' then exit.')
 parser.add_argument('--verbose', action='store_true', default=False,
                     help='Print out additional information while running.')
 
@@ -128,6 +132,8 @@ for file in files_to_work_on:
     tqdm.write(str(file.name))
 
 tqdm.write('=' * 41)
+if args.preview:
+    sys.exit(0)
 
 # Set up the output directory.
 if not args.output_dir:
