@@ -224,7 +224,7 @@ class GaussianFit(object):
                        ' has a positive amplitude.')
             tqdm.write(err_msg)
             self.plotFit(close_up_plot_path, context_plot_path,
-                         plot_fit=True, verbose=True)
+                         plot_fit=True, verbose=verbose)
             raise PositiveAmplitudeError(err_msg)
 
         # Find 1-σ errors from the covariance matrix:
