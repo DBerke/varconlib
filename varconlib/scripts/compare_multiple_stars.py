@@ -30,6 +30,7 @@ import unyt as u
 import varconlib as vcl
 from varconlib.exceptions import HDF5FileNotFoundError
 import varconlib.fitting.fitting
+from varconlib.miscellaneous import get_params_file
 from varconlib.star import Star
 
 
@@ -357,44 +358,6 @@ def get_transition_data_point(star, time_slice, transition_label):
     return (weighted_mean, error_on_weighted_mean, error_on_mean)
 
 
-def get_params_file(filename, parent_dir):
-    """Return the fitting function and parameters from a given HDF5 file.
-
-    This functions takes what is assumed to be a valid filename, checks it to
-    be sure, then extracts a function used for fitting transition offsets and
-    the parameters found for each transition.
-
-    Parameters
-    ----------
-    filename : str
-        A string representing an HDF5 filename. Just the name is necessary,
-        as it will be searched for in the appropriate directory automatically.
-    parent_dir : `pathlib.Path` object
-        A filename representing the parent directory containing a 'fit_params'
-        directory within with the `filename` file resides.
-
-    Returns
-    -------
-    tuple of length 2
-        The first element will be a `function` object, the second
-        element will be a `dict` object containing keys of transition labels
-        with values of tuples of fit parameters.
-
-    """
-
-    hdf5_file = parent_dir / f'fit_params/{filename}'
-    if not hdf5_file.exists():
-        raise FileNotFoundError('The given filename could not be found:\n'
-                                f'{hdf5_file}')
-
-    with h5py.File(hdf5_file, 'r') as f:
-        function = hickle.load(f, path='/fitting_function')
-        coeffs_dict = hickle.load(f, path='/coeffs_dict')
-        sigma_sys_dict = hickle.load(f, path='/sigma_sys_dict')
-
-    return function, coeffs_dict, sigma_sys_dict
-
-
 def main():
     """The main function for the script."""
 
@@ -409,9 +372,14 @@ def main():
 
     apply_corrections = False
     if args.fit_params_file:
-        vprint(f'Reading params file at {args.fit_params_file}...')
-        model_func, coeffs, sigma_sys = get_params_file(args.fit_params_file,
-                                                        main_dir)
+        vprint(f'Reading params file {args.fit_params_file}...')
+
+        params_file = main_dir / f'fit_params/{args.fit_params_file}'
+        fit_results = get_params_file(params_file)
+        model_func = fit_results['model_func']
+        coeffs = fit_results['coeffs']
+        sigma_sys = fit_results['sigmas_sys']
+
         apply_corrections = True
 
     if args.reference_star:
@@ -834,7 +802,7 @@ if __name__ == '__main__':
     parser.add_argument('--reference-star', action='store', type=str,
                         metavar='star_name',
                         help='The star to be used as a reference when using'
-                        ' the --compare-stellar-parameters-pairs flag
+                        ' the --compare-stellar-parameters-pairs flag'
                         ' (unnecessary otherwise).')
 
     parser.add_argument('--compare-offset-patterns', action='store_true',
