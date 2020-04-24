@@ -15,6 +15,8 @@ import datetime as dt
 from pathlib import Path
 
 from bidict import bidict
+import h5py
+import hickle
 import unyt as u
 
 import varconlib as vcl
@@ -246,7 +248,7 @@ def wavelength2velocity(wavelength1, wavelength2):
 
 
 def q_alpha_shift(omega, q_coefficient, delta_alpha):
-    """Return the velocity change in a transition with a given q-coefficient
+    r"""Return the velocity change in a transition with a given q-coefficient
     for a given fractional change in alpha.
 
     Parameters
@@ -289,15 +291,39 @@ def q_alpha_shift(omega, q_coefficient, delta_alpha):
                                             equivalence='spectral'))
 
 
+def get_params_file(filename, parent_dir):
+    """Return the fitting function and parameters from a given HDF5 file.
 
+    This functions takes what is assumed to be a valid filename, checks it to
+    be sure, then extracts a function used for fitting transition offsets and
+    the parameters found for each transition.
 
     Parameters
     ----------
+    filename : str
+        A string representing an HDF5 filename. Just the name is necessary,
+        as it will be searched for in the appropriate directory automatically.
+    parent_dir : `pathlib.Path` object
+        A filename representing the parent directory containing a 'fit_params'
+        directory within with the `filename` file resides.
 
     Returns
     -------
+    tuple of length 2
+        The first element will be a `function` object, the second
+        element will be a `dict` object containing keys of transition labels
+        with values of tuples of fit parameters.
 
     """
 
+    hdf5_file = parent_dir / f'fit_params/{filename}'
+    if not hdf5_file.exists():
+        raise FileNotFoundError('The given filename could not be found:\n'
+                                f'{hdf5_file}')
 
+    with h5py.File(hdf5_file, 'r') as f:
+        function = hickle.load(f, path='/fitting_function')
+        coeffs_dict = hickle.load(f, path='/coeffs_dict')
+        sigma_sys_dict = hickle.load(f, path='/sigma_sys_dict')
 
+    return function, coeffs_dict, sigma_sys_dict
