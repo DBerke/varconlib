@@ -245,7 +245,7 @@ def main():
     temp_lims = (5400, 6300) * u.K
     mtl_lims = (-0.75, 0.45)
     mag_lims = (4, 5.8)
-    logg_lims = (4.1, 4.6)
+    # logg_lims = (4.1, 4.6)
 
     tqdm.write('Unpickling transitions list..')
     with open(vcl.final_selection_file, 'r+b') as f:
@@ -317,7 +317,8 @@ def main():
     if not plots_folder.exists():
         os.makedirs(plots_folder)
 
-    # Create a dictionary of fit coefficients assigned to each transition's label
+    # Create a dictionary of fit coefficients assigned to each transition's
+    # label
     coefficients_dict = {}
     covariance_dict = {}
     sigmas_dict = {}
