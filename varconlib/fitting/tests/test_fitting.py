@@ -51,10 +51,4 @@ class TestDataGeneration(object):
 
         popt, pcov = fit.curve_fit_data(constant, x_values, linear_data,
                                         p0)
-        assert np.mean(linear_data) == pytest.approx(popt[0], rel=1e-3)
-
-#        residuals = fit.check_fit(constant, x_values, linear_data, p0)
-#        print(residuals)
-
-
-
+        assert np.mean(linear_data) == pytest.approx(popt[0], rel=1e-2)
