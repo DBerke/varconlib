@@ -291,7 +291,7 @@ def q_alpha_shift(omega, q_coefficient, delta_alpha):
                                             equivalence='spectral'))
 
 
-def get_params_file(filename, parent_dir):
+def get_params_file(filename):
     """Return the fitting function and parameters from a given HDF5 file.
 
     This functions takes what is assumed to be a valid filename, checks it to
@@ -300,30 +300,47 @@ def get_params_file(filename, parent_dir):
 
     Parameters
     ----------
-    filename : str
+    filename : str or `pathlib.Path` object
         A string representing an HDF5 filename. Just the name is necessary,
         as it will be searched for in the appropriate directory automatically.
-    parent_dir : `pathlib.Path` object
-        A filename representing the parent directory containing a 'fit_params'
-        directory within with the `filename` file resides.
 
     Returns
     -------
-    tuple of length 2
-        The first element will be a `function` object, the second
-        element will be a `dict` object containing keys of transition labels
-        with values of tuples of fit parameters.
+    dict
+        A dictionary containing information from the file. Valid keys are:
+            'model_func': the `function` object used in the fit.
+            'coeffs': a dictionary containing as keys the labels for each
+                transition + the time period (pre or post) it applies to, and
+                as values the coefficients found from the fit for each
+                transition.
+            'covars': a dictionary containing the same keys as 'coeffs', and as
+                values the covariance matrix for each transition.
+            'sigmas': a dictionary containing the same keys as 'coeffs', and as
+                values the standard deviations found for each transition.
+            'sigmas_sys': a dictionary with the same keys as 'coeffs', and as
+                values the additional systematic error found for each
+                transition.
 
     """
 
-    hdf5_file = parent_dir / f'fit_params/{filename}'
+    if not isinstance(filename, Path):
+        if not isinstance(filename, str):
+            raise TypeError('Given file name must be str or pathlib.Path.\n'
+                            f'Type: {type(filename)}')
+        else:
+            hdf5_file = Path(filename)
+    else:
+        hdf5_file = filename
     if not hdf5_file.exists():
         raise FileNotFoundError('The given filename could not be found:\n'
-                                f'{hdf5_file}')
+                                f'Given filename: {hdf5_file}')
 
+    results = {}
     with h5py.File(hdf5_file, 'r') as f:
-        function = hickle.load(f, path='/fitting_function')
-        coeffs_dict = hickle.load(f, path='/coeffs_dict')
-        sigma_sys_dict = hickle.load(f, path='/sigma_sys_dict')
+        results['model_func'] = hickle.load(f, path='/fitting_function')
+        results['coeffs'] = hickle.load(f, path='/coeffs_dict')
+        results['covars'] = hickle.load(f, path='/covariance_dict')
+        results['sigmas'] = hickle.load(f, path='/sigmas_dict')
+        results['sigmas_sys'] = hickle.load(f, path='/sigma_sys_dict')
 
-    return function, coeffs_dict, sigma_sys_dict
+    return results
