@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 __all__ = ['base_dir', 'data_dir', 'masks_dir', 'pickle_dir',
            'pixel_geom_files_dir', 'final_selection_file',
-           'final_pair_selection_file', 'stellar_results_file',
+           'final_pair_selection_file', 'databases_dir',
            'verbose_print']
 
 # Define some important paths to be available globally relative to the
@@ -46,9 +46,10 @@ config = configparser.ConfigParser(interpolation=configparser.
                                    ExtendedInterpolation())
 config.read(config_file)
 
-# The file containing the collected results from all stars.
-stellar_results_file = Path(config['PATHS']['output_dir']) /\
-                       'stellar_database.hdf5'
+output_dir = Path(config['PATHS']['output_dir'])
+
+# The directory to store generated stellar databases in.
+databases_dir = output_dir / 'stellar_databases'
 
 
 def verbose_print(verbosity):
