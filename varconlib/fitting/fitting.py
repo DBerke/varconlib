@@ -11,9 +11,11 @@ data to a model, as well as creating synthetic data.
 """
 
 import functools
+from math import sqrt, tau
 
 import numpy as np
 from scipy.optimize import curve_fit
+from scipy.special import erf
 
 
 def constant_model(data, a):
@@ -80,6 +82,86 @@ def quad_full_cross_terms_model(data, a, b, c, d, e, f, g, h, i, j):
            e * data[0] * data[1] + f * data[0] * data[2] +\
            g * data[1] * data[2] +\
            h * data[0] ** 2 + i * data[1] ** 2 + j * data[2] ** 2
+
+
+def gaussian(x, a, b, c, d=0):
+    """Return the value of a Gaussian function with the given parameters.
+
+
+    The parameter `d` controls the baseline of the Gaussian; if it is not
+    present, the function will default to a baseline of zero.
+
+    Parameters
+    ----------
+    x : float
+        The value of the independent variable to evaluate the function at.
+    a : float
+        The amplitude of the Gaussian. Must be Real.
+    b : float
+        The median (also the center) of the Gaussian. Must be Real.
+    c : float
+        The standard deviation of the Gaussian. Must be non-zero.
+
+    Optional
+    --------
+    d : float
+        The baseline of the Gaussian. If not given, will default to zero.
+
+    Returns
+    -------
+    float
+        The value of a Gaussian with the given parameters at the given `x`
+        position.
+
+    Notes
+    -----
+    A Gaussian function is given by:
+    .. math::    f(x) = D + A e^{- \frac{(x - B)^2}{2C^2}}
+
+    """
+
+    return d + a * np.exp(-1 * ((x - b) ** 2 / (2 * c * c)))
+
+
+def integrated_gaussian(pixel, amplitude, mu, sigma, baseline):
+    """Return the value of a Gaussian integrated between two points (given as a
+    tuple in `pixel`).
+
+    The function is given by
+    .. math::    f(x_1, x_2) = \\sqrt{\\frac{\\tau}{4}} A
+                 \\sigma\\left[\\erf\\left(\\frac{x_{2}-
+                 \\mu}{\\sqrt{2}\\sigma}\\right)
+                 -\\erf\\left(\\frac{x_{1}-
+                 \\mu}{\\sqrt{2}\\sigma}\\right)\\right]
+                 -D x_{1}+D x_{2}
+
+
+    Parameters
+    ----------
+    pixel : tuple containing two floats
+        A tuple containing the two points to integrate the Gaussian between.
+    amplitude : float
+        The amplitude of the Gaussian. Must be Real.
+    mu : float
+        The median (also the center) of the Gaussian. Must be Real.
+    sigma : float
+        The standard deviation of the Gaussian. Must be non-zero.
+    baseline : float
+        The baseline of the Gaussian. Must be Real.
+
+    Returns
+    -------
+    float
+        The integrated value under a Gaussian with the given parameters between
+        the two values supplied.
+
+    """
+
+    return (sqrt(tau / 4) * sigma * amplitude *
+            (erf((pixel[1] - mu) / (sigma * sqrt(2))) -
+            erf((pixel[0] - mu) / (sigma * sqrt(2)))) -
+            (baseline * pixel[0]) + (baseline * pixel[1])) / (pixel[1] -
+                                                              pixel[0])
 
 
 def gaussian_noise(ydata, sigma=None):

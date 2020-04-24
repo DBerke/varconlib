@@ -19,7 +19,7 @@ import numpy as np
 from scipy.optimize import curve_fit
 import unyt as u
 
-from varconlib import gaussian
+from varconlib.fitting import gaussian
 import varconlib as vcl
 
 parser = argparse.ArgumentParser()

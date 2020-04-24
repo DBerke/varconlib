@@ -22,7 +22,8 @@ import matplotlib.ticker as ticker
 import numpy as np
 import unyt as u
 
-from varconlib import gaussian, wavelength2velocity
+from varconlib.fitting import gaussian, integrated_gaussian
+from varconlib.miscellaneous import wavelength2velocity
 
 # Don't plot wavelengths as 10^3.
 matplotlib.rcParams['axes.formatter.useoffset'] = False
@@ -76,38 +77,6 @@ class MockAbsorptionFeature(object):
             self.baseCurve = np.array(flux_list)
 
         self.noise = np.sqrt(self.baseCurve)
-
-
-def integrated_gaussian(pixel, amplitude, mu, sigma, baseline):
-    """Return the value of a Gaussian integrated between two points (given as a
-    tuple in `pixel`).
-
-    Parameters
-    ----------
-    pixel : tuple containing two floats
-        A tuple containing the two points to integrate the Gaussian between.
-    amplitude : float
-        The amplitude of the Gaussian. Must be Real.
-    mu : float
-        The median (also the center) of the Gaussian. Must be Real.
-    sigma : float
-        The standard deviation of the Gaussian. Must be non-zero.
-    baseline : float
-        The baseline of the Gaussian. Must be Real.
-
-    Returns
-    -------
-    float
-        The integrated value under a Gaussian with the given parameters between
-        the two values supplied.
-
-    """
-
-    return (math.sqrt(math.tau / 4) * sigma * amplitude *
-            (erf((pixel[1] - mu) / (sigma * math.sqrt(2))) -
-            erf((pixel[0] - mu) / (sigma * math.sqrt(2)))) -
-            (baseline * pixel[0]) + (baseline * pixel[1])) / (pixel[1] -
-                                                              pixel[0])
 
 
 # Start main script here

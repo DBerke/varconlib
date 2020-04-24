@@ -19,9 +19,9 @@ from tqdm import tqdm
 import unyt as u
 
 from varconlib.exceptions import PositiveAmplitudeError
+from varconlib.fitting import gaussian, integrated_gaussian
 from varconlib.miscellaneous import (shift_wavelength, velocity2wavelength,
-                                     wavelength2index, gaussian,
-                                     integrated_gaussian, wavelength2velocity)
+                                     wavelength2index, wavelength2velocity)
 
 # This line prevents the wavelength formatting from being in the form of
 # scientific notation.

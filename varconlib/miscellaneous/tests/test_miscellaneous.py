@@ -238,39 +238,3 @@ class TestWavelength2Index(object):
         reversed_wavelengths = [x for x in reversed(wavelength_array)]
         assert vcl.wavelength2index(4001 * u.angstrom, reversed_wavelengths,
                                     reverse=True) == 0
-
-
-class TestGaussian(object):
-
-    @pytest.fixture(scope='class')
-    def generated_gaussian(self):
-        x = np.linspace(0, 100, num=200)
-        return vcl.gaussian(x, -25, 50, 10, 0)
-
-    def testAmplitude(self, generated_gaussian):
-        assert pytest.approx(np.min(generated_gaussian), -25)
-
-    def testMedian(self, generated_gaussian):
-        assert pytest.approx(np.median(generated_gaussian), 50)
-
-    def testStandardDeviation(self, generated_gaussian):
-        assert pytest.approx(np.std(generated_gaussian), 10)
-
-
-class TestIntegratedGaussian(object):
-
-    @pytest.fixture(scope='class')
-    def generated_integrated_gaussian(self):
-        x_points1 = np.linspace(0, 100, num=200)
-        x_points2 = x_points1 + 0.5
-        x_values = [(x[0], x[1]) for x in zip(x_points1, x_points2)]
-        return [vcl.integrated_gaussian(x, -25, 50, 10, 0) for x in x_values]
-
-    def testAmplitude(self, generated_integrated_gaussian):
-        assert pytest.approx(np.min(generated_integrated_gaussian), -25)
-
-    def testMedian(self, generated_integrated_gaussian):
-        assert pytest.approx(np.median(generated_integrated_gaussian), 50)
-
-    def testStandardDeviation(self, generated_integrated_gaussian):
-        assert pytest.approx(np.std(generated_integrated_gaussian), 10)
