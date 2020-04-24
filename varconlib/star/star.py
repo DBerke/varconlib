@@ -412,8 +412,7 @@ class Star(object):
                 self.pairSepErrorsArray = u.unyt_array(pairSepErrorsArray,
                                                        units='m/s')
 
-    def getOutliersMask(self, function, coeffs_dict, sigmas_dict,
-                        sigma_sys_dict, n_sigma=2.5):
+    def getOutliersMask(self, fit_results_dict, n_sigma=2.5):
         """Return a 2D mask for values in this star's transition measurements.
 
         This method takes a function of three stellar parameters (temperature,
@@ -424,19 +423,10 @@ class Star(object):
         resultant position is more than `n_sigma` times the standard deviation
         for that transition given in `sigmas_dict` from zero.
 
-        function: callable
-            A function that has been fitted to the transition velocity offsets
-            to use to correct them, and find outliers.
-        coeffs_dict: dict
-            A dictionary with keys consisting of labels uniquely specifying each
-            transition, for pre- and post-fiber change, with as many
-            coefficients as are needed for the provided function.
-        sigmas_dict : dict
-            A dictionary containing the standard deviation of the residuals from
-            the fitting function for each transition.
-        sigma_sys_dict : dict
-            A ditionary containing the empirically-derived additional systematic
-            error found for this transition and era.
+        fit_results_dict : dict
+            A dictionary containing results from a call to
+            varconlib.miscellaneous.get_params_file, with information from a
+            fitting model.
 
         Optional
         --------
@@ -447,12 +437,21 @@ class Star(object):
 
         Returns
         -------
-        2D np.array
-            An array of True and False which can be used as a mask for this
-            `Star`'s `fitMeansArray`, `fitErrorsArray`, or `fitOffsetsArray`
-            and which mark outliers greater than `n_sigma` away from the mean.
+        length-2 tuple
+            A tuple containing two 2D-arrays: 'corrected_array' which holds the
+            values of `self.fitOffsetsNormalizedArray` corrected by the fitting
+            model provided, and 'mask_array' which contains a sequence of zeros
+            and ones which can be used as a mask in a NumPy `MaskedArray`.
+            Measurements greater than `n_sigma` away from zero are considered to
+            be outliers and masked accordingly.
 
         """
+
+        function = fit_results_dict['model_func']
+        coeffs_dict = fit_results_dict['coeffs']
+        sigmas_dict = fit_results_dict['sigmas']
+        sigma_sys_dict = fit_results_dict['sigmas_sys']
+
 
         stellar_params = np.stack((self.temperature, self.metallicity,
                                    self.absoluteMagnitude), axis=0)
@@ -504,7 +503,7 @@ class Star(object):
                     if abs(data_slice[i]) > sigma_lim:
                         mask_array[i+self.fiberSplitIndex, col_num] = 1
 
-        return corrected_array, mask_array
+        return (corrected_array, mask_array)
 
     def dumpDataToDisk(self, file_path):
         """Save important data arrays to disk in HDF5 format.
