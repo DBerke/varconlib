@@ -412,7 +412,8 @@ class Star(object):
                 self.pairSepErrorsArray = u.unyt_array(pairSepErrorsArray,
                                                        units='m/s')
 
-    def getOutliersMask(self, fit_results_dict, n_sigma=2.5):
+    def getOutliersMask(self, fit_results_dict, n_sigma=2.5,
+                        dump_cache=False):
         """Return a 2D mask for values in this star's transition measurements.
 
         This method takes a function of three stellar parameters (temperature,
@@ -434,6 +435,11 @@ class Star(object):
             The number of standard deviations a point must be away from the
             value for this transition found by correcting using the fitting
             function to be considered an outlier (and thus masked).
+        dump_cache : bool, Default : False
+            If true, any cached values will be cleared, allowing the calculation
+            and creation of a new model-corrected array and outliers mask. Only
+            necessary if fitting using different masks on the same `Star` in the
+            same session, as the cached values are not saved and do not persist.
 
         Returns
         -------
@@ -446,6 +452,10 @@ class Star(object):
             be outliers and masked accordingly.
 
         """
+
+        if dump_cache:
+            self.cachedOutliers = None
+            self.cachedMask = None
 
         if hasattr(self, 'cachedOutliers') and hasattr(self, 'cachedMask'):
             return (self.cachedOutliers, self.cachedMask)
