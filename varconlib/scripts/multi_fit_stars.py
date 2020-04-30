@@ -239,7 +239,7 @@ def plot_data_points(axis, x_pos, y_pos, thick_err, thin_err, era=None,
 
 
 def main():
-    """The main routine of the script."""
+    """Run the main routine of the script."""
 
     # Define the limits to plot in the various stellar parameters.
     temp_lims = (5400, 6300) * u.K
@@ -252,7 +252,14 @@ def main():
         transitions_list = pickle.load(f)
     vprint(f'Found {len(transitions_list)} transitions.')
 
-    db_file = vcl.stellar_results_file
+    if not args.fit_params_file:
+        db_file = vcl.databases_dir / 'stellar_db_uncorrected.hdf5'
+    else:
+        model_name = Path(args.fit_params_file).stem
+        db_file = vcl.databases_dir / f'stellar_db_{model_name}.hdf5'
+        if not db_file.exists():
+            raise FileNotFoundError('The given stellar database does not exist:'
+                                    f' {db_file}')
 
     # Load data from HDF5 database file.
     tqdm.write('Reading data from stellar database file...')
@@ -308,6 +315,8 @@ def main():
     model_name = '_'.join(model_func.__name__.split('_')[:-1])
 
     params_list = []
+    # Figure out how many parameters the model function takes, so we know how
+    # many to dynamically give it later.
     for i in range(len(signature(model_func).parameters)-1):
         params_list.append(0.)
 
@@ -466,8 +475,6 @@ def main():
                             break
                         else:
                             sys_err *= (1 - sigma_sys_change_amount)
-                    if args.verbose:
-                        sleep(1)
 
                 vprint(f'Terminated with sys_err = {sys_err}')
                 vprint(f'Finished {label}_{time} in {num_iters} steps.')
@@ -556,7 +563,11 @@ def main():
 
     # Save the function used and the parameters found for each transition to
     # an HDF5 file for use in other scripts.
-    hdf5_file = output_dir / f'fit_params/{model_name}_params.hdf5'
+    if not args.fit_params_file:
+        hdf5_file = output_dir / f'fit_params/{model_name}_params.hdf5'
+    else:
+        hdf5_file = output_dir /\
+            f'fit_params/{model_name}_corrected_params.hdf5'
     if not hdf5_file.parent.exists():
         os.mkdir(hdf5_file.parent)
 
@@ -581,6 +592,12 @@ if __name__ == '__main__':
     parser.add_argument('--full-range', action='store_true',
                         help='Plot the full range of values instead of'
                         ' restricting to a  fixed range.')
+    parser.add_argument('--use-corrected-transitions', action='store',
+                        type=str, dest='fit_params_file',
+                        help='The name of the file containing the fitting'
+                        ' function and parameters for each transition. It will'
+                        ' automatically be looked for in the stellar_databases'
+                        ' folder in the output data directory.')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Print out more information about the script.')
 
