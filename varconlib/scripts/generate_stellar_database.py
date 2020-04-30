@@ -19,12 +19,14 @@ from bidict import bidict
 import h5py
 import hickle
 import numpy as np
+import numpy.ma as ma
 from tqdm import tqdm
 import unyt as u
 
 import varconlib as vcl
 from varconlib.exceptions import (HDF5FileNotFoundError,
                                   PickleFilesNotFoundError)
+from varconlib.miscellaneous import get_params_file
 from varconlib.star import Star
 
 
@@ -90,7 +92,7 @@ def get_star(star_path, verbose=False, recreate=False):
         pass
 
 
-def get_transition_data_point(star, time_slice, col_index):
+def get_transition_data_point(star, time_slice, col_index, fit_params=None):
     """Return the pair separation for a given star and pair.
 
     The returned values will be the weighted mean value of the pair
@@ -107,6 +109,12 @@ def get_transition_data_point(star, time_slice, col_index):
     col_index : int
         The index of the columnn to read from.
 
+    Optional
+    --------
+    fit_params : dict
+        Should be the results of a varconlib.miscellaneous.get_params_file()
+        call, a dictionary containing various information about a fitting model.
+
     Returns
     -------
     tuple
@@ -120,11 +128,21 @@ def get_transition_data_point(star, time_slice, col_index):
 
     """
 
-    offsets = star.fitOffsetsNormalizedArray[time_slice, col_index]
     errs = star.fitErrorsArray[time_slice, col_index]
-    weighted_mean, weight_sum = np.average(offsets.value,
-                                           weights=errs.value**-2,
-                                           returned=True)
+    if fit_params is None:
+        offsets = star.fitOffsetsNormalizedArray[time_slice, col_index]
+        weighted_mean, weight_sum = np.average(offsets.value,
+                                               weights=errs.value**-2,
+                                               returned=True)
+    else:
+        corrected_array, mask_array = star.getOutliersMask(fit_params,
+                                                           n_sigma=2.5)
+        offsets = ma.array(corrected_array, mask=mask_array)[time_slice,
+                                                             col_index]
+        weighted_mean, weight_sum = ma.average(offsets,
+                                               weights=errs.value**-2,
+                                               returned=True)
+
     weighted_mean *= u.m/u.s
     error_on_weighted_mean = (1 / np.sqrt(weight_sum)) * u.m / u.s
     if len(offsets) > 1:
@@ -158,6 +176,13 @@ if __name__ == '__main__':
     paper.add_argument('--nordstrom2004', action='store_true',
                        help='Use values from Nordstrom et al. 2004.')
 
+    parser.add_argument('--correct-transitions', action='store',
+                        type=str, dest='fit_params_file',
+                        help='The name of the file containing the fitting'
+                        ' function and parameters for each transition. It will'
+                        ' automatically be looked for in the fit_params folder'
+                        ' in the output data directory.')
+
     args = parser.parse_args()
 
     # Define vprint to only print when the verbose flag is given.
@@ -167,10 +192,26 @@ if __name__ == '__main__':
     if not main_dir.exists():
         raise FileNotFoundError(f'{main_dir} does not exist!')
 
+    apply_corrections = False
+    if args.fit_params_file:
+        vprint(f'Reading params file {args.fit_params_file}...')
+
+        params_file = main_dir / f'fit_params/{args.fit_params_file}'
+        fit_results = get_params_file(params_file)
+
+        apply_corrections = True
+    else:
+        fit_results = None
+
     tqdm.write(f'Looking in main directory {main_dir}')
 
     star_list = []
     tqdm.write('Collecting stars...')
+
+    if args.casagrande2011:
+        vprint('Applying values from Casagrande et al. 2011.')
+    elif args.nordstrom2004:
+        vprint('Applying values from Nordstrom et al. 2004.')
 
     for star_dir in tqdm(args.star_names):
         star = get_star(main_dir / star_dir)
@@ -178,10 +219,8 @@ if __name__ == '__main__':
             pass
         else:
             if args.casagrande2011:
-                vprint('Applying values from Casagrande et al. 2011.')
                 star.getStellarParameters('Casagrande2011')
             elif args.nordstrom2004:
-                vprint('Applying values from Nordstrom et al. 2004.')
                 star.getStellarParameters('Nordstrom2004')
             star_list.append(star)
             vprint(f'Added {star.name}')
@@ -229,19 +268,20 @@ if __name__ == '__main__':
 
     for i, star in enumerate(tqdm(star_list)):
         star_num_obs = star.getNumObs()
-        vprint(f'Collating data from {star.name:9} with {star_num_obs:4}'
+        vprint(f'Collating data from  {star.name:9} with {star_num_obs:4}'
                ' observations.')
         total_obs += star_num_obs
         star_names[star.name] = i
 
-        for j, label in enumerate(transition_labels):
+        for j, label in enumerate(tqdm(transition_labels)):
             pre_slice = slice(None, star.fiberSplitIndex)
             post_slice = slice(star.fiberSplitIndex, None)
             col_index = star.t_index(label)
 
             if star.hasObsPre:
                 star_mean, star_eotwm, star_eotm, star_std =\
-                    get_transition_data_point(star, pre_slice, col_index)
+                    get_transition_data_point(star, pre_slice, col_index,
+                                              fit_params=fit_results)
                 star_transition_offsets[0, i, j] = star_mean
                 star_transition_offsets_EotWM[0, i, j] = star_eotwm
                 star_transition_offsets_EotM[0, i, j] = star_eotm
@@ -249,7 +289,8 @@ if __name__ == '__main__':
 
             if star.hasObsPost:
                 star_mean, star_eotwm, star_eotm, star_std =\
-                    get_transition_data_point(star, post_slice, col_index)
+                    get_transition_data_point(star, post_slice, col_index,
+                                              fit_params=fit_results)
                 star_transition_offsets[1, i, j] = star_mean
                 star_transition_offsets_EotWM[1, i, j] = star_eotwm
                 star_transition_offsets_EotM[1, i, j] = star_eotm
@@ -272,7 +313,15 @@ if __name__ == '__main__':
                    'star_temperatures')
     other_arrays = ('star_metallicities', 'star_magnitudes', 'star_gravities')
 
-    db_file = vcl.stellar_results_file
+    if not vcl.databases_dir.exists():
+        os.mkdir(vcl.databases_dir)
+
+    if not args.fit_params_file:
+        db_file = vcl.databases_dir / 'stellar_db_uncorrected.hdf5'
+    else:
+        model_name = Path(args.fit_params_file).stem
+        db_file = vcl.databases_dir / f'stellar_db_{model_name}.hdf5'
+
     vprint(f'Writing output to {str(db_file)}')
     if db_file.exists():
         backup_path = db_file.with_name(db_file.stem + '.bak')
