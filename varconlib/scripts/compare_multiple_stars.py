@@ -318,13 +318,13 @@ def get_pair_data_point(star, time_slice, pair_label):
     return (weighted_mean, error_on_weighted_mean, error_on_mean)
 
 
-def get_transition_data_point(star, time_slice, transition_label):
-    """Return the pair separation for a given star and pair.
+def get_transition_data_point(star, time_slice, transition_label,
+                              fit_params=None):
+    """Return the weighted mean of a transition for a star across observations.
 
-    The returned values will be the weighted mean value of the pair
-    separation, the standard deviation of all the pair separation
-    values for that star in the given time period (pre- or post-fiber
-    chage), and the error on the weighted mean.
+    The returned values will be the weighted mean value of the transition
+    velocity offset from expected wavelength, the error on the weighted mean,
+    and the error on the mean.
 
     Parameters
     ----------
@@ -335,6 +335,12 @@ def get_transition_data_point(star, time_slice, transition_label):
     transition_label : str
         The label to use to select a particular transition.
 
+    Optional
+    --------
+    fit_params : dict
+        Should be the results of a varconlib.miscellaneous.get_params_file()
+        call, a dictionary containing various information about a fitting model.
+
     Returns
     -------
     tuple
@@ -342,24 +348,48 @@ def get_transition_data_point(star, time_slice, transition_label):
         weighted mean, and the standard deviation.
 
     """
+    # print(star.name)
+    # print(star.getNumObs())
 
     col_index = star.t_index(transition_label)
-
-    offsets = star.fitOffsetsNormalizedArray[time_slice, col_index]
     errs = star.fitErrorsArray[time_slice, col_index]
-    weighted_mean, weight_sum = np.average(offsets,
-                                           weights=errs**-2,
-                                           returned=True)
-    weighted_mean.convert_to_units(u.m/u.s)
-    error_on_weighted_mean = 1 / np.sqrt(weight_sum)
-    error_on_mean = np.std(offsets) / np.sqrt(
-        star.getNumObs(time_slice))
+
+    if fit_params is None:
+        offsets = star.fitOffsetsNormalizedArray[time_slice, col_index]
+        weighted_mean, weight_sum = np.average(offsets,
+                                               weights=errs.value**-2,
+                                               returned=True)
+
+        error_on_weighted_mean = 1 / np.sqrt(weight_sum)
+        error_on_mean = np.nanstd(offsets) /\
+            np.sqrt(star.getNumObs(time_slice))
+
+    else:
+        corrected_array, mask_array = star.getOutliersMask(fit_params,
+                                                           n_sigma=2.5)
+        offsets = ma.array(corrected_array.value, mask=mask_array)[time_slice,
+                                                             col_index]
+        weighted_mean, weight_sum = ma.average(offsets,
+                                               weights=errs.value**-2,
+                                               returned=True)
+        # print(f'Weighted mean: {weighted_mean}')
+        # print(f'Weight sum: {weight_sum}')
+        error_on_weighted_mean = 1 / np.sqrt(weight_sum)
+        # print(offsets)
+        # print(type(offsets))
+        # print(f'STDDEV: {ma.std(offsets)}')
+        # print(np.sqrt(star.getNumObs(time_slice)))
+        error_on_mean = ma.std(offsets) /\
+            np.sqrt(star.getNumObs(time_slice))
+        # print(f'EotWM: {error_on_weighted_mean}')
+        # print(f'EotM: {error_on_mean}')
+        # raise RuntimeError
 
     return (weighted_mean, error_on_weighted_mean, error_on_mean)
 
 
 def main():
-    """The main function for the script."""
+    """Run the main function for the script."""
 
     # Define vprint to only print when the verbose flag is given.
     vprint = vcl.verbose_print(args.verbose)
@@ -370,7 +400,6 @@ def main():
 
     tqdm.write(f'Looking in main directory {main_dir}')
 
-    apply_corrections = False
     if args.fit_params_file:
         vprint(f'Reading params file {args.fit_params_file}...')
 
@@ -381,6 +410,9 @@ def main():
         sigma_sys = fit_results['sigmas_sys']
 
         apply_corrections = True
+    else:
+        fit_results = None
+        apply_corrections = False
 
     if args.reference_star:
         ref_star = get_star(main_dir / args.reference_star)
@@ -647,7 +679,8 @@ def main():
                     if star.hasObsPre:
                         star_mean_pre, star_err_pre, star_std_pre =\
                             get_transition_data_point(star, pre_slice,
-                                                      transition_label)
+                                                      transition_label,
+                                                      fit_params=fit_results)
                         means_pre.append(star_mean_pre)
                         errs_pre.append(star_err_pre)
                         stds_pre.append(star_std_pre)
@@ -659,7 +692,8 @@ def main():
                     if star.hasObsPost:
                         star_mean_post, star_err_post, star_std_post =\
                             get_transition_data_point(star, post_slice,
-                                                      transition_label)
+                                                      transition_label,
+                                                      fit_params=fit_results)
                         means_post.append(star_mean_post)
                         errs_post.append(star_err_post)
                         stds_post.append(star_std_post)
@@ -670,37 +704,49 @@ def main():
 
                 # Correct for trends in stellar parameters here.
                 if apply_corrections:
-                    vprint(f'Applying corrections from {model_name} model')
-                    data_pre = np.stack((temp_pre, mtl_pre, mag_pre),
-                                        axis=0)
-                    params_pre = coeffs[transition_label + '_pre']
-                    corrections = u.unyt_array(model_func(data_pre,
-                                                          *params_pre),
-                                               units=u.m/u.s)
-                    means_pre -= corrections
+                    # vprint(f'Applying corrections from {model_name} model')
+                    # data_pre = np.stack((temp_pre, mtl_pre, mag_pre),
+                    #                     axis=0)
+                    # params_pre = coeffs[transition_label + '_pre']
+                    # corrections = u.unyt_array(model_func(data_pre,
+                    #                                       *params_pre),
+                    #                            units=u.m/u.s)
+                    # for mean in means_pre:
+                    #     print(mean)
+                    #     print(mean.units)
+                    # means_pre = ma.masked_invalid(means_pre)
+                    # means_pre -= corrections
                     sigma_sys_pre.append(sigma_sys[transition_label +
-                                                   '_pre'].value)
+                                                    '_pre'].value)
 
-                    data_post = np.stack((temp_post, mtl_post, mag_post),
-                                         axis=0)
-                    params_post = coeffs[transition_label + '_post']
-                    corrections = u.unyt_array(model_func(data_post,
-                                                          *params_post),
-                                               units=u.m/u.s)
-                    means_post -= corrections
+                    # data_post = np.stack((temp_post, mtl_post, mag_post),
+                    #                      axis=0)
+                    # params_post = coeffs[transition_label + '_post']
+                    # corrections = u.unyt_array(model_func(data_post,
+                    #                                       *params_post),
+                    #                            units=u.m/u.s)
+                    # means_post = ma.masked_invalid(means_post)
+                    # means_post -= corrections
                     sigma_sys_post.append(sigma_sys[transition_label +
                                                     '_post'].value)
                 else:
                     sigma_sys_pre.append(0)
                     sigma_sys_post.append(0)
 
-                means_pre = u.unyt_array(means_pre, units=u.m/u.s)
-                means_post = u.unyt_array(means_post, units=u.m/u.s)
+                # means_pre = u.unyt_array(means_pre, units=u.m/u.s)
+                # means_post = u.unyt_array(means_post, units=u.m/u.s)
+
+                # print('Units are:')
+                # print(type(means_pre))
+                # print(type(means_post))
 
                 sigma_pre = np.nanstd(means_pre)
                 sigma_post = np.nanstd(means_post)
-                sigma_list_pre.append(sigma_pre.value)
-                sigma_list_post.append(sigma_post.value)
+                sigma_list_pre.append(sigma_pre)
+                sigma_list_post.append(sigma_post)
+
+                # print(sigma_pre.units)
+                # print(sigma_post.units)
 
                 # Write out data into a CSV file for checking.
                 csv_file = plots_folder /\
