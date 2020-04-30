@@ -447,11 +447,13 @@ class Star(object):
 
         """
 
+        if hasattr(self, 'cachedOutliers') and hasattr(self, 'cachedMask'):
+            return (self.cachedOutliers, self.cachedMask)
+
         function = fit_results_dict['model_func']
         coeffs_dict = fit_results_dict['coeffs']
         sigmas_dict = fit_results_dict['sigmas']
         sigma_sys_dict = fit_results_dict['sigmas_sys']
-
 
         stellar_params = np.stack((self.temperature, self.metallicity,
                                    self.absoluteMagnitude), axis=0)
@@ -502,6 +504,9 @@ class Star(object):
                 for i in range(len(data_slice)):
                     if abs(data_slice[i]) > sigma_lim:
                         mask_array[i+self.fiberSplitIndex, col_num] = 1
+
+        self.cachedOutliers = corrected_array
+        self.cachedMask = mask_array
 
         return (corrected_array, mask_array)
 
