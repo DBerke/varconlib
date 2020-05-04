@@ -247,16 +247,39 @@ def main():
     mag_lims = (4, 5.8)
     # logg_lims = (4.1, 4.6)
 
+    # Define the model to use:
+    if args.constant:
+        model_func = fit.constant_model
+    elif args.linear:
+        model_func = fit.linear_model
+    elif args.quadratic:
+        model_func = fit.quadratic_model
+    elif args.cubic:
+        model_func = fit.cubic_model
+    elif args.quartic:
+        model_func = fit.quartic_model
+    elif args.quintic:
+        model_func = fit.quintic_model
+    elif args.cross_term:
+        model_func = fit.cross_term_model
+    elif args.quadratic_cross_term:
+        model_func = fit.quadratic_cross_term_model
+    elif args.quadratic_magnitude:
+        model_func = fit.quadratic_mag_model
+    elif args.quad_cross_terms:
+        model_func = fit.quad_full_cross_terms_model
+
+    model_name = '_'.join(model_func.__name__.split('_')[:-1])
+
     tqdm.write('Unpickling transitions list..')
     with open(vcl.final_selection_file, 'r+b') as f:
         transitions_list = pickle.load(f)
     vprint(f'Found {len(transitions_list)} transitions.')
 
-    if not args.fit_params_file:
+    if not args.use_corrected_transitions:
         db_file = vcl.databases_dir / 'stellar_db_uncorrected.hdf5'
     else:
-        model_name = Path(args.fit_params_file).stem
-        db_file = vcl.databases_dir / f'stellar_db_{model_name}.hdf5'
+        db_file = vcl.databases_dir / f'stellar_db_{model_name}_params.hdf5'
         if not db_file.exists():
             raise FileNotFoundError('The given stellar database does not exist:'
                                     f' {db_file}')
@@ -291,29 +314,6 @@ def main():
     chi_squareds_post, sigmas_post, sigma_sys_post = [], [], []
     index_num = 0
 
-    if args.constant:
-        model_func = fit.constant_model
-    elif args.linear:
-        model_func = fit.linear_model
-    elif args.quadratic:
-        model_func = fit.quadratic_model
-    elif args.cubic:
-        model_func = fit.cubic_model
-    elif args.quartic:
-        model_func = fit.quartic_model
-    elif args.quintic:
-        model_func = fit.quintic_model
-    elif args.cross_term:
-        model_func = fit.cross_term_model
-    elif args.quadratic_cross_term:
-        model_func = fit.quadratic_cross_term_model
-    elif args.quadratic_magnitude:
-        model_func = fit.quadratic_mag_model
-    elif args.quad_cross_terms:
-        model_func = fit.quad_full_cross_terms_model
-
-    model_name = '_'.join(model_func.__name__.split('_')[:-1])
-
     params_list = []
     # Figure out how many parameters the model function takes, so we know how
     # many to dynamically give it later.
@@ -322,7 +322,9 @@ def main():
 
     # Define the folder to put plots in.
     output_dir = Path(vcl.config['PATHS']['output_dir'])
-    plots_folder = output_dir / f'stellar_parameter_fits/{model_name}'
+    extra = '_corrected' if args.use_corrected_transitions else ''
+    plots_folder = output_dir / f'stellar_parameter_fits/{model_name}{extra}'
+    vprint(f'Creating plots in {plots_folder}')
     if not plots_folder.exists():
         os.makedirs(plots_folder)
 
@@ -563,7 +565,7 @@ def main():
 
     # Save the function used and the parameters found for each transition to
     # an HDF5 file for use in other scripts.
-    if not args.fit_params_file:
+    if not args.use_corrected_transitions:
         hdf5_file = output_dir / f'fit_params/{model_name}_params.hdf5'
     else:
         hdf5_file = output_dir /\
@@ -592,12 +594,9 @@ if __name__ == '__main__':
     parser.add_argument('--full-range', action='store_true',
                         help='Plot the full range of values instead of'
                         ' restricting to a  fixed range.')
-    parser.add_argument('--use-corrected-transitions', action='store',
-                        type=str, dest='fit_params_file',
-                        help='The name of the file containing the fitting'
-                        ' function and parameters for each transition. It will'
-                        ' automatically be looked for in the stellar_databases'
-                        ' folder in the output data directory.')
+    parser.add_argument('--use-corrected-transitions', action='store_true',
+                        help='Use stellar database with outliers removed from'
+                        ' previously using the selected model.')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Print out more information about the script.')
 
