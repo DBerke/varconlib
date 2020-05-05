@@ -85,7 +85,7 @@ def quad_full_cross_terms_model(data, a, b, c, d, e, f, g, h, i, j):
 
 
 def gaussian(x, a, b, c, d=0):
-    """Return the value of a Gaussian function with the given parameters.
+    r"""Return the value of a Gaussian function with the given parameters.
 
 
     The parameter `d` controls the baseline of the Gaussian; if it is not
@@ -124,7 +124,7 @@ def gaussian(x, a, b, c, d=0):
 
 
 def integrated_gaussian(pixel, amplitude, mu, sigma, baseline):
-    """Return the value of a Gaussian integrated between two points (given as a
+    r"""Return the value of a Gaussian integrated between two points (given as a
     tuple in `pixel`).
 
     The function is given by
