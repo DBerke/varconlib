@@ -27,6 +27,8 @@ parser.add_argument('-c', '--comment', type=str, action='store',
 parser.add_argument('-x', '--extension', type=int, action='store',
                     default=0,
                     help='The extension number, if more than one (default: 0)')
+parser.add_argument('-v', '--verbose', action='store_true',
+                    help='Print out additional information about the process.')
 
 args = parser.parse_args()
 
@@ -44,3 +46,5 @@ hdulist = fits.open(filepath, mode='update')
 hdulist[args.extension].header.set(args.keyword, value=value,
                                    comment=args.comment)
 hdulist.close(output_verify='warn')
+if args.verbose:
+    print(f'Wrote value "{value}" as a {type(value)} to "{args.keyword}".')
