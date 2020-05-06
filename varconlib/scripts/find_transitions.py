@@ -344,6 +344,8 @@ for obs_path in tqdm(files_to_work_on) if\
         ax.xaxis.set_major_locator(ticks.MultipleLocator(base=512))
         ax.xaxis.set_minor_locator(ticks.MultipleLocator(base=64))
 
+        ax.yaxis.set_major_locator(ticks.MultipleLocator(base=2))
+
         ax.set_xlabel('Position across CCD (pixels)')
         ax.set_ylabel('Order number')
 
