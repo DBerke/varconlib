@@ -14,6 +14,7 @@ from pathlib import Path
 import pickle
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import numpy as np
 from tqdm import tqdm
 import unyt as u
@@ -21,10 +22,17 @@ import sys
 
 import varconlib as vcl
 
-colors = {'linear': 'Yellow',
-          'quadratic': 'Green',
-          'cross_term': 'Blue',
-          'quadratic_mag': 'Red'}
+colors = {'linear': 'Gold',
+          'quadratic': 'ForestGreen',
+          'cross_term': 'RoyalBlue',
+          'quadratic_mag': 'FireBrick'}
+
+
+corr_colors = {'pre_uncorr': 'SaddleBrown',
+               'pre_corr': 'LightSalmon',
+               'post_uncorr': 'RoyalBlue',
+               'post_corr': 'LightSkyBlue'}
+
 
 def plot_histograms():
     """Create plots of histograms for the various quantities of interest.
@@ -92,6 +100,8 @@ def plot_per_transition():
 
     """
 
+    plots_dir = Path('/Users/dberke/Pictures/fitting_comparisons')
+
     cols = {'index': 0,
             'chi_squared_pre': 1,
             'sigma_pre': 2,
@@ -99,6 +109,10 @@ def plot_per_transition():
             'chi_squared_post': 4,
             'sigma_post': 5,
             'sigma_sys_post': 6}
+
+    quantities = {#'chi_squared': r'$\chi^2_\nu$',
+                  'sigma': r'$\sigma$ (m/s)',
+                  'sigma_sys': r'$\sigma_{\mathrm{sys}} (m/s)$'}
 
     main_dir = Path(vcl.config['PATHS']['output_dir']) /\
         'stellar_parameter_fits'
@@ -108,37 +122,66 @@ def plot_per_transition():
                  'cross_term': 'Linear, [Fe/H]/T$_{eff}$',
                  'quadratic_mag': r'Linear, cross term, $\mathrm{M}_{v}^2$'}
     files = [main_dir / f'{x}/{x}_fit_results.csv' for x in functions.keys()]
+    corr_files = [main_dir /
+                  f'{x}_corrected/{x}_fit_results.csv' for x in
+                  functions.keys()]
 
     tqdm.write('Unpickling transitions list...')
     with open(vcl.final_selection_file, 'r+b') as f:
         transitions_list = pickle.load(f)
 
-    for quantity in ('chi_squared', 'sigma', 'sigma_sys'):
+    for quantity in quantities.keys():
 
-        fig = plt.figure(figsize=(11, 5), tight_layout=True)
-        ax_pre = fig.add_subplot(1, 2, 1)
-        ax_post = fig.add_subplot(1, 2, 2)
-
-        for file, function in zip(files, functions.keys()):
+        for file, corr_file, function in zip(files, corr_files,
+                                            functions.keys()):
             with open(file, 'r', newline='') as f:
                 data = np.loadtxt(f, delimiter=',')
+            with open(corr_file, 'r', newline='') as f:
+                corr_data = np.loadtxt(f, delimiter=',')
+
+
+            fig = plt.figure(figsize=(11, 7), tight_layout=True)
+            ax_pre = fig.add_subplot(2, 1, 1)
+            ax_post = fig.add_subplot(2, 1, 2)
 
             x = data[:, 0]
+            corr_x = corr_data[:, 0]
             for ax, time in zip((ax_pre, ax_post), ('pre', 'post')):
                 ax.set_xlabel(f'{time.capitalize()}-fiber change index')
                 # ax.set_yscale('log')
-                ax.set_ylabel(f'{quantity}')
-                ax.set_xlim(left=0, right=len(transitions_list)+1)
+                ax.set_ylabel(f'{quantities[quantity]} ({functions[function]})')
+                ax.set_xlim(left=-1, right=len(transitions_list)+2)
+
+                ax.xaxis.set_major_locator(ticker.MultipleLocator(base=10))
+                ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=2))
+
+                ax.xaxis.grid(which='both', color='Gray',
+                              linestyle='-', alpha=0.6)
 
                 y = data[:, cols[quantity + f'_{time}']]
+                corr_y = corr_data[:, cols[quantity + f'_{time}']]
 
-                ax.plot(x, y, color=colors[function],
-                        label=f'{functions[function]}')
+                ax.fill_between(x, y, corr_y,
+                                color='Gray',
+                                alpha=0.5)
 
-        ax_pre.legend(loc='upper right')
-        ax_post.legend(loc='upper right')
+                ax.plot(x, y, color=corr_colors[time + '_uncorr'],
+                        marker='o',
+                        label='No outlier rejection',
+                        markeredgecolor='Black',
+                        markersize=6)
+                ax.plot(corr_x, corr_y, color=corr_colors[time + '_corr'],
+                        marker='o',
+                        label='Outlier rejection',
+                        markeredgecolor='Black',
+                        markersize=6)
 
-        plt.show(fig)
+            ax_pre.legend(loc='upper right')
+            ax_post.legend(loc='upper right')
+
+            file_name = plots_dir / f'{quantity}_{function}.png'
+            # plt.show(fig)
+            fig.savefig(str(file_name))
     sys.exit()
 
 
