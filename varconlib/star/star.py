@@ -454,10 +454,14 @@ class Star(object):
         """
 
         if dump_cache:
-            delattr(self, 'cachedOutliers')
-            delattr(self, 'cachedMask')
+            try:
+                delattr(self, '_cachedOutliers')
+                delattr(self, '_cachedMask')
+            # If someone tries to use dump_cache before a cache exists:
+            except AttributeError:
+                pass
 
-        if hasattr(self, 'cachedOutliers') and hasattr(self, 'cachedMask'):
+        if hasattr(self, '_cachedOutliers') and hasattr(self, '_cachedMask'):
             return (self.cachedOutliers, self.cachedMask)
 
         function = fit_results_dict['model_func']
@@ -515,8 +519,8 @@ class Star(object):
                     if abs(data_slice[i]) > sigma_lim:
                         mask_array[i+self.fiberSplitIndex, col_num] = 1
 
-        self.cachedOutliers = corrected_array
-        self.cachedMask = mask_array
+        self._cachedOutliers = corrected_array
+        self._cachedMask = mask_array
 
         return (corrected_array, mask_array)
 
