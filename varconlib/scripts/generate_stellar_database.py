@@ -93,12 +93,12 @@ def get_star(star_path, verbose=False, recreate=False):
 
 
 def get_transition_data_point(star, time_slice, col_index, fit_params=None):
-    """Return the pair separation for a given star and pair.
+    """Return the weighted mean and some statistics for a given star and
+    transition.
 
-    The returned values will be the weighted mean value of the pair
-    separation, the standard deviation of all the pair separation
-    values for that star in the given time period (pre- or post-fiber
-    chage), and the error on the weighted mean.
+    The returned values will be the weighted mean of the transition for all
+    observations of the star, the error on the weighted mean, the error on the
+    mean, and the standard deviation of all the observations.
 
     Parameters
     ----------
