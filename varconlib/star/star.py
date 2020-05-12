@@ -426,7 +426,7 @@ class Star(object):
 
         fit_results_dict : dict
             A dictionary containing results from a call to
-            varconlib.miscellaneous.get_params_file, with information from a
+            varconlib.miscellaneous.get_params_file(), with information from a
             fitting model.
 
         Optional
@@ -454,8 +454,8 @@ class Star(object):
         """
 
         if dump_cache:
-            self.cachedOutliers = None
-            self.cachedMask = None
+            delattr(self, 'cachedOutliers')
+            delattr(self, 'cachedMask')
 
         if hasattr(self, 'cachedOutliers') and hasattr(self, 'cachedMask'):
             return (self.cachedOutliers, self.cachedMask)
