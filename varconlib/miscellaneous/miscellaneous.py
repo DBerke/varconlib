@@ -301,8 +301,8 @@ def get_params_file(filename):
     Parameters
     ----------
     filename : str or `pathlib.Path` object
-        A string representing an HDF5 filename. Just the name is necessary,
-        as it will be searched for in the appropriate directory automatically.
+        A string representing an HDF5 filename containing results from a run
+        of the script multi_fit_stars.py.
 
     Returns
     -------
