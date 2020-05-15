@@ -17,7 +17,9 @@ from pathlib import Path
 import pickle
 from pprint import pprint
 from time import sleep
+import sys
 
+from adjustText import adjust_text
 import h5py
 import hickle
 from matplotlib.gridspec import GridSpec
@@ -186,10 +188,10 @@ def plot_data_points(axis, x_pos, y_pos, thick_err, thin_err, era=None,
     y_pos : iterable of floats or `unyt.unyt_quantity`
         The y-positions of the points to plot. The length must match the length
         of `x_pos`.
-    thick_err : iterable of floats or `unyt.unyt_quantity`
+    thick_err : iterable of floats or `unyt.unyt_quantity` or None
         The values of the thick error bars to plot. The length must match the
         length of `x_pos`.
-    thin_err : iterable of floats or `unyt.unyt_quantity`
+    thin_err : iterable of floats or `unyt.unyt_quantity` or None
         The values of the thin error bars to plot. The length must match the
         length of `x_pos`.
     era : string, ['pre', 'post'], or None, Default : None
@@ -218,24 +220,53 @@ def plot_data_points(axis, x_pos, y_pos, thick_err, thin_err, era=None,
         raise ValueError("Keyword 'era' received an unknown value"
                          f" (valid values are 'pre' & 'post'): {era}")
 
-    axis.errorbar(x=x_pos, y=y_pos,
-                  yerr=thin_err, linestyle='',
-                  marker='', capsize=style_caps['capsize_thin'],
-                  color=params['color'],
-                  ecolor=params['ecolor_thin'],
-                  elinewidth=style_caps['linewidth_thin'],
-                  capthick=style_caps['cap_thin'])
-    axis.errorbar(x=x_pos, y=y_pos,
-                  yerr=thick_err, linestyle='',
-                  marker='o', markersize=style_markers['markersize'],
-                  markeredgewidth=style_markers['markeredgewidth'],
-                  markeredgecolor=style_markers['markeredgecolor'],
-                  alpha=style_markers['alpha'],
-                  capsize=style_caps['capsize_thick'],
-                  color=params['color'],
-                  ecolor=params['ecolor_thick'],
-                  elinewidth=style_caps['linewidth_thick'],
-                  capthick=style_caps['cap_thick'])
+    if thin_err is not None:
+        axis.errorbar(x=x_pos, y=y_pos,
+                      yerr=thin_err, linestyle='',
+                      marker='', capsize=style_caps['capsize_thin'],
+                      color=params['color'],
+                      ecolor=params['ecolor_thin'],
+                      elinewidth=style_caps['linewidth_thin'],
+                      capthick=style_caps['cap_thin'])
+    elif thick_err is not None:
+        axis.errorbar(x=x_pos, y=y_pos,
+                      yerr=thick_err, linestyle='',
+                      marker='o', markersize=style_markers['markersize'],
+                      markeredgewidth=style_markers['markeredgewidth'],
+                      markeredgecolor=style_markers['markeredgecolor'],
+                      alpha=style_markers['alpha'],
+                      capsize=style_caps['capsize_thick'],
+                      color=params['color'],
+                      ecolor=params['ecolor_thick'],
+                      elinewidth=style_caps['linewidth_thick'],
+                      capthick=style_caps['cap_thick'])
+
+
+def find_star(star_params, stellar_params, star_names):
+    """Return the name of the star which matches the given parameters.
+
+    Parameters
+    ----------
+    star_params : iterable
+        An iterable (in practice, an array slice of length 3) which contains
+        values of stellar parameters, temperature in position 0, metallicity in
+        position 1, and magnitude in position 2.
+    stellar_params : array-like
+        A 3xN array of stellar parameters, with the same order as `star_params`.
+    star_names : `bidict.bidict`
+        A `bidict` containing star names in strings as keys, and index numbers
+        as ints for the values.
+
+    Returns
+    -------
+    str
+        The name of the star associated with the given parameters.
+
+    """
+
+    for i in range(len(stellar_params[0])):
+        if np.all(np.isclose(star_params, stellar_params[:, i])):
+            return star_names[i]
 
 
 def main():
@@ -303,6 +334,7 @@ def main():
         star_magnitudes = hickle.load(f, path='/star_magnitudes')
 #        star_gravities = hickle.load(f, path='/star_gravities')
         column_dict = hickle.load(f, path='/transition_column_index')
+        star_names = hickle.load(f, path='/star_row_index')
 
     # Handle various fitting and plotting setup:
     eras = {'pre': 0, 'post': 1}
@@ -372,8 +404,6 @@ def main():
                 offsets = u.unyt_array(m_offsets[~m_offsets.mask],
                                        units=u.m/u.s)
                 vprint(f'Median of offsets is {np.nanmedian(offsets)}')
-#                print(offsets.shape)
-#                print(m_offsets)
 
 #                m_stds = ma.masked_invalid(star_transition_offsets_stds[
 #                            eras[time], :, col])
@@ -405,6 +435,8 @@ def main():
                 # pprint(offsets)
                 # pprint(eotms)
 
+                # Mask the various stellar parameter arrays with the same mask
+                # so that everything stays in sync.
                 temperatures = ma.masked_array(star_temperatures)
                 temps = temperatures[~m_offsets.mask]
                 metallicities = ma.masked_array(star_metallicities)
@@ -412,6 +444,13 @@ def main():
                 magnitudes = ma.masked_array(star_magnitudes)
                 mags = magnitudes[~m_offsets.mask]
 
+                stars = ma.masked_array([key for key in
+                                         star_names.keys()]).reshape(
+                                             len(star_names.keys()), 1)
+                names = stars[~m_offsets.mask]
+
+                # Stack the stellar parameters into vertical slices
+                # for passing to model functions.
                 x_data = np.stack((temps, metals, mags), axis=0)
 
                 # Create the parameter list for this run of fitting.
@@ -439,14 +478,10 @@ def main():
                                                     offsets, beta0,
                                                     sigma=iter_err_array)
 
-                    # popt, pcov = curve_fit(model_func, x_data, offsets,
-                    #                        sigma=eotms,
-                    #                        p0=beta0,
-                    #                        absolute_sigma=True,
-                    #                        method='lm', maxfev=10000)
                     vprint(popt)
                     results = u.unyt_array(model_func(x_data, *popt),
                                            units=u.m/u.s)
+
                     residuals = offsets - results
 
                     # Find the chi^2 value for this distribution:
@@ -478,6 +513,7 @@ def main():
                         else:
                             sys_err *= (1 - sigma_sys_change_amount)
 
+                # print(label, time, results[135])
                 vprint(f'Terminated with sys_err = {sys_err}')
                 vprint(f'Finished {label}_{time} in {num_iters} steps.')
                 # Add the optimized parameters and covariances to the
@@ -502,27 +538,39 @@ def main():
                 for plot_type, lims in zip(('temp', 'mtl', 'mag'),
                                            (temp_lims, mtl_lims, mag_lims)):
                     ax = axes_dict[f'{plot_type}_{time}']
-                    # if time == 'pre':
-                    #     color = style_pre['color']
-                    #     ecolor = style_pre['ecolor_thick']
-                    # else:
-                    #     color = style_post['color']
-                    #     ecolor = style_post['ecolor_thick']
                     plot_data_points(ax, x_data[param_dict[plot_type]],
                                      residuals, thick_err=err_array,
-                                     thin_err=iter_err_array,
+                                     # thin_err=iter_err_array,
+                                     thin_err=None,
                                      era=time)
-                    # ax.errorbar(
-                    #         x_data[param_dict[plot_type]],
-                    #         residuals, yerr=err_array,
-                    #         ecolor=ecolor,
-                    #         color=color,
-                    #         markeredgecolor=style_markers['markeredgecolor'],
-                    #         linestyle='',
-                    #         markersize=style_markers['markersize'],
-                    #         markeredgewidth=style_markers['markeredgewidth'],
-                    #         alpha=style_markers['alpha'],
-                    #         marker='o')
+                    if args.label_outliers:
+                        # Find outliers more than 3 sigma away from zero so we
+                        # can label them.
+                        labels = []
+                        for x, y, e in zip(range(len(
+                                x_data[param_dict[plot_type]])), residuals,
+                                err_array):
+                            sig_lim = 3 * e
+                            if abs(y) > sig_lim:
+                                star_name = find_star(x_data[:, x],
+                                                      x_data, names)
+
+                                labels.append(ax.text(
+                                    x_data[param_dict[plot_type], x],
+                                    y.value, star_name,
+                                    horizontalalignment='left',
+                                    verticalalignment='top',
+                                    size=8, weight='bold', color='Red'))
+                        # print(labels)
+                        adjust_text(labels,
+                                    ax=ax,
+                                    only_move={'points': 'y',
+                                               'text': 'xy',
+                                               'objects': 'xy'},
+                                    arrowprops=dict(arrowstyle='-',
+                                                    color='OliveDrab'),
+                                    autoalign=True,
+                                    lim=1000, fontsize=9)
 
                     ax.annotate(f'Blendedness: {transition.blendedness}\n'
                                 r'$\sigma_\mathrm{sys}$:'
@@ -597,6 +645,9 @@ if __name__ == '__main__':
     parser.add_argument('--use-corrected-transitions', action='store_true',
                         help='Use stellar database with outliers removed from'
                         ' previously using the selected model.')
+    parser.add_argument('--label-outliers', action='store_true',
+                        help='Label the points which are more than'
+                        ' 3 sigma away from the mean.')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Print out more information about the script.')
 
