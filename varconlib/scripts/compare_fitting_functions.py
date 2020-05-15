@@ -126,19 +126,18 @@ def plot_per_transition():
                   f'{x}_corrected/{x}_fit_results.csv' for x in
                   functions.keys()]
 
-    tqdm.write('Unpickling transitions list...')
-    with open(vcl.final_selection_file, 'r+b') as f:
-        transitions_list = pickle.load(f)
+    # tqdm.write('Unpickling transitions list...')
+    # with open(vcl.final_selection_file, 'r+b') as f:
+    #     transitions_list = pickle.load(f)
 
-    for quantity in quantities.keys():
+    for quantity in tqdm(quantities.keys()):
 
-        for file, corr_file, function in zip(files, corr_files,
-                                            functions.keys()):
+        for file, corr_file, function in tqdm(zip(files, corr_files,
+                                              functions.keys())):
             with open(file, 'r', newline='') as f:
                 data = np.loadtxt(f, delimiter=',')
             with open(corr_file, 'r', newline='') as f:
                 corr_data = np.loadtxt(f, delimiter=',')
-
 
             fig = plt.figure(figsize=(11, 7), tight_layout=True)
             ax_pre = fig.add_subplot(2, 1, 1)
@@ -150,13 +149,19 @@ def plot_per_transition():
                 ax.set_xlabel(f'{time.capitalize()}-fiber change index')
                 # ax.set_yscale('log')
                 ax.set_ylabel(f'{quantities[quantity]} ({functions[function]})')
-                ax.set_xlim(left=-1, right=len(transitions_list)+2)
+                ax.set_xlim(left=-1, right=len(x)+1)
+                if quantity == 'sigma':
+                    ax.set_ylim(bottom=0, top=250)
+                elif quantity == 'sigma_sys':
+                    ax.set_ylim(bottom=-1, top=85)
 
                 ax.xaxis.set_major_locator(ticker.MultipleLocator(base=10))
                 ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=2))
 
                 ax.xaxis.grid(which='both', color='Gray',
                               linestyle='-', alpha=0.6)
+                ax.yaxis.grid(which='major', color='Gray',
+                              linestyle='--', alpha=0.4)
 
                 y = data[:, cols[quantity + f'_{time}']]
                 corr_y = corr_data[:, cols[quantity + f'_{time}']]
@@ -176,8 +181,8 @@ def plot_per_transition():
                         markeredgecolor='Black',
                         markersize=6)
 
-            ax_pre.legend(loc='upper right')
-            ax_post.legend(loc='upper right')
+            ax_pre.legend(loc='best')
+            ax_post.legend(loc='best')
 
             file_name = plots_dir / f'{quantity}_{function}.png'
             # plt.show(fig)
