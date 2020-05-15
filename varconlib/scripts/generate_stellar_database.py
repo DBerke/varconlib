@@ -155,51 +155,25 @@ def get_transition_data_point(star, time_slice, col_index, fit_params=None):
     return (weighted_mean, error_on_weighted_mean, error_on_mean, stddev)
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Collate date from stars into'
-                                     ' a standard form saved to disk.')
-    parser.add_argument('main_dir', action='store', type=str, nargs=1,
-                        help='The main directory within which to find'
-                        ' additional star directories.')
-    parser.add_argument('star_names', action='store', type=str, nargs='+',
-                        help='The names of stars (directories) containing the'
-                        ' stars to be used in the plot.')
-    parser.add_argument('--recreate-stars', action='store_true', default=False,
-                        help='Recreate all star.Star HDF5 files from'
-                        ' observations.')
-    parser.add_argument('-v', '--verbose', action='store_true',
-                        help="Print more output about what's happening.")
+def main():
+    """Run the main function for the script.
 
-    paper = parser.add_mutually_exclusive_group()
-    paper.add_argument('--casagrande2011', action='store_true',
-                       help='Use values from Casagrande et al. 2011.')
-    paper.add_argument('--nordstrom2004', action='store_true',
-                       help='Use values from Nordstrom et al. 2004.')
+    Returns
+    -------
+    None
 
-    parser.add_argument('--correct-transitions', action='store',
-                        type=str, dest='fit_params_file',
-                        help='The name of the file containing the fitting'
-                        ' function and parameters for each transition. It will'
-                        ' automatically be looked for in the fit_params folder'
-                        ' in the output data directory.')
-
-    args = parser.parse_args()
-
-    # Define vprint to only print when the verbose flag is given.
-    vprint = vcl.verbose_print(args.verbose)
+    """
 
     main_dir = Path(args.main_dir[0])
     if not main_dir.exists():
         raise FileNotFoundError(f'{main_dir} does not exist!')
 
-    apply_corrections = False
     if args.fit_params_file:
         vprint(f'Reading params file {args.fit_params_file}...')
 
         params_file = main_dir / f'fit_params/{args.fit_params_file}'
         fit_results = get_params_file(params_file)
 
-        apply_corrections = True
     else:
         fit_results = None
 
@@ -345,3 +319,39 @@ if __name__ == '__main__':
         hickle.dump(star_names, f, path='/star_row_index')
     tqdm.write(f'Collected {total_obs} observations in total from'
                f' {len(star_list)} stars.')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Collate date from stars into'
+                                     ' a standard form saved to disk.')
+    parser.add_argument('main_dir', action='store', type=str, nargs=1,
+                        help='The main directory within which to find'
+                        ' additional star directories.')
+    parser.add_argument('star_names', action='store', type=str, nargs='+',
+                        help='The names of stars (directories) containing the'
+                        ' stars to be used in the plot.')
+    parser.add_argument('--recreate-stars', action='store_true', default=False,
+                        help='Recreate all star.Star HDF5 files from'
+                        ' observations.')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help="Print more output about what's happening.")
+
+    paper = parser.add_mutually_exclusive_group()
+    paper.add_argument('--casagrande2011', action='store_true',
+                       help='Use values from Casagrande et al. 2011.')
+    paper.add_argument('--nordstrom2004', action='store_true',
+                       help='Use values from Nordstrom et al. 2004.')
+
+    parser.add_argument('--correct-transitions', action='store',
+                        type=str, dest='fit_params_file',
+                        help='The name of the file containing the fitting'
+                        ' function and parameters for each transition. It will'
+                        ' automatically be looked for in the fit_params folder'
+                        ' in the output data directory.')
+
+    args = parser.parse_args()
+
+    # Define vprint to only print when the verbose flag is given.
+    vprint = vcl.verbose_print(args.verbose)
+
+    main()
