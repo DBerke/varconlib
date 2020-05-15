@@ -24,7 +24,7 @@ import h5py
 import hickle
 import numpy as np
 import numpy.ma as ma
-from tqdm import tqdm
+from tqdm import tqdm, trange
 import unyt as u
 import unyt.dimensions as dimensions
 
@@ -462,12 +462,10 @@ class Star(object):
                 pass
 
         if hasattr(self, '_cachedOutliers') and hasattr(self, '_cachedMask'):
-            return (self.cachedOutliers, self.cachedMask)
+            return (self._cachedOutliers, self._cachedMask)
 
         function = fit_results_dict['model_func']
         coeffs_dict = fit_results_dict['coeffs']
-        sigmas_dict = fit_results_dict['sigmas']
-        sigma_sys_dict = fit_results_dict['sigmas_sys']
 
         stellar_params = np.stack((self.temperature, self.metallicity,
                                    self.absoluteMagnitude), axis=0)
@@ -478,15 +476,13 @@ class Star(object):
         mask_array = np.full_like(self.fitOffsetsNormalizedArray,
                                   fill_value=0, dtype=int)
 
-        for key in self._transition_bidict.keys():
+        for key in tqdm(self._transition_bidict.keys()):
             col_num = self._transition_bidict.index_for[key]
 
             if self.hasObsPre:
                 label = key + '_pre'
                 pre_slice = slice(None, self.fiberSplitIndex)
-                # coeffs_pre = coeffs_dict[label]
-                # sigma_pre = sigmas_dict[label]
-                # sigma_sys_pre = sigma_sys_dict[label]
+
                 correction = u.unyt_array(function(stellar_params,
                                                    *coeffs_dict[label]),
                                           units=u.m/u.s)
@@ -494,18 +490,16 @@ class Star(object):
                     self.fitOffsetsNormalizedArray[pre_slice, col_num] -\
                     correction
                 data_slice = corrected_array[pre_slice, col_num]
-                sigma_lim = n_sigma * np.sqrt(np.square(sigmas_dict[label]) +
-                                              np.square(sigma_sys_dict[label]))
+                error_slice = self.fitErrorsArray[pre_slice, col_num]
+
                 for i in range(len(data_slice)):
-                    if abs(data_slice[i]) > sigma_lim:
+                    if abs(data_slice[i]) > n_sigma * error_slice[i]:
                         mask_array[i, col_num] = 1
 
             if self.hasObsPost:
                 label = key + '_post'
                 post_slice = slice(self.fiberSplitIndex, None)
-                # coeffs_post = coeffs_dict[label]
-                # sigma_post = sigmas_dict[label]
-                # sigma_sys_post = sigma_sys_dict[label]
+
                 correction = u.unyt_array(function(stellar_params,
                                                    *coeffs_dict[label]),
                                           units=u.m/u.s)
@@ -513,10 +507,9 @@ class Star(object):
                     self.fitOffsetsNormalizedArray[post_slice, col_num] -\
                     correction
                 data_slice = corrected_array[post_slice, col_num]
-                sigma_lim = n_sigma * np.sqrt(np.square(sigmas_dict[label]) +
-                                              np.square(sigma_sys_dict[label]))
+                error_slice = self.fitErrorsArray[post_slice, col_num]
                 for i in range(len(data_slice)):
-                    if abs(data_slice[i]) > sigma_lim:
+                    if abs(data_slice[i]) > n_sigma * error_slice[i]:
                         mask_array[i+self.fiberSplitIndex, col_num] = 1
 
         self._cachedOutliers = corrected_array
