@@ -462,12 +462,12 @@ def main():
                 # Iterate to find what additional systematic error is needed
                 # to get a chi^2 of ~1.
                 chi_tol = 0.001
-                chi_squared_nu = 1.5
+                diff = 1
                 sys_err = 0 * u.m / u.s
                 num_iters = 0
                 sigma_sys_change_amount = 0.25  # Range (0, 1)
 
-                while abs(chi_squared_nu - 1) > chi_tol:
+                while diff > chi_tol:
 
                     num_iters += 1
 
