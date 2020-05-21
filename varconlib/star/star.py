@@ -110,7 +110,9 @@ class Star(object):
                    '/arrays/pair_separation_errors': 'pairSepErrorsArray',
                    '/arrays/BERV_array': 'bervArray',
                    '/arrays/observation_rv': 'obsRVOffsetsArray',
-                   '/arrays/normalized_offsets': 'fitOffsetsNormalizedArray'}
+                   '/arrays/normalized_offsets': 'fitOffsetsNormalizedArray',
+                   '/arrays/corrected_offsets': 'fitOffsetsCorrectedArray',
+                   '/arrays/systematic_corrections': 'ccdCorrectionArray'}
 
     other_attributes = {'/arrays/reduced_chi_squareds': 'chiSquaredNuArray',
                         '/arrays/airmasses': 'airmassArray',
@@ -285,6 +287,9 @@ class Star(object):
         errors_list = []
         offsets_list = []
         chi_squared_list = []
+        ccd_corrections_list = []
+        offsets_corrected_list = []
+
         total_obs = len(pickle_files)
         self.bervArray = np.empty(total_obs)
         self.airmassArray = np.empty(total_obs)
@@ -313,6 +318,8 @@ class Star(object):
             obs_errors = []
             obs_offsets = []
             obs_chi_squareds = []
+            obs_ccd_corrections = []
+            obs_offsets_corrected = []
             for fit in fits_list:
                 # Check that a fit 1) exists, 2) has a negative amplitude (since
                 # amplitude is unconstrained, a positive amplitude is a failed
@@ -322,29 +329,40 @@ class Star(object):
                 if (fit is not None) and (fit.amplitude < 0) and\
                     abs(wave2vel(fit.mean,
                                  fit.correctedWavelength)) < 5 * u.km / u.s:
-                    # TODO : Add code for checking if offset is acceptably
-                    # close to master template here?
                     fit_mean = fit.mean.to(u.angstrom).value
                     fit_error = fit.meanErrVel.to(u.m/u.s).value
                     fit_offset = fit.velocityOffset.to(u.m/u.s).value
                     fit_chi_squared = fit.chiSquaredNu
+                    fit_ccd_correction = self._correctCCDSystematic(
+                        fit.order, fit.centralIndex)
+                    fit_offset_corrected = fit_offset - fit_ccd_correction
                 else:
                     fit_mean = float('nan')
                     fit_error = float('nan')
                     fit_offset = float('nan')
                     fit_chi_squared = float('nan')
+                    fit_ccd_correction = float('nan')
+                    fit_offset_corrected = float('nan')
 
                 obs_means.append(fit_mean)
                 obs_errors.append(fit_error)
                 obs_offsets.append(fit_offset)
                 obs_chi_squareds.append(fit_chi_squared)
+                obs_ccd_corrections.append(fit_ccd_correction)
+                obs_offsets_corrected.append(fit_offset_corrected)
 
+            # Create a list of each type of data for each observation.
             means_list.append(obs_means)
             errors_list.append(obs_errors)
             offsets_list.append(obs_offsets)
             chi_squared_list.append(obs_chi_squareds)
-            self.obsRVOffsetsArray[obs_num] = np.nanmedian(obs_offsets)
+            ccd_corrections_list.append(obs_ccd_corrections)
+            offsets_corrected_list.append(obs_offsets_corrected)
+            self.obsRVOffsetsArray[obs_num] = np.nanmedian(
+                obs_offsets_corrected)
 
+        # Collate the above lists into arrays containing the results of all
+        # observations of the given star.
         self.fitMeansArray = u.unyt_array(np.asarray(means_list),
                                           u.angstrom)
         self.fitErrorsArray = u.unyt_array(np.asarray(errors_list),
@@ -352,7 +370,11 @@ class Star(object):
         self.fitOffsetsArray = u.unyt_array(np.asarray(offsets_list),
                                             u.m/u.s)
         self.obsRVOffsetsArray *= u.m / u.s
-        self.fitOffsetsNormalizedArray = self.fitOffsetsArray -\
+        self.ccdCorrectionArray = u.unyt_array(ccd_corrections_list,
+                                               u.m/u.s)
+        self.fitOffsetsCorrectedArray = u.unyt_array(offsets_corrected_list,
+                                                     u.m/u.s)
+        self.fitOffsetsNormalizedArray = self.fitOffsetsCorrectedArray -\
             self.obsRVOffsetsArray
         self.bervArray *= u.km / u.s
         self.chiSquaredNuArray = np.array(chi_squared_list)
@@ -556,7 +578,7 @@ class Star(object):
 
         Paramters
         ---------
-        filename : `pathlib.Path` or str
+        filename : `pathlib.Path` or `str`
             An HDF5 file name to retrieve previously-saved data from.
 
         """
@@ -574,6 +596,124 @@ class Star(object):
                 except AttributeError:
                     print(self.name, attr_name, path_name)
                     raise
+
+    def _correctCCDSystematic(self, order, pixel):
+        """Return the velocity correction for a given pixel and order number.
+
+        This function corrects measurements of velocity offsets from their
+        expected position using the binned residuals found by Milankovic et al.
+        2020 using HARPS' laser frequency comb.
+
+        Parameters
+        ----------
+        order : int
+            The HARPS order on which the observation was made. This should be an
+            integer in the range [0, 71].
+        pixel : int
+            The horizontal pixel position on the HARPS CCD where the center of
+            the observed feature was found. Should be an integer in the range
+            [0, 4096].
+
+        Returns
+        -------
+        float
+            A quantity representing the amount to correct the given feature
+            measurement by in order to correct for CCD systematics.
+            (Numerically it will be a value in m/s, though without units.)
+
+        """
+
+        try:
+            order = int(order)
+        except ValueError:
+            print(f'Given "order" can not be cast to an integer: {order}')
+        try:
+            pixel = int(pixel)
+        except ValueError:
+            print(f'Given "pixel" can not be cast to an integer: {pixel}')
+
+        assert 0 <= order <= 72, 'Given "order" not in [0, 71]!'
+        assert 0 <= pixel <= 4096, 'Given "pixel" not in [0, 4096]!'
+
+        if 61 <= order <= 71:
+            block = 'block1'
+        elif 46 <= order <= 60:
+            block = 'block2'
+        else:
+            block = 'block3'
+
+        shift_dict = self.ccdSystematicsDict[block]
+
+        key_pos = sorted(shift_dict.keys())
+        if pixel < key_pos[0]:
+            return shift_dict[key_pos[0]]
+        elif pixel > key_pos[-1]:
+            return shift_dict[key_pos[-1]]
+        else:
+            for pos in key_pos:
+                if pixel == pos:
+                    return shift_dict[pos]
+                elif pixel < pos:
+                    # Find the equation of the line made by interpolating
+                    # between the two surrounding points so we can find the
+                    # value to return.
+                    x1, x2 = pos - 64, pos
+                    y1, y2 = shift_dict[x1], shift_dict[x2]
+                    m = (y2 - y1) / (x2 - x1)
+                    b = y1 - (m * x1)
+                    result = m * pixel + b
+                    assert -15 < result < 15,\
+                        f'{pixel}, {order}: ({x1}, {y1}), ({x2}, {y2}),' +\
+                        ' {m}, {b}, {result}'
+                    return result
+            # If for some reason it runs through everything and still doesn't
+            # find an answer, raise an error:
+            raise RuntimeError('Unable to find correction!')
+
+    @property
+    def ccdSystematicsDict(self):
+        """Return the CCD systematic offset data.
+
+        The order used to refer to HARPS orders is a contunous zero-based index
+        counting the orders present on the HARPS detector from 0 to 72. It does
+        not skip echelle order 115 which is physically not present as it falls
+        between the two CCDs. The relationship between echelle order and this
+        numbering scheme is seen in the following table:
+
+        Block | Echelle orders | 0-based continuous indexing
+        ----------------------------------------------------
+        |  1  |    89 - 99     |   61 - 71                 |
+        |  2  |   100 - 114    |   46 - 60                 |
+        |  3  |   116 - 134    |   26 - 45                 |
+        |  4  |   135 - 161    |    0 - 25                 |
+        ----------------------------------------------------
+
+        Note that block 4 doesn't have its own residual values, so it uses those
+        from block 3.
+
+        Returns
+        -------
+        dict
+            A dictionary containing as keys a list of pixel positions along the
+            CCD, and as values the measured smoothed velocity offsets from zero
+            in m/s.
+
+        """
+
+        if not hasattr(self, '_ccdSystematicDict'):
+            self._ccdSystematicDict = {}
+
+            data_dir = vcl.data_dir / 'residual_data'
+
+            for num, block_dict in enumerate(('block1', 'block2', 'block3')):
+                data_file = data_dir /\
+                    f'residuals_block_{num+1}_forDB_64bins.txt'
+                data = np.loadtxt(data_file, skiprows=2, dtype=float)
+                pos_dict = {int(key): value for key, value in zip(data[:, 0],
+                                                                  data[:, 1])}
+                self._ccdSystematicDict[block_dict] = pos_dict
+
+        return self._ccdSystematicDict
 
     @property
     def transitionsList(self):
