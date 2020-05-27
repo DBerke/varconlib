@@ -111,7 +111,7 @@ def get_transition_data_point(star, time_slice, col_index, fit_params=None):
 
     Optional
     --------
-    fit_params : dict
+    fit_params : dict, Default : None
         Should be the results of a varconlib.miscellaneous.get_params_file()
         call, a dictionary containing various information about a fitting model.
 
