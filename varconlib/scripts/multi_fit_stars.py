@@ -416,7 +416,7 @@ def main():
                 m_eotwms = ma.masked_invalid(star_transition_offsets_EotWM[
                         eras[time], :, col])
                 m_eotwms = m_eotwms.reshape([len(m_eotwms), 1])
-                eotwms = u.unyt_array(m_eotwms[~m_eotwms.mask],
+                eotwms = u.unyt_array(m_eotwms[~m_offsets.mask],
                                       units=u.m/u.s)
 
                 m_eotms = ma.masked_invalid(star_transition_offsets_EotM[
