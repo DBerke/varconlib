@@ -495,7 +495,9 @@ def main():
                            f'  chi^2_nu is {chi_squared_nu}')
 
                     diff = abs(chi_squared_nu - 1)
-                    if diff > 1:
+                    if diff > 2:
+                        sigma_sys_change_amount = 0.75
+                    elif diff > 1:
                         sigma_sys_change_amount = 0.5
                     else:
                         sigma_sys_change_amount = 0.25
