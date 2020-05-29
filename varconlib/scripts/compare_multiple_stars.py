@@ -359,8 +359,7 @@ def get_transition_data_point(star, time_slice, transition_label,
         weighted_mean, weight_sum = np.average(offsets,
                                                weights=errs.value**-2,
                                                returned=True)
-
-        error_on_weighted_mean = 1 / np.sqrt(weight_sum)
+        error_on_weighted_mean = 1 / np.sqrt(weight_sum) * u.m / u.s
         error_on_mean = np.nanstd(offsets) /\
             np.sqrt(star.getNumObs(time_slice))
 
@@ -368,22 +367,24 @@ def get_transition_data_point(star, time_slice, transition_label,
         corrected_array, mask_array = star.getOutliersMask(fit_params,
                                                            n_sigma=2.5)
         offsets = ma.array(corrected_array.value, mask=mask_array)[time_slice,
-                                                             col_index]
+                                                                   col_index]
         weighted_mean, weight_sum = ma.average(offsets,
                                                weights=errs.value**-2,
                                                returned=True)
-        # print(f'Weighted mean: {weighted_mean}')
-        # print(f'Weight sum: {weight_sum}')
-        error_on_weighted_mean = 1 / np.sqrt(weight_sum)
-        # print(offsets)
-        # print(type(offsets))
-        # print(f'STDDEV: {ma.std(offsets)}')
-        # print(np.sqrt(star.getNumObs(time_slice)))
+        error_on_weighted_mean = 1 / np.sqrt(weight_sum) * u.m / u.s
+
         error_on_mean = ma.std(offsets) /\
-            np.sqrt(star.getNumObs(time_slice))
-        # print(f'EotWM: {error_on_weighted_mean}')
-        # print(f'EotM: {error_on_mean}')
-        # raise RuntimeError
+            np.sqrt(star.getNumObs(time_slice)) * u.m / u.s
+
+    # print(f'Weighted mean: {weighted_mean}')
+    # print(f'Weight sum: {weight_sum}')
+    # print(offsets)
+    # print(type(offsets))
+    # print(f'STDDEV: {ma.std(offsets)}')
+    # print(np.sqrt(star.getNumObs(time_slice)))
+    # print(f'EotWM: {error_on_weighted_mean}')
+    # print(f'EotM: {error_on_mean}')
+    # raise RuntimeError
 
     return (weighted_mean, error_on_weighted_mean, error_on_mean)
 
