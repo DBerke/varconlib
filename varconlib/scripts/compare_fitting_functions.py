@@ -187,6 +187,58 @@ def plot_per_transition():
             file_name = plots_dir / f'{quantity}_{function}.png'
             # plt.show(fig)
             fig.savefig(str(file_name))
+
+    for file, corr_file, function in tqdm(zip(files, corr_files,
+                                              functions.keys())):
+        with open(file, 'r', newline='') as f:
+            data = np.loadtxt(f, delimiter=',')
+        with open(corr_file, 'r', newline='') as f:
+            corr_data = np.loadtxt(f, delimiter=',')
+
+        fig = plt.figure(figsize=(11, 7), tight_layout=True)
+        ax_pre = fig.add_subplot(2, 1, 1)
+        ax_post = fig.add_subplot(2, 1, 2)
+
+        x = data[:, 0]
+        corr_x = corr_data[:, 0]
+        for ax, time in zip((ax_pre, ax_post), ('pre', 'post')):
+            ax.set_xlabel(f'{time.capitalize()}-fiber change index, {function}')
+            ax.set_ylabel(r'$\sigma_\mathrm{sys}/\sigma$')
+            ax.set_xlim(left=-1, right=len(x)+1)
+
+            ax.axhline(y=1, color='Black')
+
+            ax.xaxis.set_major_locator(ticker.MultipleLocator(base=10))
+            ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=2))
+
+            ax.xaxis.grid(which='both', color='Gray',
+                          linestyle='-', alpha=0.6)
+            ax.yaxis.grid(which='major', color='Gray',
+                          linestyle='--', alpha=0.4)
+
+            y_sig = data[:, cols[f'sigma_{time}']]
+            y_sig_sys = data[:, cols[f'sigma_sys_{time}']]
+            # y_sig_corr = corr_data[:, cols[f'sigma_{time}']]
+            # y_sig_sys_corr = corr_data[:, cols[f'sigma_sys_{time}']]
+
+            ax.plot(x, y_sig_sys / y_sig, color='LightCoral',
+                    marker='+',
+                    label=r'$\sigma_\mathrm{sys}/\sigma$',
+                    markeredgecolor='Black',
+                    markersize=6)
+            # ax.plot(x, y_sig_sys, color='Green',
+            #         marker='+',
+            #         label=quantities['sigma_sys'],
+            #         markeredgecolor='Black',
+            #         markersize=6)
+
+        ax_pre.legend(loc='best')
+        ax_post.legend(loc='best')
+
+        file_name = plots_dir / f'sigma-sigma_sys_{function}.png'
+        # plt.show(fig)
+        fig.savefig(str(file_name))
+
     sys.exit()
 
 
