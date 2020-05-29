@@ -558,7 +558,7 @@ class Star(object):
 
         if file_path.exists():
             # Save the previously existing file as a backup.
-            backup_path = file_path.with_name(file_path.stem + ".bak")
+            backup_path = file_path.with_suffix(".bak")
             os.replace(file_path, backup_path)
 
         for dataset_name, attr_name in self.unyt_arrays.items():
