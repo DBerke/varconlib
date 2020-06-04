@@ -150,7 +150,7 @@ def get_transition_data_point(star, time_slice, col_index, fit_params=None):
         error_on_mean = stddev / np.sqrt(star.getNumObs(time_slice))
     else:
         stddev = 0
-        error_on_mean = errs[0]
+        error_on_mean = errs[0]  # Because there's only one error in the array.
 
     return (weighted_mean, error_on_weighted_mean, error_on_mean, stddev)
 
