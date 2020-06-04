@@ -135,10 +135,10 @@ class TestStar(object):
         assert test_star.bervArray[obs_num] ==\
             pytest.approx(expected * u.km / u.s)
 
-    def testDumpAndRestoreData(self, test_star, tmp_dir):
+    def testSaveAndRestoreData(self, test_star, tmp_dir):
         star_name = test_star.name
         tmp_file_path = tmp_dir / f'{star_name}_data.hdf5'
-        test_star.dumpDataToDisk(tmp_file_path)
+        test_star.saveDataToDisk(tmp_file_path)
         new_star = Star(star_name, tmp_dir)
 
         for name in test_star.unyt_arrays.values():
