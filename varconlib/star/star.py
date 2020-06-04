@@ -60,13 +60,21 @@ class Star(object):
         of the measured mean of each absorption feature in each observation of
         the star. Rows correspond to observations, columns to transitions.
         Units are m/s.
+    fitOffsetsCorrectedArray : `unyt.unyt_array`
+        A two-dimensional array holding the measured offsets from
+        fitOffsetsArray corrected for the systematic calibration errors in
+        HARPS.
+    ccdCorrectionArray : `unyt.unyt_array`
+        A two-dimensional array holding the corrections computed for each
+        transition at its location on the CCD, applied to fitOffsetsArray to
+        create fitOffsetsCorrectedArray.
     fitOffsetsNormalizedArray : 'unyt.unyt_array'
-        A two dimensional array holding the offset from the expected wavelength
+        A two-dimensional array holding the offset from the expected wavelength
         of the measured mean of each absorption feature in each observations of
         the star, with each row (corresponding to an observation) having been
         corrected by the measured radial velocity offset for that observation,
         determined as the mean value of the offsets of all transitions for that
-        observation.
+        observation from fitOffsetsCorrectedArray.
     pairSeparationsArray : `unyt.unyt_array`
         A two-dimensional array holding the velocity separation values for each
         pair of transitions for each observation of the star. Rows correspond
@@ -84,7 +92,7 @@ class Star(object):
         A two-dimensional array holding the reduced chi-squared value of the
         Gaussian fit to each transition for each observation of the star.
         Rows correspond to observations, columns to transitions.
-    airmassArray : `np.ndarray`
+    airmassArray : `np.ndarray` of floats
         A one-dimensional array holding the airmass for each observation of the
         star.
     _obs_date_bidict : `bidict_named.namedbidict`
@@ -98,8 +106,25 @@ class Star(object):
         A custom `namedbidict` with attributes 'label_for' and 'index_for'
         which can be used to get the pair label for a given index, and vice
         versa.
+    radialVelocity : `unyt.unyt_quantity`
+        The intrinsic radial velocity of the star.
+    temperature : `unyt.unyt_quantity`
+        The effective temperature of the star.
+    metallicity : float
+        The metallicity of the star.
+    absoluteMagnitude : float
+        The absolute V-band magnitude of the star.
+    apparentMagnitude : float
+        The apparent V-band magnitude of the star.
+    logg : float
+        The logarithm of the surface gravity of the star. Should technically
+        have units, but doesn't at the moment.
 
     """
+
+    # Define the version of the format being saved.
+    global CURRENT_VERSION
+    CURRENT_VERSION = '1.0.0'
 
     # Define dataset names and corresponding attribute names to be saved
     # and loaded when dumping star data.
@@ -114,16 +139,18 @@ class Star(object):
                    '/arrays/corrected_offsets': 'fitOffsetsCorrectedArray',
                    '/arrays/systematic_corrections': 'ccdCorrectionArray'}
 
-    other_attributes = {'/arrays/reduced_chi_squareds': 'chiSquaredNuArray',
+    other_attributes = {'/metadata/version': 'version',
+                        '/arrays/reduced_chi_squareds': 'chiSquaredNuArray',
                         '/arrays/airmasses': 'airmassArray',
                         '/bidicts/obs_date_bidict': '_obs_date_bidict',
                         '/bidicts/transition_bidict': '_transition_bidict',
                         '/bidicts/pair_bidict': '_pair_bidict',
-                        '/metadata/radial_velocity': 'radialVelocity',
-                        '/metadata/temperature': 'temperature',
-                        '/metadata/metallicity': 'metallicity',
-                        '/metadata/absolute_magnitude': 'absoluteMagnitude',
-                        '/metadata/logG': 'logG'}
+                        '/data/radial_velocity': 'radialVelocity',
+                        '/data/temperature': 'temperature',
+                        '/data/metallicity': 'metallicity',
+                        '/data/absolute_magnitude': 'absoluteMagnitude',
+                        '/data/apparent_magnitude': 'apparentMagnitude',
+                        '/data/logg': 'logg'}
 
     # Define some custom namedbidict objects.
     DateMap = namedbidict('ObservationDateMap', 'date', 'index')
@@ -181,6 +208,7 @@ class Star(object):
         """
 
         self.name = str(name)
+        self.version = CURRENT_VERSION
 
         # Initialize some attributes to be filled later.
         self._obs_date_bidict = self.DateMap()
@@ -201,7 +229,8 @@ class Star(object):
         self._temperature = None
         self._metallicity = None
         self._absoluteMagnitude = None
-        self._logG = None
+        self._apparentMagnitude = None
+        self._logg = None
 
         if transitions_list:
             self.transitionsList = transitions_list
@@ -210,20 +239,20 @@ class Star(object):
 
         if (star_dir is not None):
             star_dir = Path(star_dir)
-            hdf5file = star_dir / f'{name}_data.hdf5'
+            self.hdf5file = star_dir / f'{name}_data.hdf5'
             if load_data is False or\
-                    (load_data is None and not hdf5file.exists()):
+                    (load_data is None and not self.hdf5file.exists()):
                 self.constructFromDir(star_dir, suffix,
                                       pairs_list=pairs_list,
                                       transitions_list=transitions_list)
                 self.getPairSeparations()
-                self.dumpDataToDisk(hdf5file)
+                self.saveDataToDisk(self.hdf5file)
             elif (load_data is True or load_data is None)\
-                    and hdf5file.exists():
-                self.constructFromHDF5(hdf5file)
+                    and self.hdf5file.exists():
+                self.constructFromHDF5(self.hdf5file)
             else:
                 raise HDF5FileNotFoundError('No HDF5 file found for'
-                                            f' {hdf5file}.')
+                                            f' {self.hdf5file}.')
 
         # Figure out when the observations for the star were taken, and set the
         # appropriate flags.
@@ -539,7 +568,7 @@ class Star(object):
 
         return (corrected_array, mask_array)
 
-    def dumpDataToDisk(self, file_path):
+    def saveDataToDisk(self, file_path=None):
         """Save important data arrays to disk in HDF5 format.
 
         Saves various arrays which are time-consuming to create to disk in HDF5
@@ -553,7 +582,9 @@ class Star(object):
 
         """
 
-        if isinstance(file_path, str):
+        if file_path is None:
+            file_path = self.hdf5file
+        else:
             file_path = Path(file_path)
 
         if file_path.exists():
@@ -594,8 +625,8 @@ class Star(object):
                 try:
                     setattr(self, attr_name, hickle.load(f, path=path_name))
                 except AttributeError:
-                    print(self.name, attr_name, path_name)
-                    raise
+                    print(f'Attribute "{attr_name}" with path "{path_name}"'
+                          f' was not found in saved data for {self.name}.')
 
     def _correctCCDSystematic(self, order, pixel):
         """Return the velocity correction for a given pixel and order number.
@@ -808,22 +839,36 @@ class Star(object):
 
     @absoluteMagnitude.setter
     def absoluteMagnitude(self, new_mag):
-        if not isinstance(new_mag, (float, int)):
+        if not isinstance(new_mag, (float)):
             new_mag = float(new_mag)
         self._absoluteMagnitude = new_mag
 
     @property
-    def logG(self):
-        """Return the logarithm of the surface gravity of this star."""
-        if self._logG is None:
-            self._logG = self._getStellarProperty('logG')
-        return self._logG
+    def apparentMagnitude(self):
+        """Return the apparent magnitude of this star."""
+        if self._apparentMagnitude is None:
+            self._apparentMagnitude = self._getStellarProperty(
+                    'apparentMagnitude')
+        return self._apparentMagnitude
 
-    @logG.setter
-    def logG(self, new_log_g):
+    @apparentMagnitude.setter
+    def apparentMagnitude(self, new_mag):
+        if not isinstance(new_mag, (float)):
+            new_mag = float(new_mag)
+        self._apparentMagnitude = new_mag
+
+    @property
+    def logg(self):
+        """Return the logarithm of the surface gravity of this star."""
+        if self._logg is None:
+            self._logg = self._getStellarProperty('logg')
+        return self._logg
+
+    @logg.setter
+    def logg(self, new_log_g):
         if not isinstance(new_log_g, (float, int)):
             new_log_g = float(new_log_g)
-        self._logG = new_log_g
+        self._logg = new_log_g
 
     # TODO: Add an exposure time array?
     @property
@@ -870,7 +915,7 @@ class Star(object):
         Parameters
         ----------
         value, str : ['temperature', 'metallicity', 'absoluteMagnitude',
-                      'logG']
+                      'apparentMagnitude', 'logg']
             The property of the star to return.
 
         Returns
@@ -882,7 +927,8 @@ class Star(object):
         """
 
         row_values = {'temperature': 3, 'metallicity': 4,
-                      'absoluteMagnitude': 5, 'logG': 9}
+                      'absoluteMagnitude': 5, 'apparentMagnitude': 6,
+                      'logg': 9}
 
         if value not in row_values.keys():
             raise RuntimeError('Improper value for keyword "value"!')
@@ -893,12 +939,9 @@ class Star(object):
             if row[8] == self.name:
                 if value == 'temperature':
                     return round((10 ** float(row[row_values[value]])) * u.K)
-                elif value == 'metallicity':
+                else:
                     return float(row[row_values[value]])
-                elif value == 'absoluteMagnitude':
-                    return float(row[row_values[value]])
-                elif value == 'logG':
-                    return float(row[row_values[value]])
+
         # If the star isn't found in any row, throw an error.
         raise RuntimeError(f"Couldn't find {self.name} in table!")
 
@@ -922,7 +965,7 @@ class Star(object):
                 self._temperature = round((10 ** float(row[3])) * u.K)
                 self._metallicity = float(row[4])
                 self._absoluteMagnitude = float(row[5])
-                self._logG = float(row[9])
+                self._logg = float(row[9])
                 break
 
     def _getCasagrande2011(self, star_name):
@@ -947,7 +990,7 @@ class Star(object):
                 try:
                     self._temperature = int(row[3].strip()) * u.K
                     self._metallicity = float(row[5].strip())
-                    self._logG = float(row[2].strip())
+                    self._logg = float(row[2].strip())
                     break
                 except ValueError:
                     tqdm.write(f'Missing value for {row[1]}!')
