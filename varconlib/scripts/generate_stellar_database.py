@@ -273,7 +273,7 @@ def main():
             star_temperatures[i] = star.temperature
             star_metallicities[i] = star.metallicity
             star_magnitudes[i] = star.absoluteMagnitude
-            star_gravities[i] = star.logG
+            star_gravities[i] = star.logg
 
     star_transition_offsets *= star.fitOffsetsArray.units
     star_transition_offsets_EotWM *= star.fitErrorsArray.units
