@@ -16,6 +16,7 @@ from math import sqrt, tau
 import numpy as np
 from scipy.optimize import curve_fit
 from scipy.special import erf
+import unyt as u
 
 
 def constant_model(data, a):
@@ -337,3 +338,95 @@ def check_fit(function, xdata, ydata, func_params):
     """
 
     return ydata - function(xdata, *func_params)
+
+
+def find_sigma_sys(model_func, x_data, y_data, err_array, beta0):
+    """Find the systematic scatter in a dataset with a given model.
+
+    Takes a model function `model_func`, and arrays of x, y, and uncertainties
+    (which must have the same length) and an initial guess to the parameters of
+    the function, and fits the model to the data. It then checks the reduced
+    chi-squared value, and if it is greater than 1 (with a tolerance of 1e-3),
+    it adds an additional amount in quadrature to the error array and refits the
+    data, continuing until the chi-squared value is within the tolerance.
+
+    Parameters
+    ----------
+    model_func : callable
+        The function to fit the data with.
+    x_data : array-like
+        The array of x-values to fit.
+    y_data : array-like
+        The array of y-values to fit. Must have same length as `x_data`.
+    err_array : array-like
+        The error array for the y-values. Must have same length as `x_data` and
+        `y_data`.
+    beta0 : tuple
+        A tuple of values to use as the initial guesses for the paremeters in
+        the function given by `model_func`.
+
+    Returns
+    -------
+    tuple
+        A tuple of containing a tuple of the optimized parameters of the same
+        length as the number of parameters of `model_func` minus one, an
+        `np.array` containing the covariance matrix, a `unyt.unyt_array`
+        containing the residuals from the final fit, a `unyt.unyt_quantity`
+        holding the systematic error found, and the final value of the reduced
+        chi-squared value.
+
+    """
+
+    # Iterate to find what additional systematic error is needed
+    # to get a chi^2 of ~1.
+    chi_tol = 0.001
+    diff = 1
+    sys_err = 0 * u.m / u.s
+    num_iters = 0
+    sigma_sys_change_amount = 0.25  # Range (0, 1)
+
+    while diff > chi_tol:
+
+        num_iters += 1
+
+        iter_err_array = np.sqrt(np.square(err_array) +
+                                 np.square(sys_err))
+
+        popt, pcov = curve_fit(model_func, x_data, y_data,
+                               sigma=iter_err_array,
+                               p0=beta0,
+                               absolute_sigma=True,
+                               method='lm', maxfev=10000)
+
+        results = u.unyt_array(model_func(x_data, *popt),
+                               units=u.m/u.s)
+
+        residuals = y_data - results
+
+        # Find the chi^2 value for this distribution:
+        chi_squared = np.sum((residuals / iter_err_array) ** 2)
+        dof = len(y_data) - len(popt)
+        chi_squared_nu = chi_squared / dof
+
+        diff = abs(chi_squared_nu - 1)
+        if diff > 2:
+            sigma_sys_change_amount = 0.75
+        elif diff > 1:
+            sigma_sys_change_amount = 0.5
+        else:
+            sigma_sys_change_amount = 0.25
+
+        if chi_squared_nu > 1:
+            if sys_err.value == 0:
+                sys_err = np.sqrt(chi_squared_nu) * u.m / u.s
+            else:
+                sys_err *= (1 + sigma_sys_change_amount)
+        elif chi_squared_nu < 1:
+            if sys_err.value == 0:
+                # If the chi-squared value is naturally lower
+                # than 1, don't change anything, just exit.
+                break
+            else:
+                sys_err *= (1 - sigma_sys_change_amount)
+
+    return (popt, pcov, residuals, sys_err, chi_squared_nu)

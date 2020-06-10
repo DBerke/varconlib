@@ -459,65 +459,12 @@ def main():
                 beta0 = tuple(params_list)
                 vprint(beta0)
 
-                # Iterate to find what additional systematic error is needed
-                # to get a chi^2 of ~1.
-                chi_tol = 0.001
-                diff = 1
-                sys_err = 0 * u.m / u.s
-                num_iters = 0
-                sigma_sys_change_amount = 0.25  # Range (0, 1)
+                popt, pcov, residuals, sys_err, chi_squared_nu =\
+                    fit.find_sigma_sys(model_func, x_data, offsets, err_array,
+                                       beta0)
 
-                while diff > chi_tol:
-
-                    num_iters += 1
-
-                    vprint(f'Applying sys_err of {sys_err}')
-                    iter_err_array = np.sqrt(np.square(err_array) +
-                                             np.square(sys_err))
-                    popt, pcov = fit.curve_fit_data(model_func, x_data,
-                                                    offsets, beta0,
-                                                    sigma=iter_err_array)
-
-                    vprint(popt)
-                    results = u.unyt_array(model_func(x_data, *popt),
-                                           units=u.m/u.s)
-
-                    residuals = offsets - results
-
-                    # Find the chi^2 value for this distribution:
-                    chi_squared = np.sum((residuals / iter_err_array) ** 2)
-                    dof = len(offsets) - len(popt)
-                    vprint(f'  DOF = {len(offsets)} - {len(popt)} = {dof}')
-                    chi_squared_nu = chi_squared / dof
-
-                    vprint(f'  Mean for {time} is {np.nanmean(residuals):.3f},'
-                           f'  median is {np.nanmedian(residuals)},\n'
-                           f'  chi^2_nu is {chi_squared_nu}')
-
-                    diff = abs(chi_squared_nu - 1)
-                    if diff > 2:
-                        sigma_sys_change_amount = 0.75
-                    elif diff > 1:
-                        sigma_sys_change_amount = 0.5
-                    else:
-                        sigma_sys_change_amount = 0.25
-
-                    if chi_squared_nu > 1:
-                        if sys_err.value == 0:
-                            sys_err = np.sqrt(chi_squared_nu) * u.m / u.s
-                        else:
-                            sys_err *= (1 + sigma_sys_change_amount)
-                    elif chi_squared_nu < 1:
-                        if sys_err.value == 0:
-                            # If the chi-squared value is naturally lower
-                            # than 1, don't change anything, just exit.
-                            break
-                        else:
-                            sys_err *= (1 - sigma_sys_change_amount)
-
-                # print(label, time, results[135])
                 vprint(f'Terminated with sys_err = {sys_err}')
-                vprint(f'Finished {label}_{time} in {num_iters} steps.')
+                # vprint(f'Finished {label}_{time} in {num_iters} steps.')
                 # Add the optimized parameters and covariances to the
                 # dictionary. Make sure we separate them by time period.
                 coefficients_dict[label + '_' + time] = popt
