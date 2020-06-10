@@ -296,7 +296,7 @@ def main():
         model_name = Path(args.fit_params_file).stem
         db_file = vcl.databases_dir / f'stellar_db_{model_name}.hdf5'
 
-    vprint(f'Writing output to {str(db_file)}')
+    tqdm.write(f'Writing output to {str(db_file)}')
     if db_file.exists():
         backup_path = db_file.with_name(db_file.stem + '.bak')
         os.replace(db_file, backup_path)
