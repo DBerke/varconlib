@@ -212,7 +212,9 @@ def main():
             transition_labels.append('_'.join([transition.label,
                                                str(order_num)]))
 
-    column_dict = {label: num for num, label in enumerate(transition_labels)}
+    # Create a bidict to map transition labels to column numbers.
+    columns = {label: num for num, label in enumerate(transition_labels)}
+    column_dict = bidict(columns)
 
     # Define the data structures to fill with results:
     # EotM = error on the mean
