@@ -398,8 +398,7 @@ def find_sigma_sys(model_func, x_data, y_data, err_array, beta0):
                                absolute_sigma=True,
                                method='lm', maxfev=10000)
 
-        results = u.unyt_array(model_func(x_data, *popt),
-                               units=u.m/u.s)
+        results = model_func(x_data, *popt)
 
         residuals = y_data - results
 
