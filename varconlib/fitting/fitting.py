@@ -399,15 +399,12 @@ def find_sigma_sys(model_func, x_data, y_data, err_array, beta0,
     chi_tol = tolerance
     diff = 1
     sys_err = 0
-    num_iters = 0
     sigma_sys_change_amount = 0.25  # Range (0, 1)
 
     chi_squared_list = []
     sigma_sys_list = []
 
     while diff > chi_tol:
-
-        num_iters += 1
 
         iter_err_array = np.sqrt(np.square(err_array) +
                                  np.square(sys_err))
