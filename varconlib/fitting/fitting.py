@@ -340,7 +340,8 @@ def check_fit(function, xdata, ydata, func_params):
     return ydata - function(xdata, *func_params)
 
 
-def find_sigma_sys(model_func, x_data, y_data, err_array, beta0):
+def find_sigma_sys(model_func, x_data, y_data, err_array, beta0,
+                   tolerance=0.001):
     """Find the systematic scatter in a dataset with a given model.
 
     Takes a model function `model_func`, and arrays of x, y, and uncertainties
@@ -364,26 +365,45 @@ def find_sigma_sys(model_func, x_data, y_data, err_array, beta0):
     beta0 : tuple
         A tuple of values to use as the initial guesses for the paremeters in
         the function given by `model_func`.
+    tolerance : float, Default : 0.001
+        The distance from one within which the chi-squared per degree of freedom
+        must fall for the iteration to exit. (Note that if the chi-squared value
+        is naturally less than one on the first iteration, the iteration with
+        end even if the value is not closer to one than the tolerance.)
 
     Returns
     -------
-    tuple
-        A tuple of containing a tuple of the optimized parameters of the same
-        length as the number of parameters of `model_func` minus one, an
-        `np.array` containing the covariance matrix, a `unyt.unyt_array`
-        containing the residuals from the final fit, a `unyt.unyt_quantity`
-        holding the systematic error found, and the final value of the reduced
-        chi-squared value.
+    dict
+        A dictionary containing the following keys:
+            popt : tuple
+                A tuple of the optimized values found by the fitting routine
+                for the parameters.
+            pcov : `np.array`
+                The covariance matrix for the fit.
+            residuals : `np.array`
+                The value of `y_data` minus the model values at all given
+                independent variables.
+            sys_err_list : list of floats
+                A list conainting the values of the systematic error at each
+                iteration. The last value is the values which brings the
+                chi-squared per degree of freedom for the data within the
+                tolerance to one.
+            chi_squared_list : list of floats
+                A list containing the calculated chi-squared per degree of
+                freedom for each step of the iteration.
 
     """
 
     # Iterate to find what additional systematic error is needed
     # to get a chi^2 of ~1.
-    chi_tol = 0.001
+    chi_tol = tolerance
     diff = 1
-    sys_err = 0 * u.m / u.s
+    sys_err = 0
     num_iters = 0
     sigma_sys_change_amount = 0.25  # Range (0, 1)
+
+    chi_squared_list = []
+    sigma_sys_list = []
 
     while diff > chi_tol:
 
@@ -398,14 +418,17 @@ def find_sigma_sys(model_func, x_data, y_data, err_array, beta0):
                                absolute_sigma=True,
                                method='lm', maxfev=10000)
 
-        results = model_func(x_data, *popt)
+        model_values = model_func(x_data, *popt)
 
-        residuals = y_data - results
+        residuals = y_data - model_values
 
         # Find the chi^2 value for this distribution:
         chi_squared = np.sum((residuals / iter_err_array) ** 2)
         dof = len(y_data) - len(popt)
         chi_squared_nu = chi_squared / dof
+
+        sigma_sys_list.append(sys_err)
+        chi_squared_list.append(chi_squared_nu)
 
         diff = abs(chi_squared_nu - 1)
         if diff > 2:
@@ -416,16 +439,21 @@ def find_sigma_sys(model_func, x_data, y_data, err_array, beta0):
             sigma_sys_change_amount = 0.25
 
         if chi_squared_nu > 1:
-            if sys_err.value == 0:
-                sys_err = np.sqrt(chi_squared_nu) * u.m / u.s
+            if sys_err == 0:
+                sys_err = np.sqrt(chi_squared_nu)
             else:
                 sys_err *= (1 + sigma_sys_change_amount)
         elif chi_squared_nu < 1:
-            if sys_err.value == 0:
+            if sys_err == 0:
                 # If the chi-squared value is naturally lower
                 # than 1, don't change anything, just exit.
                 break
             else:
                 sys_err *= (1 - sigma_sys_change_amount)
 
-    return (popt, pcov, residuals, sys_err, chi_squared_nu)
+    results_dict = {'popt': popt, 'pcov': pcov,
+                    'residuals': residuals,
+                    'sys_err_list': sigma_sys_list,
+                    'chi_squared_list': chi_squared_list}
+
+    return results_dict
