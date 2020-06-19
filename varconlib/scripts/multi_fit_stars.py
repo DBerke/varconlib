@@ -391,8 +391,6 @@ def main():
 
                 vprint(20 * '=')
                 vprint(f'Working on {time}-change era.')
-                # median = np.nanmedian(star_transition_offsets[eras[time],
-                #                                               :, col])
                 mean = np.nanmean(star_transition_offsets[eras[time],
                                   :, col])
 
@@ -410,9 +408,7 @@ def main():
 #                m_stds = m_stds.reshape([len(m_stds), 1])
 #                stds = u.unyt_array(m_stds[~m_stds.mask],
 #                                    units=u.m/u.s)
-#                print(stds.shape)
-#                print(m_stds)
-#
+
                 m_eotwms = ma.masked_invalid(star_transition_offsets_EotWM[
                         eras[time], :, col])
                 m_eotwms = m_eotwms.reshape([len(m_eotwms), 1])
@@ -432,8 +428,6 @@ def main():
                 vprint(f'Mean is {np.mean(offsets)}')
                 weighted_mean = np.average(offsets, weights=err_array**-2)
                 vprint(f'Weighted mean is {weighted_mean}')
-                # pprint(offsets)
-                # pprint(eotms)
 
                 # Mask the various stellar parameter arrays with the same mask
                 # so that everything stays in sync.
@@ -459,16 +453,21 @@ def main():
                 beta0 = tuple(params_list)
                 vprint(beta0)
 
-                popt, pcov, residuals, sys_err, chi_squared_nu =\
-                    fit.find_sigma_sys(model_func, x_data, offsets, err_array,
-                                       beta0)
+                results = fit.find_sigma_sys(model_func, x_data, offsets.value,
+                                             err_array.value, beta0)
+
+                residuals = u.unyt_array(results['residuals'],
+                                         units=u.m/u.s)
+                chi_squared_nu = results['chi_squared_list'][-1]
+                sys_err = results['sys_err_list'][-1] * u.m / u.s
 
                 vprint(f'Terminated with sys_err = {sys_err}')
-                # vprint(f'Finished {label}_{time} in {num_iters} steps.')
+                vprint(f'Finished {label}_{time} in'
+                       f' {len(results[sigma_sys_list])} steps.')
                 # Add the optimized parameters and covariances to the
                 # dictionary. Make sure we separate them by time period.
-                coefficients_dict[label + '_' + time] = popt
-                covariance_dict[label + '_' + time] = pcov
+                coefficients_dict[label + '_' + time] = results['popt']
+                covariance_dict[label + '_' + time] = results['pcov']
 
                 sigma = np.nanstd(residuals)
 
@@ -476,11 +475,11 @@ def main():
                 sigma_sys_dict[label + '_' + time] = sys_err
 
                 if time == 'pre':
-                    chi_squareds_pre.append(chi_squared_nu.value)
+                    chi_squareds_pre.append(chi_squared_nu)
                     sigmas_pre.append(sigma.value)
                     sigma_sys_pre.append(sys_err.value)
                 else:
-                    chi_squareds_post.append(chi_squared_nu.value)
+                    chi_squareds_post.append(chi_squared_nu)
                     sigmas_post.append(sigma.value)
                     sigma_sys_post.append(sys_err.value)
 
@@ -527,7 +526,7 @@ def main():
                                 (0.01, 0.99),
                                 xycoords='axes fraction',
                                 verticalalignment='top')
-                    ax.annotate(fr'$\chi^2_\nu$: {chi_squared_nu.value:.4f}'
+                    ax.annotate(fr'$\chi^2_\nu$: {chi_squared_nu:.4f}'
                                 '\n'
                                 fr'$\sigma$: {sigma:.2f}',
                                 (0.99, 0.99),
