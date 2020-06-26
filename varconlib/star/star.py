@@ -879,6 +879,26 @@ class Star(object):
 
         return self._fiberSplitIndex
 
+    @property
+    def numObsPre(self):
+        """Return the number of observations pre-fiber-change for this star."""
+        if self.fiberSplitIndex == 0:
+            return 0
+        elif self.fiberSplitIndex is None:
+            return self.getNumObs()
+        else:
+            return self.getNumObs(slice(None, self.fiberSplitIndex))
+
+    @property
+    def numObsPost(self):
+        """Return the number of observations post-fiber-change for this star."""
+        if self.fiberSplitIndex == 0:
+            return self.getNumObs()
+        elif self.fiberSplitIndex is None:
+            return 0
+        else:
+            return self.getNumObs(slice(self.fiberSplitIndex, None))
+
     def getStellarParameters(self, paper_name):
         """
         Set the stellar parameters based on the paper given.
@@ -1006,6 +1026,12 @@ class Star(object):
                in which case the returned value will be a positive integer.
             3. All observations are prior to the fiber change, in which case
                `None` will be returned as it runs off the end of the list.
+
+        Returns
+        -------
+        int or None
+            Either 0, a positive integer, or None, depending on the three cases
+            mentioned above.
         """
 
         dates = [dt.datetime.fromisoformat(s) for s in
