@@ -10,6 +10,7 @@ function of stellar parameters using different functions.
 """
 
 import argparse
+import os
 from pathlib import Path
 import pickle
 
@@ -101,6 +102,8 @@ def plot_per_transition():
     """
 
     plots_dir = Path('/Users/dberke/Pictures/fitting_comparisons')
+    if not plots_dir.exists():
+        os.mkdir(plots_dir)
 
     cols = {'index': 0,
             'chi_squared_pre': 1,
