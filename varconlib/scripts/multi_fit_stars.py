@@ -463,7 +463,7 @@ def main():
 
                 vprint(f'Terminated with sys_err = {sys_err}')
                 vprint(f'Finished {label}_{time} in'
-                       f' {len(results[sigma_sys_list])} steps.')
+                       f' {len(results["sys_err_list"])} steps.')
                 # Add the optimized parameters and covariances to the
                 # dictionary. Make sure we separate them by time period.
                 coefficients_dict[label + '_' + time] = results['popt']
