@@ -115,14 +115,8 @@ def create_parameter_comparison_figures(ylims=None,
 
     # Axis styles for all subplots.
     for ax in all_axes:
-        if not args.full_range:
-            ax.yaxis.set_major_locator(ticker.MultipleLocator(
-                                      base=100))
-            ax.yaxis.set_minor_locator(ticker.MultipleLocator(
-                                      base=50))
-        else:
-            ax.yaxis.set_major_locator(ticker.AutoLocator())
-            ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.yaxis.set_major_locator(ticker.AutoLocator())
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax.axhline(y=0, color='Black', linestyle='--')
         ax.yaxis.grid(which='major', color='Gray',
                       linestyle='--', alpha=0.65)
@@ -204,9 +198,10 @@ def main():
     for i in range(len(signature(model_func).parameters)-1):
         params_list.append(0.)
 
-    label = '4589.484Cr2_28'
+    # label = '4589.484Cr2_28'
     # label = '6192.900Ni1_61'
     # label = '6178.520Ni1_61'
+    label = args.label
 
     # The column number to use for this transition:
     col = column_dict[label]
@@ -305,7 +300,7 @@ def main():
         for name in tqdm(arrays_dict.keys()):
             sigma_sys_list = []
             bin_mid_list = []
-            for bin_lims in tqdm(pairwise(bin_dict[name])):
+            for bin_lims in pairwise(bin_dict[name]):
                 lower, upper = bin_lims
                 bin_mid_list.append((lower + upper)/2)
                 mask_array = ma.masked_outside(arrays_dict[name], *bin_lims)
@@ -367,7 +362,10 @@ def main():
             #             verticalalignment='top')
             data = np.array(ma.masked_invalid(residuals).compressed())
 
+    file_name = Path('/Users/dberke/Pictures/'
+                     f'sigma_sys_stellar_parameter_dependance/{label}.png')
     plt.show()
+    comp_fig.savefig(str(file_name))
 
 
 if __name__ == '__main__':
@@ -375,9 +373,9 @@ if __name__ == '__main__':
                                      ' error needed to reach a chi-squared'
                                      ' value of 1 as a function of various'
                                      ' stellar parameters.')
-    parser.add_argument('--full-range', action='store_true',
-                        help='Plot the full range of values instead of'
-                        ' restricting to a  fixed range.')
+    parser.add_argument('--label', action='store', type=str,
+                        help='The label of the transition to plot (e.g. '
+                        "'4589.484Cr2_28'.")
     parser.add_argument('--nbins', action='store', type=int,
                         default=5,
                         help='The number of bins to use (default: 5).')
