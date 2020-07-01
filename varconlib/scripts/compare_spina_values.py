@@ -7,13 +7,16 @@ Created on Mon Jun 22 14:43:05 2020
 """
 
 from pathlib import Path
+import pickle
 import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 
+import varconlib as vcl
 from varconlib.star import Star
+from varconlib.exceptions import HDF5FileNotFoundError
 
 hd_dict = {'ALPCENA': 'HD128620',
            'BETA-HYI': 'HD2151',
@@ -103,13 +106,36 @@ hd_dict = {'ALPCENA': 'HD128620',
            'CL01510': 'HD11131',
            'HIP103983': 'HD176983'}
 
-data_file = Path('/Users/dberke/code/varconlib/data/Casali20_params.csv')
+casali_dict_file = vcl.data_dir / 'Casali_star_dict.pkl'
+with open(casali_dict_file, 'rb') as f:
+    casali_dict = pickle.load(f)
+
+if 'HD114174' in casali_dict.values():
+    print('Found HD114174')
+
+hd_dict.update(casali_dict)
+
+sp1_stars_file = vcl.data_dir / 'SP1_Sample.csv'
+
+sp1_names = np.loadtxt(sp1_stars_file, delimiter=',', usecols=0, dtype=str)
+sp1_names = set([''.join(name.split(' ')) for name in sp1_names])
+print(sp1_names)
+
+data_file = vcl.data_dir / 'Casali20_Solutions_all_nooutliers_good.csv'
 
 with open(data_file, 'r') as f:
     data = np.loadtxt(data_file, delimiter=',', skiprows=1,
-                      usecols=(0, 1, 2, 3, 5, 6, 7), dtype=str)
+                      usecols=(0, 1, 2, 3), dtype=str)
 
 names = [name for name in data[:, 0]]
+
+sp1_teff = []
+sp1_logg = []
+sp1_feh = []
+
+sp1_casagrande_teff = []
+sp1_casagrande_logg = []
+sp1_casagrande_feh = []
 
 teff_list = []
 logg_list = []
@@ -120,6 +146,7 @@ casagrande_logg = []
 casagrande_feh = []
 
 num_matched_stars = 0
+num_sp1_stars = 0
 
 tqdm.write('Matching stars...')
 for name in tqdm(names):
@@ -133,22 +160,39 @@ for name in tqdm(names):
             path = Path(f'/Users/dberke/data_output/{name}')
             # tqdm.write(str(path))
             if path.exists():
+                try:
+                    star = Star(name, path, load_data=True)
+                except HDF5FileNotFoundError:
+                    continue
+                tqdm.write(f'Matched {name} ({row[0]})')
                 num_matched_stars += 1
-                star = Star(name, path, load_data=True)
+                if name in sp1_names:
+                    tqdm.write('Matched SP1 star')
+                    sp1_teff.append(float(row[1]))
+                    sp1_logg.append(float(row[2]))
+                    sp1_feh.append(float(row[3]))
+                    sp1_casagrande_teff.append(star.temperature.value)
+                    sp1_casagrande_logg.append(star.logg)
+                    sp1_casagrande_feh.append(star.metallicity)
+                    num_sp1_stars += 1
+
                 teff_list.append(float(row[1]))
                 logg_list.append(float(row[2]))
                 feh_list.append(float(row[3]))
                 casagrande_teff.append(star.temperature.value)
                 casagrande_logg.append(star.logg)
                 casagrande_feh.append(star.metallicity)
-            else:
-                tqdm.write(f"{name} wasn't matched.")
 
 tqdm.write(f'Matched {num_matched_stars} stars.')
+tqdm.write(f'Matched {num_sp1_stars} SP1 stars.')
 
 temperatures = np.array(casagrande_teff) - np.array(teff_list)
 loggs = np.array(casagrande_logg) - np.array(logg_list)
 metallicities = np.array(casagrande_feh) - np.array(feh_list)
+
+sp1_temperatures = np.array(sp1_casagrande_teff) - np.array(sp1_teff)
+sp1_loggs = np.array(sp1_casagrande_logg) - np.array(sp1_logg)
+sp1_metallicities = np.array(sp1_casagrande_feh) - np.array(sp1_feh)
 
 t_lim_lower = 5500
 t_lim_upper = 6100
@@ -163,8 +207,8 @@ ax1.set_ylabel('Spina+2020 Temperature (K)')
 ax1.set_xlim(left=t_lim_lower, right=t_lim_upper)
 ax1.set_ylim(bottom=t_lim_lower, top=t_lim_upper)
 
-logg_lim_lower = 4
-logg_lim_upper = 4.7
+logg_lim_lower = 4.1
+logg_lim_upper = 4.6
 x2 = (logg_lim_lower, logg_lim_upper)
 y2 = np.linspace(*x2, 2)
 
@@ -185,18 +229,41 @@ ax3.set_ylabel('Spina+2020 [Fe/H]')
 ax3.set_xlim(left=feh_lim_lower, right=feh_lim_upper)
 ax3.set_ylim(bottom=feh_lim_lower, top=feh_lim_upper)
 
+point_color = 'CornflowerBlue'
+sp1_point_color = 'DarkSalmon'
+
 ax1.plot(casagrande_teff, teff_list,
-         linestyle='', marker='o')
+         linestyle='', marker='o',
+         color=point_color, markeredgecolor='Black')
+ax1.plot(sp1_casagrande_teff, sp1_teff,
+         linestyle='', marker='o',
+         color=sp1_point_color, markeredgecolor='Black',
+         label='SP1 stars')
 ax1.plot(x1, y1,
          color='Black')
+ax1.legend()
+
 ax2.plot(casagrande_logg, logg_list,
-         linestyle='', marker='o')
+         linestyle='', marker='o',
+         color=point_color, markeredgecolor='Black')
+ax2.plot(sp1_casagrande_logg, sp1_logg,
+         linestyle='', marker='o',
+         color=sp1_point_color, markeredgecolor='Black',
+         label='SP1 stars')
 ax2.plot(x2, y2,
          color='Black')
+ax2.legend()
+
 ax3.plot(casagrande_feh, feh_list,
-         linestyle='', marker='o')
+         linestyle='', marker='o',
+         color=point_color, markeredgecolor='Black')
+ax3.plot(sp1_casagrande_feh, sp1_feh,
+         linestyle='', marker='o',
+         color=sp1_point_color, markeredgecolor='Black',
+         label='SP1 stars')
 ax3.plot(x3, y3,
          color='Black')
+ax3.legend()
 
 ax4 = fig.add_subplot(2, 3, 4)
 ax4.set_xlabel('Casagrande+2011 Temperature (K)')
@@ -204,8 +271,14 @@ ax4.set_ylabel('(Casagrande+2011 – Spina+2020) Temperature (K)')
 ax4.set_xlim(left=t_lim_lower, right=t_lim_upper)
 
 ax4.plot(casagrande_teff, temperatures,
-         linestyle='', marker='o')
+         linestyle='', marker='o',
+         color=point_color, markeredgecolor='Black')
+ax4.plot(sp1_casagrande_teff, sp1_temperatures,
+         linestyle='', marker='o',
+         color=sp1_point_color, markeredgecolor='Black',
+         label='SP1 stars')
 ax4.axhline(y=0, color='Black')
+ax4.legend()
 
 ax5 = fig.add_subplot(2, 3, 5)
 ax5.set_xlabel('Casagrande+2011 log(g)')
@@ -213,15 +286,30 @@ ax5.set_ylabel('(Casagrande+2011 – Spina+2020) log(g)')
 ax5.set_xlim(left=logg_lim_lower, right=logg_lim_upper)
 
 ax5.plot(casagrande_logg, loggs,
-         linestyle='', marker='o')
+         linestyle='', marker='o',
+         color=point_color, markeredgecolor='Black')
+ax5.plot(sp1_casagrande_logg, sp1_loggs,
+         linestyle='', marker='o',
+         color=sp1_point_color, markeredgecolor='Black',
+         label='SP1 stars')
 ax5.axhline(y=0, color='Black')
+ax5.legend()
 
 ax6 = fig.add_subplot(2, 3, 6)
 ax6.set_xlabel('Casagrande+2011 [Fe/H]')
 ax6.set_ylabel('(Casagrande+2011 – Spina+2020) [Fe/H]')
 
 ax6.plot(casagrande_feh, metallicities,
-         linestyle='', marker='o')
+         linestyle='', marker='o',
+         color=point_color, markeredgecolor='Black')
+ax6.plot(sp1_casagrande_feh, sp1_metallicities,
+         linestyle='', marker='o',
+         color=sp1_point_color, markeredgecolor='Black',
+         label='SP1 stars')
+ax6.axhline(y=0, color='Black')
+ax6.legend()
 
 
-plt.show(fig)
+# plt.show(fig)
+outfile = '/Users/dberke/Pictures/Spina_Casagrande_comparison.png'
+fig.savefig(outfile)
