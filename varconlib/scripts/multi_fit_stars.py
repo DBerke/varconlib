@@ -105,11 +105,11 @@ def create_parameter_comparison_figures(ylims=None,
     mtl_ax_post = comp_fig.add_subplot(gs[1, 1],
                                        sharex=mtl_ax_pre,
                                        sharey=mtl_ax_pre)
-    mag_ax_pre = comp_fig.add_subplot(gs[0, 2],
-                                      sharey=temp_ax_pre)
-    mag_ax_post = comp_fig.add_subplot(gs[1, 2],
-                                       sharex=mag_ax_pre,
-                                       sharey=mag_ax_pre)
+    logg_ax_pre = comp_fig.add_subplot(gs[0, 2],
+                                       sharey=temp_ax_pre)
+    logg_ax_post = comp_fig.add_subplot(gs[1, 2],
+                                        sharex=logg_ax_pre,
+                                        sharey=logg_ax_pre)
     hist_ax_pre = comp_fig.add_subplot(gs[0, 3],
                                        sharey=temp_ax_pre)
     hist_ax_post = comp_fig.add_subplot(gs[1, 3],
@@ -117,7 +117,7 @@ def create_parameter_comparison_figures(ylims=None,
                                         sharey=hist_ax_pre)
 
     all_axes = (temp_ax_pre, temp_ax_post, mtl_ax_pre, mtl_ax_post,
-                mag_ax_pre, mag_ax_post, hist_ax_pre, hist_ax_post)
+                logg_ax_pre, logg_ax_post, hist_ax_pre, hist_ax_post)
     # Set the plot limits here. The y-limits for temp_ax1 are
     # used for all subplots.
     if ylims is not None:
@@ -127,8 +127,8 @@ def create_parameter_comparison_figures(ylims=None,
                          right=temp_lims[1])
     mtl_ax_pre.set_xlim(left=mtl_lims[0],
                         right=mtl_lims[1])
-    mag_ax_pre.set_xlim(left=mag_lims[0],
-                        right=mag_lims[1])
+    logg_ax_pre.set_xlim(left=logg_lims[0],
+                         right=logg_lims[1])
 
     # Axis styles for all subplots.
     for ax in all_axes:
@@ -157,10 +157,10 @@ def create_parameter_comparison_figures(ylims=None,
         ax.set_xlabel('Metallicity [Fe/H]')
         ax.xaxis.set_major_locator(ticker.MultipleLocator(base=0.2))
         ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=0.1))
-    for ax in (mag_ax_pre, mag_ax_post):
-        ax.set_xlabel('Absolute Magnitude')
-        ax.xaxis.set_major_locator(ticker.MultipleLocator(base=0.5))
-        ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=0.25))
+    for ax in (logg_ax_pre, logg_ax_post):
+        ax.set_xlabel(r'log $g (\mathrm{cm}/\mathrm{s}^2)$')
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(base=0.1))
+        ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=0.05))
 
     # Just label the left-most two subplots' y-axes.
     for ax, era in zip((temp_ax_pre, temp_ax_post),
@@ -169,7 +169,7 @@ def create_parameter_comparison_figures(ylims=None,
 
     axes_dict = {'temp_pre': temp_ax_pre, 'temp_post': temp_ax_post,
                  'mtl_pre': mtl_ax_pre, 'mtl_post': mtl_ax_post,
-                 'mag_pre': mag_ax_pre, 'mag_post': mag_ax_post,
+                 'logg_pre': logg_ax_pre, 'logg_post': logg_ax_post,
                  'hist_pre': hist_ax_pre, 'hist_post': hist_ax_post}
 
     return comp_fig, axes_dict
@@ -275,8 +275,8 @@ def main():
     # Define the limits to plot in the various stellar parameters.
     temp_lims = (5400, 6300) * u.K
     mtl_lims = (-0.75, 0.45)
-    mag_lims = (4, 5.8)
-    # logg_lims = (4.1, 4.6)
+    # mag_lims = (4, 5.8)
+    logg_lims = (4.1, 4.6)
 
     # Define the model to use:
     if args.constant:
@@ -331,14 +331,14 @@ def main():
     with h5py.File(db_file, mode='r') as f:
 
         star_metallicities = hickle.load(f, path='/star_metallicities')
-        star_magnitudes = hickle.load(f, path='/star_magnitudes')
-#        star_gravities = hickle.load(f, path='/star_gravities')
+        # star_magnitudes = hickle.load(f, path='/star_magnitudes')
+        star_gravities = hickle.load(f, path='/star_gravities')
         column_dict = hickle.load(f, path='/transition_column_index')
         star_names = hickle.load(f, path='/star_row_index')
 
     # Handle various fitting and plotting setup:
     eras = {'pre': 0, 'post': 1}
-    param_dict = {'temp': 0, 'mtl': 1, 'mag': 2}
+    param_dict = {'temp': 0, 'mtl': 1, 'logg': 2}
 
     # Create lists to store information about each fit in:
     index_nums = []
@@ -385,7 +385,7 @@ def main():
                             ylims=ylimits,
                             temp_lims=temp_lims,
                             mtl_lims=mtl_lims,
-                            mag_lims=mag_lims)
+                            logg_lims=logg_lims)
 
             for time in eras.keys():
 
@@ -435,8 +435,10 @@ def main():
                 temps = temperatures[~m_offsets.mask]
                 metallicities = ma.masked_array(star_metallicities)
                 metals = metallicities[~m_offsets.mask]
-                magnitudes = ma.masked_array(star_magnitudes)
-                mags = magnitudes[~m_offsets.mask]
+                # magnitudes = ma.masked_array(star_magnitudes)
+                # mags = magnitudes[~m_offsets.mask]
+                gravities = ma.masked_array(star_gravities)
+                loggs = gravities[~m_offsets.mask]
 
                 stars = ma.masked_array([key for key in
                                          star_names.keys()]).reshape(
@@ -445,7 +447,7 @@ def main():
 
                 # Stack the stellar parameters into vertical slices
                 # for passing to model functions.
-                x_data = np.stack((temps, metals, mags), axis=0)
+                x_data = np.stack((temps, metals, loggs), axis=0)
 
                 # Create the parameter list for this run of fitting.
                 params_list[0] = float(mean)
@@ -483,8 +485,8 @@ def main():
                     sigmas_post.append(sigma.value)
                     sigma_sys_post.append(sys_err.value)
 
-                for plot_type, lims in zip(('temp', 'mtl', 'mag'),
-                                           (temp_lims, mtl_lims, mag_lims)):
+                for plot_type, lims in zip(('temp', 'mtl', 'logg'),
+                                           (temp_lims, mtl_lims, logg_lims)):
                     ax = axes_dict[f'{plot_type}_{time}']
                     plot_data_points(ax, x_data[param_dict[plot_type]],
                                      residuals, thick_err=err_array,
