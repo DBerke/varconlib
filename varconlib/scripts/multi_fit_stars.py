@@ -56,11 +56,11 @@ style_caps = {'capsize_thin': 4,
               'cap_thick': 2.5}
 
 
-def create_parameter_comparison_figures(ylims=None,
-                                        temp_lims=(5300 * u.K, 6200 * u.K),
-                                        mtl_lims=(-0.75, 0.4),
-                                        mag_lims=(4, 5.8),
-                                        logg_lims=(4.1, 4.6)):
+def create_comparison_figure(ylims=None,
+                             temp_lims=(5300 * u.K, 6200 * u.K),
+                             mtl_lims=(-0.75, 0.4),
+                             mag_lims=(4, 5.8),
+                             logg_lims=(4.1, 4.6)):
     """Create and returns a figure with pre-set subplots.
 
     This function creates the background figure and subplots for use with the
@@ -158,7 +158,7 @@ def create_parameter_comparison_figures(ylims=None,
         ax.xaxis.set_major_locator(ticker.MultipleLocator(base=0.2))
         ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=0.1))
     for ax in (logg_ax_pre, logg_ax_post):
-        ax.set_xlabel(r'log $g (\mathrm{cm}/\mathrm{s}^2)$')
+        ax.set_xlabel(r'log $g$ $(\mathrm{cm}/\mathrm{s}^2)$')
         ax.xaxis.set_major_locator(ticker.MultipleLocator(base=0.1))
         ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=0.05))
 
@@ -381,7 +381,7 @@ def main():
             ylimits = (-300 * u.m / u.s,
                        300 * u.m / u.s) if not args.full_range else None
 
-            comp_fig, axes_dict = create_parameter_comparison_figures(
+            comp_fig, axes_dict = create_comparison_figure(
                             ylims=ylimits,
                             temp_lims=temp_lims,
                             mtl_lims=mtl_lims,
