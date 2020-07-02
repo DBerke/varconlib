@@ -20,69 +20,135 @@ import unyt as u
 
 
 def constant_model(data, a):
+    """
+    Return a constant value.
+
+    Parameters
+    ----------
+    data : array-like
+        The independent variable data.
+    a : float or int
+        A constant value to return.
+
+    Returns
+    -------
+    a : float or int
+        The value input as `a`.
+
+    """
 
     return a
 
 
 def linear_model(data, a, b, c, d):
+    """
+    Return the value of a three-dimensional linear model
+
+    Parameters
+    ----------
+    data : array-like with dimensions (3, n)
+        The idenpendent variable. Each column represents a collection of three
+        values to be passed to the thee dimensions of the function.
+    a, b, c, d : float or int
+        Values of the coefficient for the model. `a` is the zeroth-order
+        (constant) value, while `b`, `c`, and `d` represent the first-order
+        (linear) coefficients for the three dimensions.
+
+    Returns
+    -------
+    float
+        The value of the function for the given data and coefficients.
+
+    """
 
     return a + b * data[0] + c * data[1] + d * data[2]
 
 
 def quadratic_model(data, a, b, c, d, e, f, g):
+    """
+    Return the value of a three-dimensional function of second order.
+
+    Parameters
+    ----------
+    data : array-like with dimensions (3, n)
+        The idenpendent variable. Each column represents a collection of three
+        values to be passed to the thee dimensions of the function.
+    a : float or int
+        The constant term for the function.
+    b, c, d : float or int
+        The values of the coefficients for the linear terms of the function.
+    e, f, g : float or int
+        The values of the coefficients for the quadratic terms of the function.
+
+    Returns
+    -------
+     float
+        The value of the function for the given data and coefficients.
+    """
 
     return a + b * data[0] + c * data[1] + d * data[2] +\
-           e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2
-
-
-def cubic_model(data, a, b, c, d, e, f, g, h, i, j):
-
-    return a + b * data[0] + c * data[1] + d * data[2] +\
-           e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2 +\
-           h * data[0] ** 3 + i * data[1] ** 3 + j * data[2] ** 3
-
-
-def quartic_model(data, a, b, c, d, e, f, g, h, i, j, k, l, m):
-
-    return a + b * data[0] + c * data[1] + d * data[2] +\
-           e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2 +\
-           h * data[0] ** 3 + i * data[1] ** 3 + j * data[2] ** 3 +\
-           k * data[0] ** 4 + l * data[1] ** 4 + m * data[2] ** 4
-
-
-def quintic_model(data, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p):
-
-    return a + b * data[0] + c * data[1] + d * data[2] +\
-           e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2 +\
-           h * data[0] ** 3 + i * data[1] ** 3 + j * data[2] ** 3 +\
-           k * data[0] ** 4 + l * data[1] ** 4 + m * data[2] ** 4 +\
-           n * data[0] ** 5 + o * data[1] ** 5 + p * data[2] ** 5
+        e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2
 
 
 def cross_term_model(data, a, b, c, d, e):
+    """
+    Return the value of a linear model with cross-term between metallicity and
+    temperature
+
+    Parameters
+    ----------
+    data : array-like with dimensions (3, n)
+        The idenpendent variable. Each column represents a collection of three
+        values to be passed to the thee dimensions of the function.
+    a : TYPE
+        DESCRIPTION.
+    b, c, d : float or int
+        The values of the coefficients for the linear terms of the function.
+    e : float or int
+        The value of the coefficient for the cross-term between temperature and
+        metallicity.
+
+    Returns
+    -------
+    float
+        The value of the function for the given data and coefficients.
+
+    """
 
     return a + b * data[0] + c * data[1] + d * data[2] + e * data[1] / data[0]
 
 
-def quadratic_cross_term_model(data, a, b, c, d, e, f, g, h, i):
-
-    return a + b * data[0] + c * data[1] + d * data[2] + e * data[1]/data[0] +\
-           f * data[0] ** 2 + g * data[1] ** 2 + h * data[2] ** 2 +\
-           i * (data[1]/data[0]) ** 2
-
-
 def quadratic_mag_model(data, a, b, c, d, e, f):
+    """
+    Return the value of a three-dimenstional function linear in temperature and
+    metallicity (with cross-term) and quadratic in the third term (nominally
+    magnitude).
+
+    Parameters
+    ----------
+    data : array-like with dimensions (3, n)
+        The idenpendent variable. Each column represents a collection of three
+        values to be passed to the thee dimensions of the function.
+    a : float or int
+        The value of the constant coefficient.
+    b, c, d : float or int
+        The values of the coefficients for the linear terms of the function.
+    e : float or int
+        The value of the coefficient for the cross-term between temperature and
+        metallicity.
+    f : float or int
+        The coefficient for the quadratic term of the third term (nominally
+        absolute magnitude).
+
+    Returns
+    -------
+    float
+        The value of the function for the given data and coefficients.
+
+    """
 
     return a + b * data[0] + c * data[1] + d * data[2] +\
-           e * data[1] / data[0] + f * data[2] ** 2
-
-
-def quad_full_cross_terms_model(data, a, b, c, d, e, f, g, h, i, j):
-
-    return a + b * data[0] + c * data[1] + d * data[2] +\
-           e * data[0] * data[1] + f * data[0] * data[2] +\
-           g * data[1] * data[2] +\
-           h * data[0] ** 2 + i * data[1] ** 2 + j * data[2] ** 2
+        e * data[1] / data[0] + f * data[2] ** 2
 
 
 def gaussian(x, a, b, c, d=0):
@@ -340,6 +406,33 @@ def check_fit(function, xdata, ydata, func_params):
     return ydata - function(xdata, *func_params)
 
 
+def calc_chi_squared_nu(residuals, errors, n_params):
+    """
+    Return the value of the reduced chi-squared statistic for the given data.
+
+    Parameters
+    ----------
+    residuals : array-like of floats or ints
+        An array of values representing a set of measured deviations from a
+        fitted model.
+    errors : array-like of floats or ints
+        An array of variances for each point, of the same length as `residuals`.
+    n_params : int
+        The number of fitted parameters in the model.
+
+    Returns
+    -------
+    float
+        The value of chi-squared per degree-of-freedom for the given data and
+        number of fitted parameters.
+
+    """
+
+    chi_squared = np.sum(np.square(residuals / errors))
+    dof = len(residuals) - n_params
+    return chi_squared / dof
+
+
 def find_sigma_sys(model_func, x_data, y_data, err_array, beta0,
                    tolerance=0.001):
     """Find the systematic scatter in a dataset with a given model.
@@ -419,10 +512,9 @@ def find_sigma_sys(model_func, x_data, y_data, err_array, beta0,
 
         residuals = y_data - model_values
 
-        # Find the chi^2 value for this distribution:
-        chi_squared = np.sum((residuals / iter_err_array) ** 2)
-        dof = len(y_data) - len(popt)
-        chi_squared_nu = chi_squared / dof
+        # Find the chi^2 value for this fit:
+        chi_squared_nu = calc_chi_squared_nu(residuals, iter_err_array,
+                                             len(popt))
 
         sigma_sys_list.append(sys_err)
         chi_squared_list.append(chi_squared_nu)
