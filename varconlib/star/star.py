@@ -163,7 +163,7 @@ class Star(object):
 
     def __init__(self, name, star_dir=None, suffix='int',
                  transitions_list=None, pairs_list=None,
-                 load_data=None, init_params="Nordstrom2004"):
+                 load_data=None, init_params="Casagrande2011"):
         """Instantiate a `star.Star` object.
 
         Parameters
