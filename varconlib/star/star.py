@@ -13,6 +13,7 @@ various observations taken of it.
 
 import datetime as dt
 from glob import glob
+import json
 import lzma
 import os
 from pathlib import Path
@@ -117,14 +118,32 @@ class Star(object):
     apparentMagnitude : float
         The apparent V-band magnitude of the star.
     logg : float
-        The logarithm of the surface gravity of the star. Should technically
-        have units, but doesn't at the moment.
+        The logarithm of the surface gravity of the star. Technicallly in units
+        of cm / s / s but unitless in code.
+    fiberSplitIndex : None or int
+        A value representing either the index of the first observation after the
+        HARPS fiber change in May 2015, or None if all observations were prior
+        to the change.
+    numObsPre : int
+        The number of observations of this star taken before the fiber change.
+    numObsPost : int
+        The number of observations of this star taken after the fiber change.
+    specialAttributes: dict
+        A dictionary (possibly empty) of certain characteristics or attributes
+        of some stars which are rare enough to not warrant storing for every
+        stars, e.g., whether a star has a known companion (planet or star) or if
+        it is know to be variable. Currently has two recognized keywords:
+            'is_variable' : the type of variable (BY Draconis, etc.)
+            'has_companion': the type of companion (planet, brown dwarf, etc.)
+        This dictionary is constructed from JSON files stored in each star's
+        directory as appropriate.
 
     """
 
     # Define the version of the format being saved.
     global CURRENT_VERSION
-    CURRENT_VERSION = '1.0.0'
+    # TODO: update this
+    CURRENT_VERSION = '1.1.0'
 
     # Define dataset names and corresponding attribute names to be saved
     # and loaded when dumping star data.
@@ -231,6 +250,7 @@ class Star(object):
         self._absoluteMagnitude = None
         self._apparentMagnitude = None
         self._logg = None
+        self.specialAttributes = {}
 
         if transitions_list:
             self.transitionsList = transitions_list
@@ -253,6 +273,7 @@ class Star(object):
             else:
                 raise HDF5FileNotFoundError('No HDF5 file found for'
                                             f' {self.hdf5file}.')
+            self.specialAttributes.update(self.getSpecialAttributes(star_dir))
 
         # Figure out when the observations for the star were taken, and set the
         # appropriate flags.
@@ -898,6 +919,36 @@ class Star(object):
             return 0
         else:
             return self.getNumObs(slice(self.fiberSplitIndex, None))
+
+    def getSpecialAttributes(self, star_dir):
+        """
+        Read and save any special attributes for the star from an external file.
+
+        In order to capture certain factor which apply only to some stars, this
+        function will read an optional JSON file in the star's directory and
+        save the results to a dictionary as the attribute `specialAttributes`.
+
+        Parameters
+        ----------
+        star_dir : `pathlib.Path`
+            The path to the directory where the star is being constructed/read
+            from.
+
+        Returns
+        -------
+        dict
+            A dictionary which will contain the contents of the specially-named
+            JSON file in `star_dir. May be empty if no such file exists.
+
+        """
+
+        json_file = star_dir / f'{self.name}_special_attributes.json'
+
+        if json_file.exists():
+            with open(json_file, 'r') as f:
+                return json.load(f)
+        else:
+            return {}
 
     def getStellarParameters(self, paper_name):
         """
