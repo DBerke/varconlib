@@ -134,7 +134,8 @@ class Star(object):
         stars, e.g., whether a star has a known companion (planet or star) or if
         it is know to be variable. Currently has two recognized keywords:
             'is_variable' : the type of variable (BY Draconis, etc.)
-            'has_companion': the type of companion (planet, brown dwarf, etc.)
+            'is_multiple' : the total number of stars in the system
+            'has_planets': the number of planets around this star
         This dictionary is constructed from JSON files stored in each star's
         directory as appropriate.
 
