@@ -6,6 +6,7 @@ Created on Mon Jun 22 14:43:05 2020
 @author: dberke
 """
 
+from glob import glob
 from pathlib import Path
 import pickle
 import sys
@@ -17,6 +18,11 @@ from tqdm import tqdm
 import varconlib as vcl
 from varconlib.star import Star
 from varconlib.exceptions import HDF5FileNotFoundError
+
+
+star_paths = glob(f'{vcl.output_dir}/HD*')
+our_star_names = set([path.split('/')[-1] for path in star_paths])
+
 
 hd_dict = {'ALPCENA': 'HD128620',
            'BETA-HYI': 'HD2151',
@@ -104,13 +110,22 @@ hd_dict = {'ALPCENA': 'HD128620',
            'KELT-10': 'HD120690',
            'HIP67620': 'HD200565',
            'CL01510': 'HD11131',
-           'HIP103983': 'HD176983'}
+           'HIP103983': 'HD176983',
+           'HR370': 'HD7570',
+           'HR3259': 'HD69830',
+           'HIP22263': 'HD30495',
+           'HR6998': 'HD172051',
+           'HD68978A': 'HD68978'}
 
 casali_dict_file = vcl.data_dir / 'Casali_star_dict.pkl'
 with open(casali_dict_file, 'rb') as f:
     casali_dict = pickle.load(f)
 
 hd_dict.update(casali_dict)
+
+# print(hd_dict['HR6998'])
+# print(hd_dict['HD68978A'])
+# sys.exit()
 
 sp1_stars_file = vcl.data_dir / 'SP1_Sample.csv'
 
@@ -149,6 +164,8 @@ casagrande_feh = []
 num_matched_stars = 0
 num_sp1_stars = 0
 
+matched_star_names = set()
+
 tqdm.write('Matching stars...')
 for name in tqdm(names):
     for row in data:
@@ -158,6 +175,8 @@ for name in tqdm(names):
                     name = hd_dict[name]
                 except KeyError:
                     continue
+            elif name == 'HD68978A':
+                name = hd_dict[name]
             path = Path(f'/Users/dberke/data_output/{name}')
             # tqdm.write(str(path))
             if path.exists():
@@ -165,7 +184,8 @@ for name in tqdm(names):
                     star = Star(name, path, load_data=True)
                 except HDF5FileNotFoundError:
                     continue
-                tqdm.write(f'Matched {name} ({row[0]})')
+                matched_star_names.add(name)
+                # tqdm.write(f'Matched {name} ({row[0]})')
                 num_matched_stars += 1
                 teff_list.append(float(row[1]))
                 logg_list.append(float(row[2]))
@@ -186,12 +206,11 @@ for name in tqdm(names):
                     sp1_casagrande_logg.append(star.logg)
                     sp1_casagrande_feh.append(star.metallicity)
                     num_sp1_stars += 1
-                    if float(row[3]) > 0.2:
-                        print(f'Anomalous star is {name}')
 
 
 tqdm.write(f'Matched {num_matched_stars} stars.')
 tqdm.write(f'Matched {num_sp1_stars} SP1 stars.')
+print(our_star_names.difference(matched_star_names))
 
 temperatures = np.array(casagrande_teff) - np.array(teff_list)
 loggs = np.array(casagrande_logg) - np.array(logg_list)
