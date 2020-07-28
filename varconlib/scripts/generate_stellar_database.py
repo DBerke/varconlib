@@ -10,6 +10,7 @@ retrieval by other scripts.
 """
 
 import argparse
+from json.decoder import JSONDecodeError
 import os
 from pathlib import Path
 import pickle
@@ -187,19 +188,37 @@ def main():
     elif args.nordstrom2004:
         vprint('Applying values from Nordstrom et al. 2004.')
 
+    excluded_hot_stars = 0
+    excluded_obs = 0
+
     for star_dir in tqdm(args.star_names):
-        star = get_star(main_dir / star_dir)
+        try:
+            star = get_star(main_dir / star_dir)
+        except JSONDecodeError:
+            print(f'Error reading JSON from {star_dir}.')
+            raise
         if star is None:
-            pass
+            continue
         else:
             if args.casagrande2011:
                 star.getStellarParameters('Casagrande2011')
             elif args.nordstrom2004:
                 star.getStellarParameters('Nordstrom2004')
+            if args.exclude_hot_stars:
+                if star.temperature > 6077 * u.K:
+                    # Don't add this star to the database.
+                    vprint(f'Found {star.name} to be too hot'
+                           f' ({star.temperature}).')
+                    excluded_hot_stars += 1
+                    excluded_obs += star.getNumObs()
+                    continue
             star_list.append(star)
             vprint(f'Added {star.name}')
 
     tqdm.write(f'Found {len(star_list)} usable stars in total.')
+    if args.exclude_hot_stars:
+        tqdm.write(f'{excluded_hot_stars} stars were too hot'
+                   f' ({excluded_obs} observations in total).')
 
     tqdm.write('Unpickling transitions list..')
     with open(vcl.final_selection_file, 'r+b') as f:
@@ -337,6 +356,9 @@ if __name__ == '__main__':
                         ' observations.')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help="Print more output about what's happening.")
+    parser.add_argument('--exclude-hot-stars', action='store_true',
+                        help="Exclude stars hotter than solar + 300 K from the"
+                        " database.")
 
     paper = parser.add_mutually_exclusive_group()
     paper.add_argument('--casagrande2011', action='store_true',
