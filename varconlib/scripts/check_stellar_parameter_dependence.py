@@ -216,13 +216,13 @@ def main():
 
     else:
         # labels = ['4219.893V1_16', '4490.998Fe1_25', '4492.660Fe2_25',
-        #           '4500.398Fe1_25', '4589.484Cr2_28', '4653.460Cr1_29',
-        #           '4738.098Fe1_32', '4767.190Mn1_33', '4811.877Zn1_34',
-        #           '4940.192Fe1_37', '5138.510Ni1_42', '5178.000Ni1_43',
-        #           '5200.158Fe1_43', '5571.164Fe1_50', '5577.637Fe1_50',
-        #           '6067.161Fe1_59', '6123.910Ca1_60', '6144.183Si1_60',
-        #           '6155.928Na1_61', '6162.452Na1_61', '6178.520Ni1_61',
-        #           '6192.900Ni1_61']
+        #           '4500.398Fe1_25', '4589.484Cr2_28', '4653.460Cr1_29',]
+                  # '4738.098Fe1_32', '4767.190Mn1_33', '4811.877Zn1_34',
+                  # '4940.192Fe1_37', '5138.510Ni1_42', '5178.000Ni1_43',
+                  # '5200.158Fe1_43', '5571.164Fe1_50', '5577.637Fe1_50',
+                  # '6067.161Fe1_59', '6123.910Ca1_60', '6144.183Si1_60',
+                  # '6155.928Na1_61', '6162.452Na1_61', '6178.520Ni1_61',
+                  # '6192.900Ni1_61']
         labels = []
         for transition in tqdm(transitions_list):
             for order_num in transition.ordersToFitIn:
@@ -242,7 +242,8 @@ def main():
         bin_dict['mtl'] = [-0.75, -0.6, -0.45, -0.3,
                            -0.15, 0, 0.15, 0.3, 0.45]
         # bin_dict[name] = np.linspace(4.1, 4.6, 5)
-        bin_dict['logg'] = [4.04, 4.14, 4.24, 4.34, 4.44, 4.54, 4.64]
+        bin_dict['logg'] = [4.04, 4.14, 4.24,
+                            4.34, 4.44, 4.54, 4.64]
 
         for time in eras.keys():
             for plot_type, lims in zip(plot_types,
@@ -250,9 +251,25 @@ def main():
                 ax = axes_dict[f'{plot_type}_{time}']
                 for limit in bin_dict[plot_type]:
                     ax.axvline(x=limit, color='Green',
-                               alpha=0.3)
+                               alpha=0.6, zorder=1)
 
-    for label in tqdm(labels):
+    # Create an array to store all the individual sigma_sys values in in order
+    # to get the means and STDs for each bin.
+    row_len = len(labels)
+    temp_col_len = len(bin_dict['temp']) - 1
+    metal_col_len = len(bin_dict['mtl']) - 1
+    logg_col_len = len(bin_dict['logg']) - 1
+
+    # First axis is for pre- and post- fiber change values: 0 = pre, 1 = post
+    temp_array = np.full([2, row_len, temp_col_len], np.nan)
+    metal_array = np.full([2, row_len, metal_col_len], np.nan)
+    logg_array = np.full([2, row_len, logg_col_len], np.nan)
+    full_arrays_dict = {key: value for key, value in zip(plot_types,
+                                                         (temp_array,
+                                                          metal_array,
+                                                          logg_array))}
+
+    for label_num, label in tqdm(enumerate(labels), total=len(labels)):
 
         vprint(f'Analyzing {label}...')
         # The column number to use for this transition:
@@ -349,14 +366,16 @@ def main():
                                    interpolation='nearest')
                 bin_dict[name] = bins
 
-            min_bin_size = 6
+            min_bin_size = 7
             sigma_sys_dict = {}
             num_params = 1
             for name in tqdm(plot_types):
                 sigma_sys_list = []
                 sigma_list = []
                 bin_mid_list = []
+                bin_num = -1
                 for bin_lims in pairwise(bin_dict[name]):
+                    bin_num += 1
                     lower, upper = bin_lims
                     bin_mid_list.append((lower + upper) / 2)
                     mask_array = ma.masked_outside(arrays_dict[name], *bin_lims)
@@ -416,6 +435,10 @@ def main():
                         print(sigma_sys)
                         sys.exit()
 
+                    # Store the result in the appropriate full array.
+                    full_arrays_dict[name][eras[time],
+                                           label_num, bin_num] = sigma_sys
+
                 sigma_sys_dict[f'{name}_sigma_sys'] = sigma_sys_list
                 sigma_sys_dict[f'{name}_sigma'] = sigma_list
                 sigma_sys_dict[f'{name}_bin_mids'] = bin_mid_list
@@ -428,7 +451,8 @@ def main():
                 ax.plot(sigma_sys_dict[f'{plot_type}_bin_mids'],
                         sigma_sys_dict[f'{plot_type}_sigma_sys'],
                         color='Black', alpha=0.15,
-                        label=r'$\sigma_\mathrm{sys}$')
+                        zorder=2)
+                        # label=r'$\sigma_\mathrm{sys}$')
                 # ax.plot(sigma_sys_dict[f'{plot_type}_bin_mids'],
                 #         sigma_sys_dict[f'{plot_type}_sigma'],
                 #         color='Blue', alpha=0.3,
@@ -449,6 +473,22 @@ def main():
                 #             horizontalalignment='right',
                 #             verticalalignment='top')
                 # data = np.array(ma.masked_invalid(residuals).compressed())
+
+    for time in eras.keys():
+        for name in plot_types:
+            ax = axes_dict[f'{name}_{time}']
+            means = []
+            stds = []
+            arr = full_arrays_dict[name]
+            for i in range(0, np.size(arr, 2)):
+                means.append(np.nanmean(arr[eras[time], :, i]))
+                stds.append(np.nanstd(arr[eras[time], :, i]))
+            ax.errorbar(sigma_sys_dict[f'{name}_bin_mids'], means,
+                        yerr=stds, color='Red', alpha=1,
+                        marker='o', markersize=4, capsize=4,
+                        elinewidth=2, zorder=3,
+                        label='Mean and stddev')
+            ax.legend()
 
     plot_path = Path('/Users/dberke/Pictures/'
                      f'sigma_sys_stellar_parameter_dependance')
