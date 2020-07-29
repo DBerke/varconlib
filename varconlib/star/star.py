@@ -388,12 +388,12 @@ class Star(object):
                         fit.order, fit.centralIndex)
                     fit_offset_corrected = fit_offset - fit_ccd_correction
                 else:
-                    fit_mean = float('nan')
-                    fit_error = float('nan')
-                    fit_offset = float('nan')
-                    fit_chi_squared = float('nan')
-                    fit_ccd_correction = float('nan')
-                    fit_offset_corrected = float('nan')
+                    fit_mean = np.nan
+                    fit_error = np.nan
+                    fit_offset = np.nan
+                    fit_chi_squared = np.nan
+                    fit_ccd_correction = np.nan
+                    fit_offset_corrected = np.nan
 
                 obs_means.append(fit_mean)
                 obs_errors.append(fit_error)
