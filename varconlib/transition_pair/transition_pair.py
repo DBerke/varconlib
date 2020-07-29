@@ -19,6 +19,18 @@ class TransitionPair(object):
     """Holds information relating to a single pair of transition lines, in the
     form of two Transition objects.
 
+    Attributes
+    ----------
+    velocitySeparation : `unyt.unyt_quantity` with dimensions distance / dimte
+        The nominal velocity separation between the wavelengths of the two
+        transitions in this pair.
+    label : str
+        A string uniquely identifying the transition pair, in a human-readable
+        manner.
+    blendTuple : len-2 tuple of ints
+        A tuple containing two integers, representing the blendedness of each
+        individual transition as manifested in a solar spectrum.
+
     """
 
     def __init__(self, transition1, transition2):
@@ -26,8 +38,8 @@ class TransitionPair(object):
 
         Parameters
         ----------
-        transition1, transition2: transition_line.Transition` objects
-        The transitions should be two Transition objects, each representing a
+        transition1, transition2: `transition_line.Transition` objects
+        The transitions should be two `Transition` objects, each representing a
         single atomic transition.
 
         """
