@@ -266,7 +266,7 @@ class Star(object):
                 self.constructFromDir(star_dir, suffix,
                                       pairs_list=pairs_list,
                                       transitions_list=transitions_list)
-                self.getPairSeparations()
+                self._createPairSeparationsArray()
                 self.saveDataToDisk(self.hdf5file)
             elif (load_data is True or load_data is None)\
                     and self.hdf5file.exists():
@@ -449,12 +449,17 @@ class Star(object):
                                                       in enumerate(
                                                           transition_labels)})
 
-    def getPairSeparations(self):
+    def _createPairSeparationsArray(self):
         """Create attributes containing pair separations and associated errors.
 
         This method creates attributes called pairSeparationsArray and
         pairSepErrorsArray containing lists of pair separations and associated
         errors in each row corresponding to an observation of this star.
+
+        Returns
+        -------
+        None
+
         """
 
         # Set up the arrays for pair separations and errors
@@ -484,6 +489,29 @@ class Star(object):
 
                 self.pairSepErrorsArray = u.unyt_array(pairSepErrorsArray,
                                                        units='m/s')
+
+    def getPairSeparations(self):
+        """Return the weighted mean value of the pair separations for this star.
+
+        Returns
+        -------
+        `np.array`
+            A NumPy `ndarray` containing the weighted mean of the pair-wise
+            separation values for each pair for this star.
+
+        """
+
+        if not hasattr(self, 'pairSeparationsArray'):
+            raise RuntimeError("No pairSeparationsArray exists for this star.")
+
+        separations_array = np.full(len(self.pairsList), None)
+
+        for num, pair in enumerate(self.pairsList):
+            weighted_mean = np.average(self.pairSeparationsArray[:, num],
+                                       weights=self.pairSepErrorsArray[:, num])
+            separations_array[num] = weighted_mean
+
+        return separations_array
 
     def getOutliersMask(self, fit_results_dict, n_sigma=2.5,
                         dump_cache=False):
