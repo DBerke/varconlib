@@ -24,29 +24,12 @@ from astroquery.nist import Nist
 from tqdm import tqdm
 import unyt as u
 
-import varconlib
-import varconlib.miscellaneous as vcl
+import varconlib as vcl
 from varconlib.miscellaneous import wavelength2velocity as wave2vel
+from varconlib.miscellaneous import velocity2wavelength as vel2wave
 from varconlib.obs2d import HARPSFile2DScience
 from varconlib.transition_line import Transition
 from varconlib.transition_pair import TransitionPair
-
-elements = {"H": 1, "He": 2, "Li": 3, "Be": 4, "B": 5, "C": 6, "N": 7,
-            "O": 8, "F": 9, "Ne": 10, "Na": 11, "Mg": 12, "Al": 13,
-            "Si": 14, "P": 15, "S": 16, "Cl": 17, "Ar": 18, "K": 19,
-            "Ca": 20, "Sc": 21, "Ti": 22, "V": 23, "Cr": 24, "Mn": 25,
-            "Fe": 26, "Co": 27, "Ni": 28, "Cu": 29, "Zn": 30, "Ga": 31,
-            "Ge": 32, "As": 33, "Se": 34, "Br": 35, "Kr": 36, "Rb": 37,
-            "Sr": 38, "Y": 39, "Zr": 40, "Nb": 41, "Mo": 42, "Tc": 43,
-            "Ru": 44, "Rh": 45, "Pd": 46, "Ag": 47, "Cd": 48, "In": 49,
-            "Sn": 50, "Sb": 51, "Te": 52, "I": 53, "Xe": 54, "Cs": 55,
-            "Ba": 56, "La": 57, "Ce": 58, "Pr": 59, "Nd": 60, "Pm": 61,
-            "Sm": 62, "Eu": 63, "Gd": 64, "Tb": 65, "Dy": 66, "Ho": 67,
-            "Er": 68, "Tm": 69, "Yb": 70, "Lu": 71, "Hf": 72, "Ta": 73,
-            "W": 74, "Re": 75, "Os": 76, "Ir": 77, "Pt": 78, "Au": 70,
-            "Hg": 80, "Tl": 81, "Pb": 82, "Bi": 83, "Po": 84, "At": 85,
-            "Rn": 86, "Fr": 87, "Ra": 88, "Ac": 89, "Th": 90, "Pa": 91,
-            "U": 92}
 
 
 def save_and_format_selections(good_transitions, good_pairs):
@@ -239,12 +222,10 @@ def harmonize_lists(transitions1, transitions2, spectral_mask,
             n_masked_lines += 1
             continue
 
-        delta_wavelength = vcl.velocity2wavelength(wl_tolerance,
-                                                   line1.wavelength)
+        delta_wavelength = vel2wave(wl_tolerance, line1.wavelength)
         delta_wavelength.convert_to_units(u.nm)
 
-        delta_wl_energy = vcl.velocity2wavelength(energy_tolerance,
-                                                  line1.wavelength)
+        delta_wl_energy = vel2wave(energy_tolerance, line1.wavelength)
 
         energy1 = (1 / line1.wavelength).to(u.cm ** -1)
         energy2 = (1 / (line1.wavelength + delta_wl_energy)).to(u.cm ** -1)
@@ -490,8 +471,7 @@ def find_line_pairs(transition_list, min_norm_depth=0.3, max_norm_depth=0.7,
 
         # If it's fine, figure out how much wavelength space to search around
         # it based on the velocity separation.
-        delta_wl = vcl.velocity2wavelength(velocity_separation,
-                                           transition1.wavelength)
+        delta_wl = vel2wave(velocity_separation, transition1.wavelength)
         lowerLim = transition1.wavelength - delta_wl
         upperLim = transition1.wavelength + delta_wl
 
@@ -733,9 +713,9 @@ if __name__ == '__main__':
     global line_offsets
     line_offsets = []
 
-    data_dir = varconlib.data_dir
-    masks_dir = varconlib.masks_dir
-    pickle_dir = varconlib.pickle_dir
+    data_dir = vcl.data_dir
+    masks_dir = vcl.masks_dir
+    pickle_dir = vcl.pickle_dir
 
     # These two files produces wavelengths in air, in Angstroms.
     redFile = data_dir / "BRASS2018_Sun_PrelimGraded_Lobel.csv"
@@ -815,7 +795,7 @@ if __name__ == '__main__':
         tqdm.write('Parsing BRASS line list...')
         for b_transition in tqdm(purpleData, unit='transitions'):
             wl = b_transition[0] * u.nm
-            elem = elements[b_transition[1]]
+            elem = vcl.elements[b_transition[1]]
             ion = b_transition[2]
             eLow = b_transition[3] * u.eV
             depth = b_transition[5]
