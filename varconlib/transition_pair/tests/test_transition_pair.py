@@ -12,7 +12,7 @@ import pytest
 
 import unyt as u
 
-from varconlib.exceptions import SameWavelengthsError
+from varconlib.exceptions import SameWavelengthsError, WrongOrdersNumberError
 from varconlib.transition_line import Transition
 from varconlib.transition_pair import TransitionPair
 
@@ -45,6 +45,8 @@ class TestTransitionPair(object):
         p1 = TransitionPair(transition_1, transition_2)
         p2 = TransitionPair(transition_1, transition_2)
         assert p1 == p2
+        with pytest.raises(ValueError):
+            assert p1 == "A non-pair"
 
     def testComparison(self, transition_1, transition_2, transition_3):
         p1 = TransitionPair(transition_1, transition_2)
@@ -65,6 +67,10 @@ class TestTransitionPair(object):
         assert not p2.__lt__(p1)
         assert not p2.__lt__(p3)
         assert not p3.__lt__(p1)
+        with pytest.raises(ValueError):
+            assert p1.__lt__('A non-pair')
+        with pytest.raises(ValueError):
+            assert p1.__gt__('A non-pair')
 
     def testAutomaticEnergyOrdering(self, transition_1, transition_2):
         p = TransitionPair(transition_2, transition_1)
@@ -90,3 +96,14 @@ class TestTransitionPair(object):
         transition_2.blendedness = 2
         p2 = TransitionPair(transition_1, transition_2)
         assert p2.blendTuple == (1, 2)
+
+    def testOrdersToMeasureIn(self, transition_1, transition_2):
+        p1 = TransitionPair(transition_1, transition_2)
+        assert p1.ordersToMeasureIn is None
+        p1.ordersToMeasureIn = [29, 30]
+        assert p1.ordersToMeasureIn == (29, 30)
+        with pytest.raises(ValueError):
+            p1.ordersToMeasureIn = "(29, 30"
+        with pytest.raises(WrongOrdersNumberError):
+            p1.ordersToMeasureIn = (29, 30, 31)
+            p1.ordersToMeasureIn = []
