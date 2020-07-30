@@ -121,12 +121,16 @@ class TestTransitionComparison(object):
         assert not a > b
         assert b > a
         assert not b < a
+        with pytest.raises(ValueError):
+            assert a < 'A non-transition'
+        with pytest.raises(ValueError):
+            assert b > 'A non-transition'
 
     def testEquality(self):
         a = Transition(500.0 * u.nm, 26, 1)
         b = Transition(500.0 * u.nm, 26, 1)
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             assert a == 'A non-transition'
 
         assert a == b

@@ -26,6 +26,25 @@ roman_numerals = bidict({1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V',
 class Transition(object):
     """Class to hold information about a single atomic transition.
 
+    Attributes
+    ----------
+    lowerJ, higherJ : int or `fractions.Fraction`
+        A number representing the momenta of the lower- and higher-energy atomic
+        states of the transition.
+    atomicSpecies : str
+        A string combining the atomic symbol and the Roman numeral representing
+        the ionization state.
+    wavenumber : `unyt.unyt_quantity`
+        The wavenumber of the transition in inverse centimeters.
+    label : str
+        A string that denotes a unique label for each transition.
+
+    Methods
+    -------
+    formatInNistStyle
+        Return a string formatting the transition's information in the style of
+        NIST.
+
     """
 
     def __init__(self, wavelength, element, ionizationState):
@@ -117,6 +136,7 @@ class Transition(object):
 
     @property
     def lowerJ(self):
+        """Return the momentum of the lower-energy transition."""
         return self._lowerJ
 
     @lowerJ.setter
@@ -129,6 +149,7 @@ class Transition(object):
 
     @property
     def higherJ(self):
+        """Return the momentum of the higher-energy transition."""
         return self._higherJ
 
     @higherJ.setter
@@ -141,10 +162,12 @@ class Transition(object):
 
     @property
     def atomicSpecies(self):
+        """Return the atomic species of this transtion."""
         return(f'{self.atomicSymbol} {roman_numerals[self.ionizationState]}')
 
     @property
     def wavenumber(self):
+        """Return the wavenumber for this transition."""
         return 1 / self.wavelength.to(u.cm)
 
     @wavenumber.setter
@@ -155,6 +178,7 @@ class Transition(object):
 
     @property
     def label(self):
+        """Return a unique label for this this transition."""
         if (not hasattr(self, '_label')) or self._label is None:
             self._label = '{:.3f}{}{}'.format(
                     self.wavelength.to(u.angstrom).value,
@@ -194,67 +218,75 @@ class Transition(object):
         return str1 + str2 + str3 + str4 + str5 + str6
 
     def __repr__(self):
+        """Return a representation of this instance."""
         return "{}({:.3f}, {}, {})".format(self.__class__.__name__,
                                            self.wavelength.to(u.angstrom),
                                            self.atomicNumber,
                                            self.ionizationState)
 
     def __str__(self):
+        """Return a string representation of this instance."""
         return "{:.3f} {}".format(self.wavelength.to(u.angstrom),
                                   self.atomicSpecies)
 
     def __lt__(self, other):
+        """Compare this transition as less-than with another."""
+        if not isinstance(other, vcl.transition_line.Transition):
+            raise ValueError("Trying to compare with non-Transition!")
         if self.wavelength.value < other.wavelength.value:
             return True
         else:
             return False
 
     def __gt__(self, other):
+        """Compare this transition as greater-than with another."""
+        if not isinstance(other, vcl.transition_line.Transition):
+            raise ValueError("Trying to compare with non-Transition!")
         if self.wavelength.value > other.wavelength.value:
             return True
         else:
             return False
 
     def __eq__(self, other):
-        if type(other) is Transition:
-            # If the other thing to be compared is a transition, we need to
-            # check all of its attributes and whether they A) exist and B) are
-            # equal. Basically this function checks multiple ways they could be
-            # NOT equal, and only if none of them trigger does it return that
-            # they are.
-            # It's still not perfect, as additional information could be
-            # attached, but it should cover general use cases.
-            if not (isclose(self.wavelength, other.wavelength,
-                            rel_tol=1e-5) and
-                    self.atomicNumber == other.atomicNumber and
-                    self.ionizationState == other.ionizationState):
-                return False
-            if (self.lowerEnergy is not None) and\
-                    (other.lowerEnergy is not None):
-                if not isclose(self.lowerEnergy, other.lowerEnergy,
-                               rel_tol=1e-5):
-                    return False
-            if (self.higherEnergy is not None) and\
-                    (other.higherEnergy is not None):
-                if not isclose(self.higherEnergy, other.higherEnergy,
-                               rel_tol=1e-5):
-                    return False
-            if (self._lowerJ is not None) and\
-                    (other._lowerJ is not None):
-                if self._lowerJ != other._lowerJ:
-                    return False
-            if (self._higherJ is not None) and\
-                    (other._higherJ is not None):
-                if self._higherJ != other._higherJ:
-                    return False
-            if (self.lowerOrbital is not None) and\
-                    (other.lowerOrbital is not None):
-                if self.lowerOrbital != other.lowerOrbital:
-                    return False
-            if (self.higherOrbital is not None) and\
-                    (other.higherOrbital is not None):
-                if self.higherOrbital != other.higherOrbital:
-                    return False
-            return True
-        else:
+        """Compare this transition as equal with another."""
+        if not isinstance(other, vcl.transition_line.Transition):
+            raise ValueError("Trying to compare with non-Transition!")
+        # If the other thing to be compared is a transition, we need to
+        # check all of its attributes and whether they A) exist and B) are
+        # equal. Basically this function checks multiple ways they could be
+        # NOT equal, and only if none of them trigger does it return that
+        # they are.
+        # It's still not perfect, as additional information could be
+        # attached, but it should cover general use cases.
+        if not (isclose(self.wavelength, other.wavelength,
+                        rel_tol=1e-5) and
+                self.atomicNumber == other.atomicNumber and
+                self.ionizationState == other.ionizationState):
             return False
+        if (self.lowerEnergy is not None) and\
+                (other.lowerEnergy is not None):
+            if not isclose(self.lowerEnergy, other.lowerEnergy,
+                           rel_tol=1e-5):
+                return False
+        if (self.higherEnergy is not None) and\
+                (other.higherEnergy is not None):
+            if not isclose(self.higherEnergy, other.higherEnergy,
+                           rel_tol=1e-5):
+                return False
+        if (self._lowerJ is not None) and\
+                (other._lowerJ is not None):
+            if self._lowerJ != other._lowerJ:
+                return False
+        if (self._higherJ is not None) and\
+                (other._higherJ is not None):
+            if self._higherJ != other._higherJ:
+                return False
+        if (self.lowerOrbital is not None) and\
+                (other.lowerOrbital is not None):
+            if self.lowerOrbital != other.lowerOrbital:
+                return False
+        if (self.higherOrbital is not None) and\
+                (other.higherOrbital is not None):
+            if self.higherOrbital != other.higherOrbital:
+                return False
+        return True
