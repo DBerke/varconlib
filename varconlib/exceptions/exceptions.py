@@ -138,16 +138,6 @@ class SameWavelengthsError(TransitionPairError):
         self.message = message
 
 
-class WrongOrdersNumberError(TransitionPairError):
-    """Exeption to raise if given an incorrect number of orders to measure a
-    TransitionPair in.
-
-    """
-
-    def __init__(self, message=None):
-        self.message = message
-
-
 # Errors relating to star.Star objects.
 class StarError(Error):
     """Errors relating to Star objects."""

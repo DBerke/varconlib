@@ -9,11 +9,9 @@ The TransitionPair class contains information about a single pair of atomic
 transitions.
 """
 
-import numpy as np
 import unyt as u
 
-import varconlib as vcl
-from varconlib.exceptions import SameWavelengthsError, WrongOrdersNumberError
+from varconlib.exceptions import SameWavelengthsError
 from varconlib.miscellaneous import wavelength2velocity as wave2vel
 
 
@@ -32,10 +30,6 @@ class TransitionPair(object):
     blendTuple : len-2 tuple of ints
         A tuple containing two integers, representing the blendedness of each
         individual transition as manifested in a solar spectrum.
-    ordersToMeasureIn : len-1 or 2 tuple of ints
-        A tuple containing integers represent the numbers of the HARPS orders in
-        which to measure this particular transition pair. May be a single order,
-        or may be two, but cannot be more than this.
 
     """
 
@@ -69,7 +63,6 @@ class TransitionPair(object):
 
     @property
     def velocitySeparation(self):
-        """Return the velocity separation of this pair."""
         if not hasattr(self, '_velocitySeparation'):
             self._velocitySeparation = wave2vel(
                     self._higherEnergyTransition.wavelength,
@@ -78,7 +71,6 @@ class TransitionPair(object):
 
     @property
     def label(self):
-        """Return a unique identifier label for this pair."""
         if not hasattr(self, '_label'):
             self._label = '_'.join([self._higherEnergyTransition.label,
                                     self._lowerEnergyTransition.label])
@@ -86,7 +78,6 @@ class TransitionPair(object):
 
     @property
     def blendTuple(self):
-        """Return a tuple representing blendedness of this pair."""
         if not hasattr(self, '_blendTuple'):
             try:
                 self._blendTuple = tuple(sorted([self._higherEnergyTransition.
@@ -97,54 +88,30 @@ class TransitionPair(object):
                 raise AttributeError
         return self._blendTuple
 
-    @property
-    def ordersToMeasureIn(self):
-        """Return a tuple indicating the orders to measure this pair in."""
-        return self._ordersToMeasureIn
-
-    @ordersToMeasureIn.setter
-    def ordersToMeasureIn(self, new_value):
-        if new_value is None:
-            self._ordersToMeasureIn = None
-        elif isinstance(new_value, (tuple, list, np.ndarray)):
-            if (len(new_value) > 2) or (len(new_value) < 1):
-                message = "Wrong number of orders to measure in given," +\
-                          f" expected [1, 2] (found {len(new_value)})."
-                raise WrongOrdersNumberError(message)
-            self._ordersToMeasureIn = tuple(new_value)
-        else:
-            raise ValueError('Non-tuple, list, or array given as input.')
-
     def __iter__(self):
-        """Iterate through the higher-energy transition, then the lower."""
         return iter([self._higherEnergyTransition,
                      self._lowerEnergyTransition])
 
     def __repr__(self):
-        """Return a string representation of this instance."""
         return '{}({}, {})'.format(self.__class__.__name__,
                                    self._higherEnergyTransition,
                                    self._lowerEnergyTransition)
 
     def __str__(self):
-        """Return a string containing more information about this instance."""
         return 'Pair: {} {} {:.3f}, '.format(
-                    self._higherEnergyTransition.atomicSymbol,
-                    self._higherEnergyTransition.ionizationState,
-                    self._higherEnergyTransition.wavelength.to(u.angstrom)) +\
-            '{} {} {:.3f}'.format(
-                    self._lowerEnergyTransition.atomicSymbol,
-                    self._lowerEnergyTransition.ionizationState,
-                    self._lowerEnergyTransition.wavelength.to(u.angstrom))
+                self._higherEnergyTransition.atomicSymbol,
+                self._higherEnergyTransition.ionizationState,
+                self._higherEnergyTransition.wavelength.to(u.angstrom)) +\
+                '{} {} {:.3f}'.format(
+                self._lowerEnergyTransition.atomicSymbol,
+                self._lowerEnergyTransition.ionizationState,
+                self._lowerEnergyTransition.wavelength.to(u.angstrom))
 
     def __eq__(self, other):
         """Return equal if both higher and lower energy transitions are the
         same.
 
         """
-
-        if not isinstance(other, vcl.transition_pair.TransitionPair):
-            raise ValueError("Comparing to non-TransitionPair object!")
 
         if (self._lowerEnergyTransition == other._lowerEnergyTransition)\
            and (self._higherEnergyTransition == other._higherEnergyTransition):
@@ -153,10 +120,9 @@ class TransitionPair(object):
             return False
 
     def __gt__(self, other):
-        """Sort first by higher energy, then by lower energy."""
+        """Sort first by higher energy, then by lower energy.
 
-        if not isinstance(other, vcl.transition_pair.TransitionPair):
-            raise ValueError("Comparing to non-TransitionPair object!")
+        """
 
         if self == other:
             return False
@@ -171,10 +137,9 @@ class TransitionPair(object):
             return False
 
     def __lt__(self, other):
-        """Sort first by higher energy, then by lower energy."""
+        """Sort first by higher energy, then by lower energy.
 
-        if not isinstance(other, vcl.transition_pair.TransitionPair):
-            raise ValueError("Comparing to non-TransitionPair object!")
+        """
 
         if self == other:
             return False
