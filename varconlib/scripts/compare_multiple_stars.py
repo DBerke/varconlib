@@ -364,8 +364,8 @@ def get_transition_data_point(star, time_slice, transition_label,
             np.sqrt(star.getNumObs(time_slice))
 
     else:
-        corrected_array, mask_array = star.getOutliersMask(fit_params,
-                                                           n_sigma=2.5)
+        corrected_array, mask_array = star.getCorrectedArray(fit_params,
+                                                             n_sigma=2.5)
         offsets = ma.array(corrected_array.value, mask=mask_array)[time_slice,
                                                                    col_index]
         weighted_mean, weight_sum = ma.average(offsets,

@@ -513,8 +513,8 @@ class Star(object):
 
         return separations_array
 
-    def getOutliersMask(self, fit_results_dict, n_sigma=2.5,
-                        dump_cache=False):
+    def getCorrectedArray(self, fit_results_dict, n_sigma=2.5,
+                          dump_cache=False):
         """Return a 2D mask for values in this star's transition measurements.
 
         This method takes a function of three stellar parameters (temperature,
