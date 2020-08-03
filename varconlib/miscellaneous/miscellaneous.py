@@ -18,6 +18,7 @@ from bidict import bidict
 import h5py
 import hickle
 import unyt as u
+import unyt.dimensions as udim
 
 import varconlib as vcl
 
@@ -215,6 +216,11 @@ def velocity2wavelength(velocity_offset, wavelength, unit=None):
 
     """
 
+    assert velocity_offset.units.dimensions == udim.length / udim.time,\
+        "velocity_offset requires units of length/time."
+    assert wavelength.units.dimensions == udim.length,\
+        "wavelength requires units of length."
+
     original_units = wavelength.units
     result = (velocity_offset * wavelength) / u.c
     if not unit:
@@ -241,6 +247,11 @@ def wavelength2velocity(wavelength1, wavelength2):
         The velocity separation between the given wavelengths in m/s.
 
     """
+    # TODO: Add check for proper dimensions.
+    assert wavelength1.units.dimensions == udim.length,\
+        "wavelength1 needs dimensions of length."
+    assert wavelength2.units.dimensions == udim.length,\
+        "wavelength2 needs dimensions of length."
 
     result = (wavelength2 - wavelength1) * u.c /\
              ((wavelength1 + wavelength2) / 2)
