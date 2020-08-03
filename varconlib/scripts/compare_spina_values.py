@@ -208,7 +208,7 @@ for name in tqdm(names):
                     num_sp1_stars += 1
 
 
-tqdm.write(f'Matched {num_matched_stars} stars.')
+tqdm.write(f'Matched {num_matched_stars} stars out of {len(our_star_names)}.')
 tqdm.write(f'Matched {num_sp1_stars} SP1 stars.')
 print(our_star_names.difference(matched_star_names))
 
