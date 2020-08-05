@@ -242,8 +242,8 @@ class Star(object):
         self.pairSeparationsArray = None
         self.pairSepErrorsArray = None
 
-        self.hasObsPre = False
-        self.hasObsPost = False
+        self._hasObsPre = None
+        self._hasObsPost = None
 
         self._radialVelocity = None
         self._temperature = None
@@ -948,6 +948,26 @@ class Star(object):
             return 0
         else:
             return self.getNumObs(slice(self.fiberSplitIndex, None))
+
+    @property
+    def hasObsPre(self):
+        """Return a boolean denoting if pre-fiber-change observations exist."""
+        if self._hasObsPre is None:
+            if self.fiberSplitIndex == 0:
+                self._hasObsPre = False
+            else:
+                self._hasObsPre = True
+        return self._hasObsPre
+
+    @property
+    def hasObsPost(self):
+        """Return a boolean denoting if post-fiber-change observations exist."""
+        if self._hasObsPost is None:
+            if self.fiberSplitIndex is None:
+                self._hasObsPost = False
+            else:
+                self._hasObsPost = True
+        return self._hasObsPost
 
     def getSpecialAttributes(self, star_dir):
         """
