@@ -691,7 +691,7 @@ if __name__ == '__main__':
                         default=False,
                         help='Incorporate blend information from a file.')
     parser.add_argument('--blend-file', action='store',
-                        default=Path(varconlib.data_dir /
+                        default=Path(vcl.data_dir /
                         'NIST_formatted_transitions_with_blends.txt'),
                         help='The file to get blend information from.')
 
