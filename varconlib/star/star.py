@@ -27,13 +27,14 @@ import numpy as np
 import numpy.ma as ma
 from tqdm import tqdm, trange
 import unyt as u
-import unyt.dimensions as dimensions
+import unyt.dimensions as udim
 
 import varconlib as vcl
 from varconlib.exceptions import (HDF5FileNotFoundError,
                                   PickleFilesNotFoundError,
                                   StarDirectoryNotFoundError)
 from varconlib.miscellaneous import wavelength2velocity as wave2vel
+from varconlib.miscellaneous import get_params_file
 
 
 class Star(object):
@@ -128,6 +129,10 @@ class Star(object):
         The number of observations of this star taken before the fiber change.
     numObsPost : int
         The number of observations of this star taken after the fiber change.
+    hasObsPre : bool
+        Whether the star has observations from before the fiber change.
+    hasObsPost : bool
+        Whether this star has observation from after the fiber change.
     specialAttributes: dict
         A dictionary (possibly empty) of certain characteristics or attributes
         of some stars which are rare enough to not warrant storing for every
@@ -138,6 +143,18 @@ class Star(object):
             'has_planets': the number of planets around this star
         This dictionary is constructed from JSON files stored in each star's
         directory as appropriate.
+    paramsOffsetsArray : `unyt.unyt_array`
+        A temporary array containing the transition offsets corrected for the
+        stellar parameters of the star based on the given 'correction_model'. It
+        contains NaN values for offsets whose residuals were more than 2.5 sigma
+        away from zero.
+    paramsErrorsArray : `unyt.unyt_array`
+        A temporary array containing the errors for the transition offsets, with
+        NaN values in the corresponding locations to cachedCorrectedArray.
+    paramsCorrectionsArray : `unyt.unyt_array`
+        A temporary array containing the corrections applied to each transition
+        from the given 'correction_model'. Row 0 contains values for pre-change,
+        row 1 for post-change values. (NaNs otherwise.)
 
     """
 
@@ -157,7 +174,10 @@ class Star(object):
                    '/arrays/observation_rv': 'obsRVOffsetsArray',
                    '/arrays/normalized_offsets': 'fitOffsetsNormalizedArray',
                    '/arrays/corrected_offsets': 'fitOffsetsCorrectedArray',
-                   '/arrays/systematic_corrections': 'ccdCorrectionArray'}
+                   '/arrays/systematic_corrections': 'ccdCorrectionArray',
+                   '/arrays/params_corrected_offsets': 'paramsOffsetsArray',
+                   '/arrays/params_corrected_errors': 'paramsErrorsArray',
+                   '/arrays/params_corrections': 'paramsCorrectionsArray'}
 
     other_attributes = {'/metadata/version': 'version',
                         '/arrays/reduced_chi_squareds': 'chiSquaredNuArray',
@@ -183,7 +203,8 @@ class Star(object):
 
     def __init__(self, name, star_dir=None, suffix='int',
                  transitions_list=None, pairs_list=None,
-                 load_data=None, init_params="Casagrande2011"):
+                 load_data=None, init_params="Casagrande2011",
+                 correction_model='cross_term'):
         """Instantiate a `star.Star` object.
 
         Parameters
@@ -224,6 +245,11 @@ class Star(object):
                     'Casagrande2011'
             Which paper's derivation of the stellar parameters for this star to
             use.
+        correction_model : str, ['linear', 'quadratic',
+                                 'cross_term', 'quadratic_mag'],
+                         Default : 'cross_term'
+            The name of a correction model to apply to the transition offsets
+            data to correct for stellar parameters.
 
         """
 
@@ -259,6 +285,10 @@ class Star(object):
             self.pairsList = pairs_list
 
         if (star_dir is not None):
+            assert init_params in ('Nordstrom2004', 'Casagrande2011'),\
+                f'{init_params} is not a valid paper name.'
+            self.getStellarParameters(init_params)
+
             star_dir = Path(star_dir)
             self.hdf5file = star_dir / f'{name}_data.hdf5'
             if load_data is False or\
@@ -266,29 +296,19 @@ class Star(object):
                 self.constructFromDir(star_dir, suffix,
                                       pairs_list=pairs_list,
                                       transitions_list=transitions_list)
-                self._createPairSeparationsArray()
+                self.createCorrectedArrays(correction_model)
+                self.createPairSeparationsArray()
+
                 self.saveDataToDisk(self.hdf5file)
+                self.specialAttributes.update(self.
+                                              getSpecialAttributes(star_dir))
+
             elif (load_data is True or load_data is None)\
                     and self.hdf5file.exists():
                 self.constructFromHDF5(self.hdf5file)
             else:
                 raise HDF5FileNotFoundError('No HDF5 file found for'
                                             f' {self.hdf5file}.')
-            self.specialAttributes.update(self.getSpecialAttributes(star_dir))
-
-        # Figure out when the observations for the star were taken, and set the
-        # appropriate flags.
-        if self.fiberSplitIndex is None:
-            self.hasObsPre = True
-        elif self.fiberSplitIndex == 0:
-            self.hasObsPost = True
-        else:
-            self.hasObsPre = True
-            self.hasObsPost = True
-
-        assert init_params in ('Nordstrom2004', 'Casagrande2011'),\
-            f'{init_params} is not a valid paper name.'
-        self.getStellarParameters(init_params)
 
     def constructFromDir(self, star_dir, suffix='int', transitions_list=None,
                          pairs_list=None):
@@ -449,7 +469,114 @@ class Star(object):
                                                       in enumerate(
                                                           transition_labels)})
 
-    def _createPairSeparationsArray(self):
+    def createCorrectedArrays(self, model_func, n_sigma=2.5):
+        """Return an array corrected by a function and a mask of outliers.
+
+        This method takes a function of three stellar parameters (temperature,
+        metallicity, and surface gravity) and a variable number of
+        coefficients. These coefficients are provided in a dictionary for each
+        transition, for pre- and post-fiber change instances. It then calculates
+        a correction for each observation's fitted wavelength and checks if the
+        resultant position is more than `n_sigma` times the standard deviation
+        for that transition given in `sigmas_dict` from zero. It returns an
+        array corrected by the value of the function for each transition given
+        the stars's temperature, metallicity, and surface gravity and a mask
+        for measurements more than 2.5 sigma away from the mean.
+
+
+        Parameters
+        ----------
+        model_func : str, ['cross_term']
+            The name of a fitting model used to fit the dependence of the
+            transition offsets on stellar parameters. Currently the only one
+            which should be used is 'cross_term', but 'linear', 'quadratic',
+            and 'quadratic_mag' are also possible.
+
+        Optional
+        --------
+        n_sigma : float, Default : 2.5
+            The number of standard deviations a point must be away from the
+            value for this transition found by correcting using the fitting
+            function to be considered an outlier (and thus masked).
+
+        """
+
+        filename = vcl.output_dir / f'fit_params/{model_func}_params.hdf5'
+        fit_results_dict = get_params_file(filename)
+        function = fit_results_dict['model_func']
+        coeffs_dict = fit_results_dict['coeffs']
+
+        stellar_params = np.stack((self.temperature, self.metallicity,
+                                   self.absoluteMagnitude), axis=0)
+
+        # Set up an array to hold the corrected values.
+        corrected_array = np.full_like(self.fitOffsetsNormalizedArray,
+                                       fill_value=np.nan, dtype=float)
+        # Initialize the mask to False (0, not masked) with the same shape
+        # as the data for this star:
+        mask_array = np.zeros_like(self.fitOffsetsNormalizedArray,
+                                   dtype=int)
+        # Create a copy of the errors array which we can change values to NaN in
+        # later on, since masks don't play well with Unyt arrays.
+        masked_errs_array = self.fitErrorsArray.to_ndarray()
+        # Create an array to keep track of the corrections themselves.
+        # Two rows: 0 = pre, 1 = post.
+        corrections_array = np.full((2, len(self._transition_bidict.keys())),
+                                    np.nan, dtype=float)
+
+        for key, col_num in tqdm(self._transition_bidict.items()):
+            # col_num = self._transition_bidict.index_for[key]
+
+            if self.hasObsPre:
+                label = key + '_pre'
+                pre_slice = slice(None, self.fiberSplitIndex)
+
+                # Compute the correction for this transition.
+                correction = u.unyt_array(function(stellar_params,
+                                                   *coeffs_dict[label]),
+                                          units=u.m/u.s)
+                # Store the correction.
+                corrections_array[0, col_num] = correction.value
+                # Apply it to all measurements of this transition.
+                corrected_array[pre_slice, col_num] =\
+                    self.fitOffsetsNormalizedArray[pre_slice, col_num] -\
+                    correction
+                data_slice = corrected_array[pre_slice, col_num]
+                error_slice = self.fitErrorsArray[pre_slice, col_num]
+
+                for i in range(len(data_slice)):
+                    if abs(data_slice[i]) > n_sigma * error_slice[i]:
+                        mask_array[i, col_num] = 1
+                        corrected_array[i, col_num] = np.nan
+                        masked_errs_array[i, col_num] = np.nan
+
+            if self.hasObsPost:
+                label = key + '_post'
+                post_slice = slice(self.fiberSplitIndex, None)
+
+                correction = u.unyt_array(function(stellar_params,
+                                                   *coeffs_dict[label]),
+                                          units=u.m/u.s)
+                corrections_array[1, col_num] = correction.value
+                corrected_array[post_slice, col_num] =\
+                    self.fitOffsetsNormalizedArray[post_slice, col_num] -\
+                    correction
+                data_slice = corrected_array[post_slice, col_num]
+                error_slice = self.fitErrorsArray[post_slice, col_num]
+
+                for i in range(len(data_slice)):
+                    if abs(data_slice[i]) > n_sigma * error_slice[i]:
+                        mask_array[i+self.fiberSplitIndex, col_num] = 1
+                        corrected_array[i, col_num] = np.nan
+                        masked_errs_array[i, col_num] = np.nan
+
+        self.paramsOffsetsArray = corrected_array
+        self.paramsErrorsArray = u.unyt_array(masked_errs_array,
+                                              units='m/s')
+        self.paramsCorrectionsArray = u.unyt_array(corrections_array,
+                                                   units='m/s')
+
+    def createPairSeparationsArray(self):
         """Create attributes containing pair separations and associated errors.
 
         This method creates attributes called pairSeparationsArray and
@@ -463,10 +590,15 @@ class Star(object):
         """
 
         # Set up the arrays for pair separations and errors
-        pairSeparationsArray = np.empty([len(self._obs_date_bidict),
-                                         len(self._pair_bidict)])
-        pairSepErrorsArray = np.empty([len(self._obs_date_bidict),
-                                       len(self._pair_bidict)])
+        self.pairSeparationsArray = np.empty([
+            len(self._obs_date_bidict.keys()),
+            len(self._pair_bidict.keys())],
+            dtype=float)
+        self.pairSepErrorsArray = np.empty_like(self.pairSeparationsArray,
+                                                dtype=float)
+
+        corrected_array = self.paramsOffsetsArray
+        corrected_errs = self.paramsErrorsArray
 
         for pair in self.pairsList:
             for order_num in pair.ordersToMeasureIn:
@@ -476,19 +608,16 @@ class Star(object):
                 label2 = '_'.join((pair._lowerEnergyTransition.label,
                                    str(order_num)))
 
-                pairSeparationsArray[:, self.p_index(pair_label)]\
-                    = wave2vel(self.fitMeansArray[:, self.t_index(label1)],
-                               self.fitMeansArray[:, self.t_index(label2)])
+                self.pairSeparationsArray[:, self.p_index(pair_label)] =\
+                    corrected_array[:, self.t_index(label2)] -\
+                    corrected_array[:, self.t_index(label1)]
 
-                self.pairSeparationsArray = u.unyt_array(pairSeparationsArray,
-                                                         units='m/s')
+                self.pairSepErrorsArray[:, self.p_index(pair_label)] =\
+                    np.sqrt(corrected_errs[:, self.t_index(label1)]**2 +
+                            corrected_errs[:, self.t_index(label2)]**2)
 
-                pairSepErrorsArray[:, self.p_index(pair_label)]\
-                    = np.sqrt(self.fitErrorsArray[:, self.t_index(label1)]**2,
-                              self.fitErrorsArray[:, self.t_index(label2)]**2)
-
-                self.pairSepErrorsArray = u.unyt_array(pairSepErrorsArray,
-                                                       units='m/s')
+        self.pairSeparationsArray *= u.m/u.s
+        self.pairSepErrorsArray *= u.m/u.s
 
     def getPairSeparations(self):
         """Return the weighted mean value of the pair separations for this star.
@@ -513,110 +642,41 @@ class Star(object):
 
         return separations_array
 
-    def getCorrectedArray(self, fit_results_dict, n_sigma=2.5,
-                          dump_cache=False):
-        """Return a 2D mask for values in this star's transition measurements.
+    def formatPairData(self, pair):
+        """Return a list of information about a given pair.
 
-        This method takes a function of three stellar parameters (temperature,
-        metallicity, and absolute magnitude) and a variable number of
-        coefficients. These coefficients are provided in a dictionary for each
-        transition, for pre- and post-fiber change instances. It then calculates
-        a correction for each observation's fitted wavelength and checks if the
-        resultant position is more than `n_sigma` times the standard deviation
-        for that transition given in `sigmas_dict` from zero.
-
-        fit_results_dict : dict
-            A dictionary containing results from a call to
-            varconlib.miscellaneous.get_params_file(), with information from a
-            fitting model.
-
-        Optional
-        --------
-        n_sigma : float, Default : 2.5
-            The number of standard deviations a point must be away from the
-            value for this transition found by correcting using the fitting
-            function to be considered an outlier (and thus masked).
-        dump_cache : bool, Default : False
-            If true, any cached values will be cleared, allowing the calculation
-            and creation of a new model-corrected array and outliers mask. Only
-            necessary if fitting using different masks on the same `Star` in the
-            same session, as the cached values are not saved and do not persist.
+        Parameters
+        ----------
+        pair_label : `varconlib.transition_pair.TransitionPair`
+            An instance of TransitionPair.
 
         Returns
         -------
-        length-2 tuple
-            A tuple containing two 2D-arrays: 'corrected_array' which holds the
-            values of `self.fitOffsetsNormalizedArray` corrected by the fitting
-            model provided, and 'mask_array' which contains a sequence of zeros
-            and ones which can be used as a mask in a NumPy `MaskedArray`.
-            Measurements greater than `n_sigma` away from zero are considered to
-            be outliers and masked accordingly.
+        list
+            A list of information about this transition pair, containing the
+            following:
+                transition_lambda1, transition_lambda2
 
         """
 
-        if dump_cache:
-            try:
-                delattr(self, '_cachedOutliers')
-                delattr(self, '_cachedMask')
-            # If someone tries to use dump_cache before a cache exists:
-            except AttributeError:
-                pass
+        info_list = [pair.label]
+        label1 = pair._higherEnergyTransition.label
+        label2 = pair._lowerEnergyTransition.label
 
-        if hasattr(self, '_cachedOutliers') and hasattr(self, '_cachedMask'):
-            return (self._cachedOutliers, self._cachedMask)
+        offsets1 = self.pairSeparationsArray[:, self.t_index(label1)]
+        offsets2 = self.pairSeparationsArray[:, self.t_index(label2)]
 
-        function = fit_results_dict['model_func']
-        coeffs_dict = fit_results_dict['coeffs']
+        errs1 = self.pairSepErrorsArray[:, self.t_index(label1)]
+        errs2 = self.pairSepErrorsArray[:, self.t_index(label2)]
 
-        stellar_params = np.stack((self.temperature, self.metallicity,
-                                   self.absoluteMagnitude), axis=0)
+        weighted_mean1 = np.average(offsets1, weights=errs1**-2)
+        weighted_mean2 = np.average(offsets2, weights=errs2**-2)
 
-        corrected_array = np.zeros_like(self.fitOffsetsArray, dtype=float)
-        # Initialize the mask to False (not masked) with the same shape
-        # as the data for this star:
-        mask_array = np.full_like(self.fitOffsetsNormalizedArray,
-                                  fill_value=0, dtype=int)
+        # Need mean of errors.
 
-        for key in tqdm(self._transition_bidict.keys()):
-            col_num = self._transition_bidict.index_for[key]
+        info_list.extend([weighted_mean1, weighted_mean2])
 
-            if self.hasObsPre:
-                label = key + '_pre'
-                pre_slice = slice(None, self.fiberSplitIndex)
-
-                correction = u.unyt_array(function(stellar_params,
-                                                   *coeffs_dict[label]),
-                                          units=u.m/u.s)
-                corrected_array[pre_slice, col_num] =\
-                    self.fitOffsetsNormalizedArray[pre_slice, col_num] -\
-                    correction
-                data_slice = corrected_array[pre_slice, col_num]
-                error_slice = self.fitErrorsArray[pre_slice, col_num]
-
-                for i in range(len(data_slice)):
-                    if abs(data_slice[i]) > n_sigma * error_slice[i]:
-                        mask_array[i, col_num] = 1
-
-            if self.hasObsPost:
-                label = key + '_post'
-                post_slice = slice(self.fiberSplitIndex, None)
-
-                correction = u.unyt_array(function(stellar_params,
-                                                   *coeffs_dict[label]),
-                                          units=u.m/u.s)
-                corrected_array[post_slice, col_num] =\
-                    self.fitOffsetsNormalizedArray[post_slice, col_num] -\
-                    correction
-                data_slice = corrected_array[post_slice, col_num]
-                error_slice = self.fitErrorsArray[post_slice, col_num]
-                for i in range(len(data_slice)):
-                    if abs(data_slice[i]) > n_sigma * error_slice[i]:
-                        mask_array[i+self.fiberSplitIndex, col_num] = 1
-
-        self._cachedOutliers = corrected_array
-        self._cachedMask = mask_array
-
-        return (corrected_array, mask_array)
+        return info_list
 
     def saveDataToDisk(self, file_path=None):
         """Save important data arrays to disk in HDF5 format.
@@ -643,8 +703,12 @@ class Star(object):
             os.replace(file_path, backup_path)
 
         for dataset_name, attr_name in self.unyt_arrays.items():
-            getattr(self, attr_name).write_hdf5(file_path,
-                                                dataset_name=dataset_name)
+            try:
+                getattr(self, attr_name).write_hdf5(file_path,
+                                                    dataset_name=dataset_name)
+            except AttributeError:
+                print(f'Missing attribute {attr_name}.')
+                raise
 
         with h5py.File(file_path, mode='a') as f:
 
@@ -664,6 +728,7 @@ class Star(object):
 
         """
 
+        # TODO: Add check for version metadata.
         for dataset_name, attr_name in self.unyt_arrays.items():
             dataset = u.unyt_array.from_hdf5(filename,
                                              dataset_name=dataset_name)
@@ -848,7 +913,7 @@ class Star(object):
 
     @radialVelocity.setter
     def radialVelocity(self, new_RV):
-        assert new_RV.units.dimensions == dimensions.length / dimensions.time,\
+        assert new_RV.units.dimensions == udim.length / udim.time,\
             f'New radial velocity has units {new_RV.units.dimensions}!'
         self._radialVelocity = new_RV
 
@@ -861,7 +926,7 @@ class Star(object):
 
     @temperature.setter
     def temperature(self, new_T):
-        assert new_T.units.dimensions == dimensions.temperature,\
+        assert new_T.units.dimensions == udim.temperature,\
             f'New temperature has units {new_T.units}!'
         self._temperature = new_T
 
@@ -968,6 +1033,23 @@ class Star(object):
             else:
                 self._hasObsPost = True
         return self._hasObsPost
+
+    @property
+    def obsBaseline(self):
+        """
+        Return the period between first and last observations for this star.
+
+        Returns
+        -------
+        `datetime.timedelta`
+            A `timedelta` object represting the time period between the first
+            and the last observations of this star.
+
+        """
+        obs_dates = [dt.datetime.fromisoformat(x) for x
+                     in self._obs_date_bidict.keys()]
+
+        return max(obs_dates) - min(obs_dates)
 
     def getSpecialAttributes(self, star_dir):
         """
