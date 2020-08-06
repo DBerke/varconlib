@@ -12,6 +12,7 @@ Tests for star.py.
 import datetime as dt
 from pathlib import Path
 
+import numpy as np
 import pytest
 import unyt as u
 
@@ -50,7 +51,8 @@ class TestStar(object):
     @pytest.fixture(scope='class')
     def test_star(self, test_dir):
         return Star('HD117618', star_dir=test_dir, suffix='int',
-                    load_data=False, init_params='Nordstrom2004')
+                    load_data=False, init_params='Nordstrom2004',
+                    correction_model='cross_term')
 
     def testNonExistentDir(self):
         with pytest.raises(StarDirectoryNotFoundError):
@@ -139,11 +141,17 @@ class TestStar(object):
         star_name = test_star.name
         tmp_file_path = tmp_dir / f'{star_name}_data.hdf5'
         test_star.saveDataToDisk(tmp_file_path)
-        new_star = Star(star_name, tmp_dir)
+        new_star = Star(star_name, tmp_dir, init_params='Nordstrom2004',
+                        load_data=True,
+                        correction_model='cross_term')
 
         for name in test_star.unyt_arrays.values():
-            assert u.array.allclose_units(getattr(new_star, name),
-                                          getattr(test_star, name))
+            if np.any(np.isnan(getattr(test_star, name))):
+                assert np.all(np.isnan(getattr(test_star, name)) ==
+                              np.isnan(getattr(new_star, name)))
+            else:
+                assert u.array.allclose_units(getattr(new_star, name),
+                                              getattr(test_star, name))
             assert getattr(new_star, name).units == getattr(test_star,
                                                             name).units
         assert new_star._obs_date_bidict == test_star._obs_date_bidict
