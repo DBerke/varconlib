@@ -161,7 +161,7 @@ class Star(object):
     # Define the version of the format being saved.
     global CURRENT_VERSION
     # TODO: update this
-    CURRENT_VERSION = '1.1.0'
+    CURRENT_VERSION = '2.0.0'
 
     # Define dataset names and corresponding attribute names to be saved
     # and loaded when dumping star data.
