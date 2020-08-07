@@ -642,13 +642,20 @@ class Star(object):
 
         return separations_array
 
-    def formatPairData(self, pair):
+    def formatPairData(self, pair, order_num):
         """Return a list of information about a given pair.
+
+        This function returns the weighted mean of the component transitions
+        and the error on the weighted mean of their uncertainties for the given
+        pair
 
         Parameters
         ----------
         pair_label : `varconlib.transition_pair.TransitionPair`
-            An instance of TransitionPair.
+            An instance of transition_pair.TransitionPair.
+        order_num : int
+            An integer between [0, 71] representing the number of the HARPS
+            this pair is fitted in.
 
         Returns
         -------
@@ -659,22 +666,31 @@ class Star(object):
 
         """
 
-        info_list = [pair.label]
-        label1 = pair._higherEnergyTransition.label
-        label2 = pair._lowerEnergyTransition.label
+        order_num = str(order_num)
 
-        offsets1 = self.pairSeparationsArray[:, self.t_index(label1)]
-        offsets2 = self.pairSeparationsArray[:, self.t_index(label2)]
+        # info_list = ['_'.join(pair.label, order_num)]
+        label1 = '_'.join([pair._higherEnergyTransition.label, order_num])
+        label2 = '_'.join([pair._lowerEnergyTransition.label, order_num])
 
-        errs1 = self.pairSepErrorsArray[:, self.t_index(label1)]
-        errs2 = self.pairSepErrorsArray[:, self.t_index(label2)]
+        offsets1 = self.paramsOffsetsArray[:, self.t_index(label1)]
+        offsets2 = self.paramsOffsetsArray[:, self.t_index(label2)]
 
-        weighted_mean1 = np.average(offsets1, weights=errs1**-2)
-        weighted_mean2 = np.average(offsets2, weights=errs2**-2)
+        errs1 = self.paramsErrorsArray[:, self.t_index(label1)]
+        errs2 = self.paramsErrorsArray[:, self.t_index(label2)]
 
-        # Need mean of errors.
+        weighted_mean1, sum1 = np.average(offsets1, weights=errs1**-2,
+                                          returned=True)
+        weighted_mean2, sum2 = np.average(offsets2, weights=errs2**-2,
+                                          returned=True)
 
-        info_list.extend([weighted_mean1, weighted_mean2])
+        eotwm1 = 1 / np.sqrt(sum1)
+        eotwm2 = 1 / np.sqrt(sum2)
+
+        info_list = ['_'.join([pair.label, order_num]),
+                     weighted_mean1.value, weighted_mean2.value,
+                     eotwm1.value, eotwm2.value,
+                     self.temperature.value, self.metallicity, self.logg,
+                     self.absoluteMagnitude]
 
         return info_list
 
