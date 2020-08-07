@@ -297,7 +297,7 @@ class Star(object):
                                       pairs_list=pairs_list,
                                       transitions_list=transitions_list)
                 self.createCorrectedArrays(correction_model)
-                self.createPairSeparationsArray()
+                self.createPairSeparationArrays()
 
                 self.saveDataToDisk(self.hdf5file)
                 self.specialAttributes.update(self.
@@ -576,7 +576,7 @@ class Star(object):
         self.paramsCorrectionsArray = u.unyt_array(corrections_array,
                                                    units='m/s')
 
-    def createPairSeparationsArray(self):
+    def createPairSeparationArrays(self):
         """Create attributes containing pair separations and associated errors.
 
         This method creates attributes called pairSeparationsArray and
