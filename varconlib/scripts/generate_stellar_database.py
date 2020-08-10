@@ -76,7 +76,7 @@ def get_star(star_path, verbose=False, recreate=False):
     assert star_path.exists(), FileNotFoundError('Star directory'
                                                  f' {star_path}'
                                                  ' not found.')
-    recreate = not args.recreate_stars
+    recreate = not recreate
     try:
         return Star(star_path.stem, star_path, load_data=recreate)
     except IndexError:
