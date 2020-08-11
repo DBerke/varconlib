@@ -33,6 +33,7 @@ import varconlib as vcl
 from varconlib.exceptions import (HDF5FileNotFoundError,
                                   PickleFilesNotFoundError,
                                   StarDirectoryNotFoundError)
+from varconlib.fitting import calc_chi_squared_nu
 from varconlib.miscellaneous import wavelength2velocity as wave2vel
 from varconlib.miscellaneous import get_params_file
 
@@ -651,7 +652,7 @@ class Star(object):
 
         Parameters
         ----------
-        pair_label : `varconlib.transition_pair.TransitionPair`
+        pair : `varconlib.transition_pair.TransitionPair`
             An instance of transition_pair.TransitionPair.
         order_num : int
             An integer between [0, 71] representing the number of the HARPS
@@ -668,29 +669,48 @@ class Star(object):
 
         order_num = str(order_num)
 
-        # info_list = ['_'.join(pair.label, order_num)]
         label1 = '_'.join([pair._higherEnergyTransition.label, order_num])
         label2 = '_'.join([pair._lowerEnergyTransition.label, order_num])
 
-        offsets1 = self.paramsOffsetsArray[:, self.t_index(label1)]
-        offsets2 = self.paramsOffsetsArray[:, self.t_index(label2)]
+        offsets1 = ma.masked_invalid(self.paramsOffsetsArray[:,
+                                     self.t_index(label1)].value)
+        offsets2 = ma.masked_invalid(self.paramsOffsetsArray[:,
+                                     self.t_index(label2)].value)
 
-        errs1 = self.paramsErrorsArray[:, self.t_index(label1)]
-        errs2 = self.paramsErrorsArray[:, self.t_index(label2)]
+        errs1 = ma.masked_invalid(self.paramsErrorsArray[:,
+                                  self.t_index(label1)].value)
+        errs2 = ma.masked_invalid(self.paramsErrorsArray[:,
+                                  self.t_index(label2)].value)
 
-        weighted_mean1, sum1 = np.average(offsets1, weights=errs1**-2,
+        weighted_mean1, sum1 = ma.average(offsets1,
+                                          weights=errs1**-2,
                                           returned=True)
-        weighted_mean2, sum2 = np.average(offsets2, weights=errs2**-2,
+        weighted_mean2, sum2 = np.average(offsets2,
+                                          weights=errs2**-2,
                                           returned=True)
+
+        chi_squared1 = calc_chi_squared_nu(offsets1 - weighted_mean1,
+                                           errs1, 1)
+        chi_squared2 = calc_chi_squared_nu(offsets2 - weighted_mean2,
+                                           errs2, 1)
 
         eotwm1 = 1 / np.sqrt(sum1)
         eotwm2 = 1 / np.sqrt(sum2)
 
-        info_list = ['_'.join([pair.label, order_num]),
-                     weighted_mean1.value, weighted_mean2.value,
-                     eotwm1.value, eotwm2.value,
-                     self.temperature.value, self.metallicity, self.logg,
-                     self.absoluteMagnitude]
+        info_list = [self.name,
+                     weighted_mean2 - weighted_mean1,
+                     np.sqrt(eotwm1**2 + eotwm2**2),
+                     weighted_mean1, eotwm1,
+                     chi_squared1, offsets1.count(),
+                     weighted_mean2, eotwm2,
+                     chi_squared2, offsets2.count()]
+
+        self._formatHeader = ['#star_name', 'delta(v)_pair (m/s)',
+                              'err_delta(v)_pair (m/s)',
+                              'transition1 (m/s)', 't_err1 (m/s)',
+                              'chi^2_nu1', '#obs1',
+                              'transition2 (m/s)', 't_err2 (m/s)',
+                              'chi^2_nu2', '#obs2']
 
         return info_list
 
@@ -831,6 +851,11 @@ class Star(object):
             # If for some reason it runs through everything and still doesn't
             # find an answer, raise an error:
             raise RuntimeError('Unable to find correction!')
+
+    @property
+    def formatHeader(self):
+        """Return a list of the data returned by self.formatPairData"""
+        return self._formatHeader
 
     @property
     def ccdSystematicsDict(self):
@@ -1245,6 +1270,9 @@ class Star(object):
     def getNumObs(self, array_slice=slice(None, None)):
         """Return the number of observations encompassed by the given array
         slice.
+
+        If called with no arguments, the number returned will be the total
+        number of observations for this star.
 
         Parameters
         ----------
