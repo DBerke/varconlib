@@ -247,7 +247,7 @@ def wavelength2velocity(wavelength1, wavelength2):
         The velocity separation between the given wavelengths in m/s.
 
     """
-    # TODO: Add check for proper dimensions.
+
     assert wavelength1.units.dimensions == udim.length,\
         "wavelength1 needs dimensions of length."
     assert wavelength2.units.dimensions == udim.length,\
