@@ -16,9 +16,14 @@ from json import JSONDecodeError
 import os
 import pickle
 
+from astropy.coordinates import SkyCoord
+import astropy.units as unit
+from astroquery.simbad import Simbad
 from tqdm import tqdm
 
 import varconlib as vcl
+from varconlib.exceptions import (HDF5FileNotFoundError,
+                                  PickleFilesNotFoundError)
 from varconlib.star import Star
 
 header = ['#pair_label', 'delta(v)_pair', 'err_delta(v)_pair',
@@ -79,6 +84,7 @@ def main():
     main_dir = vcl.output_dir
 
     star_list = []
+    star_names = []
     tqdm.write('Collecting stars...')
 
     for star_dir in tqdm(args.star_names):
@@ -91,6 +97,39 @@ def main():
             continue
         else:
             star_list.append(star)
+            if 'HD' in star.name:
+                star_names.append(star.name)
+
+    # Only update star coordinates if specifically requested.
+    star_coords_file = vcl.data_dir / 'Star_coords.csv'
+    if args.get_star_coords:
+        tqdm.write('Querying Simbad for star coordinates.')
+        coords_dict = {}
+        results_table = Simbad.query_objects(star_names)
+
+        for star_name, row in tqdm(zip(star_names, results_table),
+                                   total=len(star_names)):
+            c = SkyCoord(ra=row['RA'], dec=row['DEC'],
+                         unit=(unit.hourangle, unit.deg))
+            coords_dict[star_name] = [star_name, c.ra.degree, c.dec.degree,
+                                      c.galactic.l.degree, c.galactic.b.degree]
+
+        coords_header = ['#star_name', 'RA', 'DEC', 'l', 'b']
+        with open(star_coords_file, 'w', newline='') as f:
+            datawriter = csv.writer(f)
+            datawriter.writerow(coords_header)
+            for key, value in coords_dict.items():
+                datawriter.writerow(value)
+    else:
+        if not star_coords_file.exists():
+            raise FileNotFoundError('No Star_coords.csv file exists.')
+        else:
+            tqdm.write(f'Using cached star coordinates at {star_coords_file}.')
+            coords_dict = {}
+            with open(star_coords_file, 'r', newline='') as f:
+                datareader = csv.reader(f, delimiter=',')
+                for row in datareader:
+                    coords_dict[row[0]] = row
 
     # The directory for storing these CSV files.
     output_dir = vcl.output_dir / 'pair_separation_files'
@@ -99,7 +138,8 @@ def main():
 
     # Generate a file with properties constant for each star
     tqdm.write('Writing out data for each star.')
-    properties_header = ['#star_name', 'Teff (K)', '[Fe/H]', 'log(g)',
+    properties_header = ['#star_name', 'RA', 'DEC', 'l', 'b',
+                         'Teff (K)', '[Fe/H]', 'log(g)',
                          'M_V', '#obs', 'obs_baseline (days)']
 
     star_properties_file = output_dir / 'star_properties.csv'
@@ -108,9 +148,15 @@ def main():
         datawriter.writerow(properties_header)
 
         for star in star_list:
-            info_list = [star.name, star.temperature, star.metallicity,
-                         star.logg, star.absoluteMagnitude, star.getNumObs(),
-                         round(star.obsBaseline / dt.timedelta(days=1), 3)]
+            if 'HD' in star.name:
+                info_list = coords_dict[star.name]
+            else:
+                info_list = [star.name]
+                info_list.extend(['-']*4)
+            info_list.extend([star.temperature, star.metallicity,
+                              star.logg, star.absoluteMagnitude,
+                              star.getNumObs(),
+                              round(star.obsBaseline/dt.timedelta(days=1), 3)])
             datawriter.writerow(info_list)
 
     # Import the list of pairs to use.
@@ -143,6 +189,9 @@ if __name__ == '__main__':
                         help='The names of stars (directories) containing the'
                         ' stars to be used in the plot.')
 
+    parser.add_argument('--get-star-coords', action='store_true',
+                        help='Query Simbad for coordinates for all the stars'
+                        ' given and store them in a file.')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help="Print out more information about the script's"
                         " output.")
