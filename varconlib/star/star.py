@@ -1267,6 +1267,12 @@ class Star(object):
         # Else if no observation dates are after the fiber change:
         return None
 
+    @property
+    def numObs(self):
+        """Return the total number of observations for this star."""
+
+        return self.getNumObs()
+
     def getNumObs(self, array_slice=slice(None, None)):
         """Return the number of observations encompassed by the given array
         slice.
