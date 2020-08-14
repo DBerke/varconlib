@@ -162,7 +162,7 @@ class Star(object):
     # Define the version of the format being saved.
     global CURRENT_VERSION
     # TODO: update this
-    CURRENT_VERSION = '2.0.0'
+    CURRENT_VERSION = '3.0.0'
 
     # Define dataset names and corresponding attribute names to be saved
     # and loaded when dumping star data.
@@ -171,6 +171,8 @@ class Star(object):
                    '/arrays/offsets': 'fitOffsetsArray',
                    '/arrays/pair_separations': 'pairSeparationsArray',
                    '/arrays/pair_separation_errors': 'pairSepErrorsArray',
+                   '/arrays/pair_separation_systematic_errors':
+                       'pairSepSysErrorsArray',
                    '/arrays/BERV_array': 'bervArray',
                    '/arrays/observation_rv': 'obsRVOffsetsArray',
                    '/arrays/normalized_offsets': 'fitOffsetsNormalizedArray',
@@ -502,10 +504,13 @@ class Star(object):
 
         """
 
-        filename = vcl.output_dir / f'fit_params/{model_func}_params.hdf5'
+        # Use the parameters derived from results with outliers removed.
+        filename = vcl.output_dir /\
+            f'fit_params/{model_func}_corrected_params.hdf5'
         fit_results_dict = get_params_file(filename)
         function = fit_results_dict['model_func']
         coeffs_dict = fit_results_dict['coeffs']
+        sigma_sys_dict = fit_results_dict['sigmas_sys']
 
         stellar_params = np.stack((self.temperature, self.metallicity,
                                    self.absoluteMagnitude), axis=0)
@@ -524,9 +529,11 @@ class Star(object):
         # Two rows: 0 = pre, 1 = post.
         corrections_array = np.full((2, len(self._transition_bidict.keys())),
                                     np.nan, dtype=float)
+        # Create an indentically-shaped array to hold the systematic error
+        # present for each transition, in pre- and post-fiber change eras.
+        sigma_sys_array = np.full_like(corrections_array, np.nan, dtype=float)
 
         for key, col_num in tqdm(self._transition_bidict.items()):
-            # col_num = self._transition_bidict.index_for[key]
 
             if self.hasObsPre:
                 label = key + '_pre'
@@ -544,6 +551,10 @@ class Star(object):
                     correction
                 data_slice = corrected_array[pre_slice, col_num]
                 error_slice = self.fitErrorsArray[pre_slice, col_num]
+
+                # Get the systematic error for this transition:
+                sigma_sys = sigma_sys_dict[label]
+                sigma_sys_array[0, col_num] = sigma_sys.value
 
                 for i in range(len(data_slice)):
                     if abs(data_slice[i]) > n_sigma * error_slice[i]:
@@ -565,6 +576,9 @@ class Star(object):
                 data_slice = corrected_array[post_slice, col_num]
                 error_slice = self.fitErrorsArray[post_slice, col_num]
 
+                sigma_sys = sigma_sys_dict[label]
+                sigma_sys_array[1, col_num] = sigma_sys.value
+
                 for i in range(len(data_slice)):
                     if abs(data_slice[i]) > n_sigma * error_slice[i]:
                         mask_array[i+self.fiberSplitIndex, col_num] = 1
@@ -576,6 +590,7 @@ class Star(object):
                                               units='m/s')
         self.paramsCorrectionsArray = u.unyt_array(corrections_array,
                                                    units='m/s')
+        self.paramsSysErrorsArray = u.unyt_array(sigma_sys_array, units='m/s')
 
     def createPairSeparationArrays(self):
         """Create attributes containing pair separations and associated errors.
@@ -591,15 +606,19 @@ class Star(object):
         """
 
         # Set up the arrays for pair separations and errors
-        self.pairSeparationsArray = np.empty([
+        self.pairSeparationsArray = np.full([
             len(self._obs_date_bidict.keys()),
-            len(self._pair_bidict.keys())],
+            len(self._pair_bidict.keys())], np.nan,
             dtype=float)
-        self.pairSepErrorsArray = np.empty_like(self.pairSeparationsArray,
-                                                dtype=float)
+        self.pairSepErrorsArray = np.full_like(self.pairSeparationsArray,
+                                               np.nan, dtype=float)
+        self.pairSepSysErrorsArray = np.full([2,
+                                              len(self._pair_bidict.keys())],
+                                             np.nan, dtype=float)
 
         corrected_array = self.paramsOffsetsArray
         corrected_errs = self.paramsErrorsArray
+        sys_errors = self.paramsSysErrorsArray
 
         for pair in self.pairsList:
             for order_num in pair.ordersToMeasureIn:
@@ -617,33 +636,15 @@ class Star(object):
                     np.sqrt(corrected_errs[:, self.t_index(label1)]**2 +
                             corrected_errs[:, self.t_index(label2)]**2)
 
+                self.pairSepSysErrorsArray[:, self.p_index(pair_label)] =\
+                    np.sqrt(sys_errors[:, self.t_index(label1)]**2 +
+                            sys_errors[:, self.t_index(label2)]**2)
+
         self.pairSeparationsArray *= u.m/u.s
         self.pairSepErrorsArray *= u.m/u.s
+        self.pairSepSysErrorsArray *= u.m/u.s
 
-    def getPairSeparations(self):
-        """Return the weighted mean value of the pair separations for this star.
-
-        Returns
-        -------
-        `np.array`
-            A NumPy `ndarray` containing the weighted mean of the pair-wise
-            separation values for each pair for this star.
-
-        """
-
-        if not hasattr(self, 'pairSeparationsArray'):
-            raise RuntimeError("No pairSeparationsArray exists for this star.")
-
-        separations_array = np.full(len(self.pairsList), None)
-
-        for num, pair in enumerate(self.pairsList):
-            weighted_mean = np.average(self.pairSeparationsArray[:, num],
-                                       weights=self.pairSepErrorsArray[:, num])
-            separations_array[num] = weighted_mean
-
-        return separations_array
-
-    def formatPairData(self, pair, order_num):
+    def formatPairData(self, pair, order_num, era):
         """Return a list of information about a given pair.
 
         This function returns the weighted mean of the component transitions
@@ -657,6 +658,8 @@ class Star(object):
         order_num : int
             An integer between [0, 71] representing the number of the HARPS
             this pair is fitted in.
+        era : str, ['pre', 'post']
+            The time frame to exclude the results to.
 
         Returns
         -------
@@ -667,20 +670,32 @@ class Star(object):
 
         """
 
+        if era == 'pre':
+            time_slice = slice(None, self.fiberSplitIndex)
+            era_index = 0
+        elif era == 'post':
+            time_slice = slice(self.fiberSplitIndex, None)
+            era_index = 1
+        else:
+            raise RuntimeError(f'Incorrect value for era: {era}')
+
         order_num = str(order_num)
 
         label1 = '_'.join([pair._higherEnergyTransition.label, order_num])
         label2 = '_'.join([pair._lowerEnergyTransition.label, order_num])
 
-        offsets1 = ma.masked_invalid(self.paramsOffsetsArray[:,
-                                     self.t_index(label1)].value)
-        offsets2 = ma.masked_invalid(self.paramsOffsetsArray[:,
-                                     self.t_index(label2)].value)
+        col1 = self.t_index(label1)
+        col2 = self.t_index(label2)
 
-        errs1 = ma.masked_invalid(self.paramsErrorsArray[:,
-                                  self.t_index(label1)].value)
-        errs2 = ma.masked_invalid(self.paramsErrorsArray[:,
-                                  self.t_index(label2)].value)
+        offsets1 = ma.masked_invalid(self.paramsOffsetsArray[time_slice,
+                                     col1].value)
+        offsets2 = ma.masked_invalid(self.paramsOffsetsArray[time_slice,
+                                     col2].value)
+
+        errs1 = ma.masked_invalid(self.paramsErrorsArray[time_slice,
+                                  col1].value)
+        errs2 = ma.masked_invalid(self.paramsErrorsArray[time_slice,
+                                  col2].value)
 
         weighted_mean1, sum1 = ma.average(offsets1,
                                           weights=errs1**-2,
@@ -697,20 +712,24 @@ class Star(object):
         eotwm1 = 1 / np.sqrt(sum1)
         eotwm2 = 1 / np.sqrt(sum2)
 
+        sigma_sys1 = float(self.paramsSysErrorsArray[era_index, col1])
+        sigma_sys2 = float(self.paramsSysErrorsArray[era_index, col2])
+
         info_list = [self.name,
                      weighted_mean2 - weighted_mean1,
                      np.sqrt(eotwm1**2 + eotwm2**2),
-                     weighted_mean1, eotwm1,
+                     np.sqrt(sigma_sys1**2 + sigma_sys2**2),
+                     weighted_mean1, eotwm1, sigma_sys1,
                      chi_squared1, offsets1.count(),
-                     weighted_mean2, eotwm2,
+                     weighted_mean2, eotwm2, sigma_sys2,
                      chi_squared2, offsets2.count()]
 
         self._formatHeader = ['#star_name', 'delta(v)_pair (m/s)',
-                              'err_delta(v)_pair (m/s)',
-                              'transition1 (m/s)', 't_err1 (m/s)',
-                              'chi^2_nu1', '#obs1',
-                              'transition2 (m/s)', 't_err2 (m/s)',
-                              'chi^2_nu2', '#obs2']
+                              'err_stat_pair (m/s)', 'err_sys_pair (m/s)',
+                              'transition1 (m/s)', 't_stat_err1 (m/s)',
+                              't_sys_err1 (m/s)', 'chi^2_nu1', '#obs1',
+                              'transition2 (m/s)', 't_stat_err2 (m/s)',
+                              't_sys_err2 (m/s)', 'chi^2_nu2', '#obs2']
 
         return info_list
 
@@ -755,7 +774,7 @@ class Star(object):
         """Retrieve datasets from HDF5 file.
 
         Loads data previously saved to disc into an initialized `Star` object,
-        ready for use without needed to create or collate it again.
+        ready for use without needing to create or collate it again.
 
         Paramters
         ---------
