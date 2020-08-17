@@ -76,6 +76,8 @@ def get_star(star_path, verbose=False, recreate=False):
     assert star_path.exists(), FileNotFoundError('Star directory'
                                                  f' {star_path}'
                                                  ' not found.')
+    # Flip boolean value, since to recreate (True) the star requires setting its
+    # load_data argument to False.
     recreate = not recreate
     try:
         return Star(star_path.stem, star_path, load_data=recreate)
@@ -193,7 +195,7 @@ def main():
 
     for star_dir in tqdm(args.star_names):
         try:
-            star = get_star(main_dir / star_dir)
+            star = get_star(main_dir / star_dir, recreate=args.recreate_stars)
         except JSONDecodeError:
             print(f'Error reading JSON from {star_dir}.')
             raise
