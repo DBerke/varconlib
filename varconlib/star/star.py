@@ -299,7 +299,7 @@ class Star(object):
                 self.constructFromDir(star_dir, suffix,
                                       pairs_list=pairs_list,
                                       transitions_list=transitions_list)
-                self.createCorrectedArrays(correction_model)
+                self.createParamsCorrectedArrays(correction_model)
                 self.createPairSeparationArrays()
 
                 self.saveDataToDisk(self.hdf5file)
@@ -472,7 +472,7 @@ class Star(object):
                                                       in enumerate(
                                                           transition_labels)})
 
-    def createCorrectedArrays(self, model_func, n_sigma=2.5):
+    def createParamsCorrectedArrays(self, model_func, n_sigma=2.5):
         """Return an array corrected by a function and a mask of outliers.
 
         This method takes a function of three stellar parameters (temperature,
