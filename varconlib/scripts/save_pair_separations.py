@@ -111,8 +111,15 @@ def main():
                                    total=len(star_names)):
             c = SkyCoord(ra=row['RA'], dec=row['DEC'],
                          unit=(unit.hourangle, unit.deg))
-            coords_dict[star_name] = [star_name, c.ra.degree, c.dec.degree,
-                                      c.galactic.l.degree, c.galactic.b.degree]
+            coords_dict[star_name] = [star_name,
+                                      c.ra.to_string(unit=unit.hour,
+                                                     sep=' '),
+                                      c.dec.to_string(unit=unit.degree,
+                                                      sep=' '),
+                                      c.galactic.l.to_string(unit=unit.degree,
+                                                             sep=' '),
+                                      c.galactic.b.to_string(unit=unit.degree,
+                                                             sep=' ')]
 
         coords_header = ['#star_name', 'RA', 'DEC', 'l', 'b']
         with open(star_coords_file, 'w', newline='') as f:
@@ -133,52 +140,67 @@ def main():
 
     # The directory for storing these CSV files.
     output_dir = vcl.output_dir / 'pair_separation_files'
+    output_pre = output_dir / 'pre'
+    output_post = output_dir / 'post'
     if not output_dir.exists():
         os.mkdir(output_dir)
+        os.mkdir(output_pre)
+        os.mkdir(output_post)
 
-    # Generate a file with properties constant for each star
-    tqdm.write('Writing out data for each star.')
-    properties_header = ['#star_name', 'RA', 'DEC', 'l', 'b',
-                         'Teff (K)', '[Fe/H]', 'log(g)',
-                         'M_V', '#obs', 'obs_baseline (days)']
+    if args.stars:
+        # Generate a file with properties constant for each star
+        tqdm.write('Writing out data for each star.')
+        properties_header = ['#star_name', 'RA', 'DEC', 'l', 'b',
+                             'Teff (K)', '[Fe/H]', 'log(g)',
+                             'M_V', '#obs', 'start_date', 'end_date']
 
-    star_properties_file = output_dir / 'star_properties.csv'
-    with open(star_properties_file, 'w', newline='') as f:
-        datawriter = csv.writer(f)
-        datawriter.writerow(properties_header)
-
-        for star in star_list:
-            if 'HD' in star.name:
-                info_list = coords_dict[star.name]
-            else:
-                info_list = [star.name]
-                info_list.extend(['-']*4)
-            info_list.extend([star.temperature, star.metallicity,
-                              star.logg, star.absoluteMagnitude,
-                              star.getNumObs(),
-                              round(star.obsBaseline/dt.timedelta(days=1), 3)])
-            datawriter.writerow(info_list)
-
-    # Import the list of pairs to use.
-    with open(vcl.final_pair_selection_file, 'r+b') as f:
-        pairs_list = pickle.load(f)
-
-    tqdm.write('Writing out data for each pair.')
-    for pair in tqdm(pairs_list):
-        for order_num in pair.ordersToMeasureIn:
-            pair_label = "_".join([pair.label, str(order_num)])
-            vprint(f'Collecting data for {pair_label}.')
-            csv_file = output_dir / f'{pair_label}_pair_separations.csv'
-            info_list = []
+        star_properties_file = output_dir / 'star_properties.csv'
+        with open(star_properties_file, 'w', newline='') as f:
+            datawriter = csv.writer(f)
+            datawriter.writerow(properties_header)
 
             for star in star_list:
-                info_list.append(star.formatPairData(pair, order_num))
+                if 'HD' in star.name:
+                    info_list = coords_dict[star.name]
+                else:
+                    info_list = [star.name]
+                    info_list.extend(['-']*4)
+                obs_dates = [dt.datetime.fromisoformat(obs_date) for obs_date in
+                             star._obs_date_bidict.keys()]
+                start_date = min(obs_dates)
+                end_date = max(obs_dates)
+                info_list.extend([star.temperature.value, star.metallicity,
+                                  star.logg, star.absoluteMagnitude,
+                                  star.getNumObs(),
+                                  start_date.isoformat(timespec='milliseconds'),
+                                  end_date.isoformat(timespec='milliseconds')])
+                datawriter.writerow(info_list)
 
-        with open(csv_file, 'w', newline='') as f:
-            datawriter = csv.writer(f)
-            datawriter.writerow(star.formatHeader)
-            for row in info_list:
-                datawriter.writerow(row)
+    if args.pairs:
+        # Import the list of pairs to use.
+        with open(vcl.final_pair_selection_file, 'r+b') as f:
+            pairs_list = pickle.load(f)
+
+        tqdm.write('Writing out data for each pair.')
+        for pair in tqdm(pairs_list):
+            for order_num in pair.ordersToMeasureIn:
+                pair_label = "_".join([pair.label, str(order_num)])
+                for era in ('pre', 'post'):
+                    vprint(f'Collecting data for {pair_label} in {era}-fiber'
+                           ' change era.')
+                    csv_file = output_dir /\
+                        f'{era}/{pair_label}_pair_separations_{era}.csv'
+                    info_list = []
+
+                    for star in star_list:
+                        info_list.append(star.formatPairData(pair,
+                                                             order_num, era))
+
+                with open(csv_file, 'w', newline='') as f:
+                    datawriter = csv.writer(f)
+                    datawriter.writerow(star.formatHeader)
+                    for row in info_list:
+                        datawriter.writerow(row)
 
 
 if __name__ == '__main__':
@@ -188,6 +210,11 @@ if __name__ == '__main__':
     parser.add_argument('star_names', action='store', type=str, nargs='+',
                         help='The names of stars (directories) containing the'
                         ' stars to be used in the plot.')
+
+    parser.add_argument('-S', '--stars', action='store_true',
+                        help="Create the file of information for each star.")
+    parser.add_argument('-P', '--pairs', action='store_true',
+                        help="Create files for each pair.")
 
     parser.add_argument('--get-star-coords', action='store_true',
                         help='Query Simbad for coordinates for all the stars'
