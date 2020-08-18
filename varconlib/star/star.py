@@ -180,7 +180,9 @@ class Star(object):
                    '/arrays/systematic_corrections': 'ccdCorrectionArray',
                    '/arrays/params_corrected_offsets': 'paramsOffsetsArray',
                    '/arrays/params_corrected_errors': 'paramsErrorsArray',
-                   '/arrays/params_corrections': 'paramsCorrectionsArray'}
+                   '/arrays/params_corrections': 'paramsCorrectionsArray',
+                   '/arrays/params_systematic_error':
+                       'paramsSysErrorsArray'}
 
     other_attributes = {'/metadata/version': 'version',
                         '/arrays/reduced_chi_squareds': 'chiSquaredNuArray',
