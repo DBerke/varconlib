@@ -193,14 +193,19 @@ def main():
                     info_list = []
 
                     for star in star_list:
-                        info_list.append(star.formatPairData(pair,
-                                                             order_num, era))
+                        try:
+                            info_list.append(star.formatPairData(pair,
+                                                                 order_num,
+                                                                 era))
+                        except ZeroDivisionError:
+                            vprint(f'Error with {star.name}, {era}.')
+                            raise
 
-                with open(csv_file, 'w', newline='') as f:
-                    datawriter = csv.writer(f)
-                    datawriter.writerow(star.formatHeader)
-                    for row in info_list:
-                        datawriter.writerow(row)
+                    with open(csv_file, 'w', newline='') as f:
+                        datawriter = csv.writer(f)
+                        datawriter.writerow(star.formatHeader)
+                        for row in info_list:
+                            datawriter.writerow(row)
 
 
 if __name__ == '__main__':
