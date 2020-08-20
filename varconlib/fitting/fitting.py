@@ -430,7 +430,10 @@ def calc_chi_squared_nu(residuals, errors, n_params):
 
     chi_squared = np.sum(np.square(residuals / errors))
     dof = len(residuals) - n_params
-    return chi_squared / dof
+    if dof == 0:
+        return 0
+    else:
+        return chi_squared / dof
 
 
 def find_sigma_sys(model_func, x_data, y_data, err_array, beta0,
