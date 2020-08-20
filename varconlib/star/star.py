@@ -515,7 +515,7 @@ class Star(object):
         sigma_sys_dict = fit_results_dict['sigmas_sys']
 
         stellar_params = np.stack((self.temperature, self.metallicity,
-                                   self.absoluteMagnitude), axis=0)
+                                   self.logg), axis=0)
 
         # Set up an array to hold the corrected values.
         corrected_array = np.full_like(self.fitOffsetsNormalizedArray,
@@ -689,42 +689,56 @@ class Star(object):
         col1 = self.t_index(label1)
         col2 = self.t_index(label2)
 
-        offsets1 = ma.masked_invalid(self.paramsOffsetsArray[time_slice,
-                                     col1].value)
-        offsets2 = ma.masked_invalid(self.paramsOffsetsArray[time_slice,
-                                     col2].value)
-
-        errs1 = ma.masked_invalid(self.paramsErrorsArray[time_slice,
-                                  col1].value)
-        errs2 = ma.masked_invalid(self.paramsErrorsArray[time_slice,
-                                  col2].value)
-
-        weighted_mean1, sum1 = ma.average(offsets1,
-                                          weights=errs1**-2,
-                                          returned=True)
-        weighted_mean2, sum2 = np.average(offsets2,
-                                          weights=errs2**-2,
-                                          returned=True)
-
-        chi_squared1 = calc_chi_squared_nu(offsets1 - weighted_mean1,
-                                           errs1, 1)
-        chi_squared2 = calc_chi_squared_nu(offsets2 - weighted_mean2,
-                                           errs2, 1)
-
-        eotwm1 = 1 / np.sqrt(sum1)
-        eotwm2 = 1 / np.sqrt(sum2)
-
         sigma_sys1 = float(self.paramsSysErrorsArray[era_index, col1])
         sigma_sys2 = float(self.paramsSysErrorsArray[era_index, col2])
 
-        info_list = [self.name,
-                     weighted_mean2 - weighted_mean1,
-                     np.sqrt(eotwm1**2 + eotwm2**2),
-                     np.sqrt(sigma_sys1**2 + sigma_sys2**2),
-                     weighted_mean1, eotwm1, sigma_sys1,
-                     chi_squared1, offsets1.count(),
-                     weighted_mean2, eotwm2, sigma_sys2,
-                     chi_squared2, offsets2.count()]
+        # If no obervations for this era, trying to calculate results from them
+        # will fail, so just fill out the results with NaNs.
+        if getattr(self, f'numObs{era.capitalize()}') == 0:
+            info_list = [self.name,
+                         np.nan,
+                         np.nan,
+                         np.sqrt(sigma_sys1**2 + sigma_sys2**2),
+                         np.nan, np.nan, sigma_sys1,
+                         np.nan, 0,
+                         np.nan, np.nan, sigma_sys2,
+                         np.nan, 0]
+
+        else:
+
+            offsets1 = ma.masked_invalid(self.paramsOffsetsArray[time_slice,
+                                         col1].value)
+            offsets2 = ma.masked_invalid(self.paramsOffsetsArray[time_slice,
+                                         col2].value)
+
+            errs1 = ma.masked_invalid(self.paramsErrorsArray[time_slice,
+                                      col1].value)
+            errs2 = ma.masked_invalid(self.paramsErrorsArray[time_slice,
+                                      col2].value)
+
+            weighted_mean1, sum1 = ma.average(offsets1,
+                                              weights=errs1**-2,
+                                              returned=True)
+            weighted_mean2, sum2 = np.average(offsets2,
+                                              weights=errs2**-2,
+                                              returned=True)
+
+            chi_squared1 = calc_chi_squared_nu(offsets1 - weighted_mean1,
+                                               errs1, 1)
+            chi_squared2 = calc_chi_squared_nu(offsets2 - weighted_mean2,
+                                               errs2, 1)
+
+            eotwm1 = 1 / np.sqrt(sum1)
+            eotwm2 = 1 / np.sqrt(sum2)
+
+            info_list = [self.name,
+                         weighted_mean2 - weighted_mean1,
+                         np.sqrt(eotwm1**2 + eotwm2**2),
+                         np.sqrt(sigma_sys1**2 + sigma_sys2**2),
+                         weighted_mean1, eotwm1, sigma_sys1,
+                         chi_squared1, offsets1.count(),
+                         weighted_mean2, eotwm2, sigma_sys2,
+                         chi_squared2, offsets2.count()]
 
         self._formatHeader = ['#star_name', 'delta(v)_pair (m/s)',
                               'err_stat_pair (m/s)', 'err_sys_pair (m/s)',
