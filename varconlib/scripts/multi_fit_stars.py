@@ -423,7 +423,7 @@ def main():
                                      units=u.m/u.s)
                 # Create an error array which uses the greater of the error on
                 # the mean or the error on the weighted mean.
-                err_array = np.maximum(eotwms, eotms)
+                err_array = ma.array(np.maximum(eotwms, eotms).value)
 
                 vprint(f'Mean is {np.mean(offsets)}')
                 weighted_mean = np.average(offsets, weights=err_array**-2)
@@ -447,7 +447,7 @@ def main():
 
                 # Stack the stellar parameters into vertical slices
                 # for passing to model functions.
-                x_data = np.stack((temps, metals, loggs), axis=0)
+                x_data = ma.array(np.stack((temps, metals, loggs), axis=0))
 
                 # Create the parameter list for this run of fitting.
                 params_list[0] = float(mean)
@@ -455,11 +455,20 @@ def main():
                 beta0 = tuple(params_list)
                 vprint(beta0)
 
-                results = fit.find_sigma_sys(model_func, x_data, offsets.value,
-                                             err_array.value, beta0)
+                results = fit.find_sigma_sys(model_func,
+                                             x_data,
+                                             ma.array(offsets.value),
+                                             err_array, beta0,
+                                             n_sigma=2.5, tolerance=0.001)
 
-                residuals = u.unyt_array(results['residuals'],
-                                         units=u.m/u.s)
+                mask = results['mask_list'][-1]
+                residuals = ma.array(results['residuals'], mask=mask)
+                x_data.mask = mask
+                err_array.mask = mask
+
+                # for item1, item2 in zip(residuals, ma.getdata(residuals)):
+                #     print(f'{item1:10.3f}   {item2:10.3f}')
+
                 chi_squared_nu = results['chi_squared_list'][-1]
                 sys_err = results['sys_err_list'][-1] * u.m / u.s
 
@@ -471,7 +480,7 @@ def main():
                 coefficients_dict[label + '_' + time] = results['popt']
                 covariance_dict[label + '_' + time] = results['pcov']
 
-                sigma = np.nanstd(residuals)
+                sigma = np.nanstd(residuals) * u.m/u.s
 
                 sigmas_dict[label + '_' + time] = sigma
                 sigma_sys_dict[label + '_' + time] = sys_err
@@ -488,8 +497,11 @@ def main():
                 for plot_type, lims in zip(('temp', 'mtl', 'logg'),
                                            (temp_lims, mtl_lims, logg_lims)):
                     ax = axes_dict[f'{plot_type}_{time}']
-                    plot_data_points(ax, x_data[param_dict[plot_type]],
-                                     residuals, thick_err=err_array,
+                    plot_data_points(ax,
+                                     ma.compressed(x_data[
+                                         param_dict[plot_type]]),
+                                     ma.compressed(residuals),
+                                     thick_err=ma.compressed(err_array),
                                      # thin_err=iter_err_array,
                                      thin_err=None,
                                      era=time)
@@ -524,7 +536,8 @@ def main():
 
                     ax.annotate(f'Blendedness: {transition.blendedness}\n'
                                 r'$\sigma_\mathrm{sys}$:'
-                                f' {sys_err:.2f}',
+                                f' {sys_err:.2f}\n'
+                                f'#: {residuals.count()}',
                                 (0.01, 0.99),
                                 xycoords='axes fraction',
                                 verticalalignment='top')

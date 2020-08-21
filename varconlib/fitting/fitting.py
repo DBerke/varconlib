@@ -12,11 +12,16 @@ data to a model, as well as creating synthetic data.
 
 import functools
 from math import sqrt, tau
+from time import sleep
 
 import numpy as np
+import numpy.ma as ma
 from scipy.optimize import curve_fit
 from scipy.special import erf
+import tqdm as tqdm
 import unyt as u
+
+import varconlib as vcl
 
 
 def constant_model(data, a):
@@ -437,7 +442,7 @@ def calc_chi_squared_nu(residuals, errors, n_params):
 
 
 def find_sigma_sys(model_func, x_data, y_data, err_array, beta0,
-                   tolerance=0.001):
+                   n_sigma=2.5, tolerance=0.001, verbose=False):
     """Find the systematic scatter in a dataset with a given model.
 
     Takes a model function `model_func`, and arrays of x, y, and uncertainties
@@ -461,11 +466,16 @@ def find_sigma_sys(model_func, x_data, y_data, err_array, beta0,
     beta0 : tuple
         A tuple of values to use as the initial guesses for the paremeters in
         the function given by `model_func`.
+    n_sigma : float
+        The number of sigma outside of which a data point is considered an
+        outlier.
     tolerance : float, Default : 0.001
         The distance from one within which the chi-squared per degree of freedom
         must fall for the iteration to exit. (Note that if the chi-squared value
         is naturally less than one on the first iteration, the iteration with
         end even if the value is not closer to one than the tolerance.)
+    verbose : bool, Default : False
+        Whether to print out more diagnostic information on the process.
 
     Returns
     -------
@@ -487,65 +497,151 @@ def find_sigma_sys(model_func, x_data, y_data, err_array, beta0,
             chi_squared_list : list of floats
                 A list containing the calculated chi-squared per degree of
                 freedom for each step of the iteration.
+            mask_list : list of lists
+                A list containing the mask applied to the data at each
+                iteration. Each entry will be a list of 1s and 0s.
 
     """
+
+    vprint = vcl.verbose_print(verbose)
 
     # Iterate to find what additional systematic error is needed
     # to get a chi^2 of ~1.
     chi_tol = tolerance
     diff = 1
     sys_err = 0
+    iter_err_array = np.sqrt(np.square(err_array) +
+                             np.square(sys_err))
     sigma_sys_change_amount = 0.25  # Range (0, 1)
 
     chi_squared_list = []
     sigma_sys_list = []
+    mask_list = []
+    sigma_sys_change_list = []
 
-    while diff > chi_tol:
+    x_data.mask = False
+    y_data.mask = False
+    err_array.mask = False
 
-        iter_err_array = np.sqrt(np.square(err_array) +
-                                 np.square(sys_err))
+    orig_x_data = ma.copy(x_data)
+    orig_y_data = ma.copy(y_data)
+    orig_errs = ma.copy(err_array)
 
+    last_mask = np.zeros_like(y_data)
+    new_mask = np.ones_like(y_data)
+
+    iterations = 0
+    chi_squared_flips = 0
+
+    vprint('sigma_sys diff  chi^2   SSCA #stars flips')
+    while True:
+        iterations += 1
         popt, pcov = curve_fit(model_func, x_data, y_data,
                                sigma=iter_err_array,
                                p0=beta0,
                                absolute_sigma=True,
                                method='lm', maxfev=10000)
 
-        model_values = model_func(x_data, *popt)
+        iter_model_values = model_func(x_data, *popt)
 
-        residuals = y_data - model_values
+        iter_residuals = y_data - iter_model_values
 
         # Find the chi^2 value for this fit:
-        chi_squared_nu = calc_chi_squared_nu(residuals, iter_err_array,
+        chi_squared_nu = calc_chi_squared_nu(iter_residuals, iter_err_array,
                                              len(popt))
+
+        try:
+            last_chi_squared = chi_squared_list[-1]
+        except IndexError:  # On the first iteration
+            pass
+        else:
+            if chi_squared_nu > 1 and last_chi_squared < 1:
+                chi_squared_flips += 1
+            elif chi_squared_nu < 1 and last_chi_squared > 1:
+                chi_squared_flips += 1
+            else:
+                pass
 
         sigma_sys_list.append(sys_err)
         chi_squared_list.append(chi_squared_nu)
+        mask_list.append(last_mask)
 
         diff = abs(chi_squared_nu - 1)
-        if diff > 2:
-            sigma_sys_change_amount = 0.75
-        elif diff > 1:
-            sigma_sys_change_amount = 0.5
-        else:
-            sigma_sys_change_amount = 0.25
+
+        # Set the amount to change by using the latest chi^2 value.
+        sigma_sys_change_amount = np.sqrt(chi_squared_nu)
+        sigma_sys_change_list.append(sigma_sys_change_amount)
+
+        vprint(f'{sys_err:.4f}, {diff:.4f}, {chi_squared_nu:.4f},'
+               f' {sigma_sys_change_amount:.4f},'
+               f' {iter_residuals.count()}, {chi_squared_flips}')
+        if verbose:
+            sleep_length = 0.001 if chi_squared_flips < 3 else 0.4
+            sleep(sleep_length)
 
         if chi_squared_nu > 1:
             if sys_err == 0:
                 sys_err = np.sqrt(chi_squared_nu)
             else:
-                sys_err *= (1 + sigma_sys_change_amount)
+                sys_err *= sigma_sys_change_amount
         elif chi_squared_nu < 1:
             if sys_err == 0:
                 # If the chi-squared value is naturally lower
                 # than 1, don't change anything, just exit.
                 break
             else:
-                sys_err *= (1 - sigma_sys_change_amount)
+                sys_err *= sigma_sys_change_amount
+
+        # Construct new error array using all errors.
+        iter_err_array = np.sqrt(np.square(orig_errs) +
+                                 np.square(sys_err))
+        new_mask = np.zeros_like(y_data)
+
+        # Find residuals for all data, including that masked this iteration:
+        full_model_values = model_func(orig_x_data, *popt)
+        full_residuals = orig_y_data - full_model_values
+
+        # Check for outliers at each point, and mark the mask appropriately.
+        for i in range(len(iter_err_array)):
+            if abs(full_residuals[i]) > n_sigma * iter_err_array[i]:
+                new_mask[i] = 1
+
+        # Set up the mask on the x and y data and errors for the next iteration.
+        for array in (x_data, y_data, iter_err_array):
+            if chi_squared_flips < 3:
+                array.mask = new_mask
+                last_mask = new_mask
+            # If chi^2 flips between less than and greater than one too many
+            # times, the routine is probably stuck in a loop adding and removing
+            # a borderline point, so simply stop re-evaluating points for
+            # inclusion.
+            else:
+                array.mask = last_mask
+
+        # If chi^2 gets within the tolerance and the mask hasn't changed in the
+        # last iteration, end the loop.
+        if ((diff < chi_tol) and (np.all(last_mask == new_mask))):
+            break
+        # If the iterations go on too long, it may be because it's converging
+        # very slowly to zero sigma_sys, so give it a nudge if it's still large.
+        elif iterations == 500:
+            if sys_err > 0.0001:
+                sys_err = 0.0001
+        # If it's taking a really long time to convergy, but sigma_sys is less
+        # than a millimeter per second, just set it to zero and end the loop.
+        elif iterations > 1000:
+            if sys_err < 0.001:
+                sigma_sys_list[-1] = 0
+                break
+            else:
+                raise RuntimeError("Process didn't converge.")
+
+    # ---------
 
     results_dict = {'popt': popt, 'pcov': pcov,
-                    'residuals': residuals,
+                    'residuals': iter_residuals,
                     'sys_err_list': sigma_sys_list,
-                    'chi_squared_list': chi_squared_list}
+                    'chi_squared_list': chi_squared_list,
+                    'mask_list': mask_list}
 
     return results_dict
