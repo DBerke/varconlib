@@ -81,13 +81,13 @@ parser.add_argument('--update', action='store', metavar='HDU-name',
 parser.add_argument('--create-plots', action='store_true', default=False,
                     help='Create plots of the fit for each transition.')
 parser.add_argument('--create-ccd-plots', action='store_true',
-                    help='Create plots of the CCD positions of each transiton'
-                    'for each observation.')
+                    help='Create plots of the CCD positions of each transition'
+                    ' for each observation.')
 
 parser.add_argument('-p', '--preview', action='store_true',
                     help='Show which observations will be selected to work on,'
                     ' then exit.')
-parser.add_argument('--verbose', action='store_true', default=False,
+parser.add_argument('-v', '--verbose', action='store_true', default=False,
                     help='Print out additional information while running.')
 
 args = parser.parse_args()
