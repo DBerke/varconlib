@@ -508,7 +508,7 @@ class Star(object):
 
         # Use the parameters derived from results with outliers removed.
         filename = vcl.output_dir /\
-            f'fit_params/{model_func}_corrected_params.hdf5'
+            f'fit_params/{model_func}_params.hdf5'
         fit_results_dict = get_params_file(filename)
         function = fit_results_dict['model_func']
         coeffs_dict = fit_results_dict['coeffs']
@@ -541,6 +541,10 @@ class Star(object):
                 label = key + '_pre'
                 pre_slice = slice(None, self.fiberSplitIndex)
 
+                # Get the systematic error for this transition:
+                sigma_sys = sigma_sys_dict[label]
+                sigma_sys_array[0, col_num] = sigma_sys.value
+
                 # Compute the correction for this transition.
                 correction = u.unyt_array(function(stellar_params,
                                                    *coeffs_dict[label]),
@@ -553,13 +557,11 @@ class Star(object):
                     correction
                 data_slice = corrected_array[pre_slice, col_num]
                 error_slice = self.fitErrorsArray[pre_slice, col_num]
-
-                # Get the systematic error for this transition:
-                sigma_sys = sigma_sys_dict[label]
-                sigma_sys_array[0, col_num] = sigma_sys.value
+                full_error_slice = np.sqrt(error_slice ** 2 +
+                                           sigma_sys ** 2)
 
                 for i in range(len(data_slice)):
-                    if abs(data_slice[i]) > n_sigma * error_slice[i]:
+                    if abs(data_slice[i]) > n_sigma * full_error_slice[i]:
                         mask_array[i, col_num] = 1
                         corrected_array[i, col_num] = np.nan
                         masked_errs_array[i, col_num] = np.nan
@@ -567,6 +569,9 @@ class Star(object):
             if self.hasObsPost:
                 label = key + '_post'
                 post_slice = slice(self.fiberSplitIndex, None)
+
+                sigma_sys = sigma_sys_dict[label]
+                sigma_sys_array[1, col_num] = sigma_sys.value
 
                 correction = u.unyt_array(function(stellar_params,
                                                    *coeffs_dict[label]),
@@ -577,12 +582,11 @@ class Star(object):
                     correction
                 data_slice = corrected_array[post_slice, col_num]
                 error_slice = self.fitErrorsArray[post_slice, col_num]
-
-                sigma_sys = sigma_sys_dict[label]
-                sigma_sys_array[1, col_num] = sigma_sys.value
+                full_error_slice = np.sqrt(error_slice ** 2 +
+                                           sigma_sys ** 2)
 
                 for i in range(len(data_slice)):
-                    if abs(data_slice[i]) > n_sigma * error_slice[i]:
+                    if abs(data_slice[i]) > n_sigma * full_error_slice[i]:
                         mask_array[i+self.fiberSplitIndex, col_num] = 1
                         corrected_array[i, col_num] = np.nan
                         masked_errs_array[i, col_num] = np.nan
@@ -622,7 +626,7 @@ class Star(object):
         corrected_errs = self.paramsErrorsArray
         sys_errors = self.paramsSysErrorsArray
 
-        for pair in self.pairsList:
+        for pair in tqdm(self.pairsList):
             for order_num in pair.ordersToMeasureIn:
                 pair_label = '_'.join((pair.label, str(order_num)))
                 label1 = '_'.join((pair._higherEnergyTransition.label,
