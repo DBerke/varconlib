@@ -715,10 +715,20 @@ class Star(object):
             offsets2 = ma.masked_invalid(self.paramsOffsetsArray[time_slice,
                                          col2].value)
 
+            for i in range(len(offsets1)):
+                if not (offsets1[i] and offsets2[i]):
+                    offsets1.mask[i] = True
+                    offsets2.mask[i] = True
+
             errs1 = ma.masked_invalid(self.paramsErrorsArray[time_slice,
                                       col1].value)
             errs2 = ma.masked_invalid(self.paramsErrorsArray[time_slice,
                                       col2].value)
+            errs1.mask = offsets1.mask
+            errs2.mask = offsets2.mask
+            assert offsets1.count() == offsets2.count()
+            assert offsets1.count() == errs1.count()
+            assert offsets2.count() == errs2.count()
 
             weighted_mean1, sum1 = ma.average(offsets1,
                                               weights=errs1**-2,
@@ -743,6 +753,10 @@ class Star(object):
                          chi_squared1, offsets1.count(),
                          weighted_mean2, eotwm2, sigma_sys2,
                          chi_squared2, offsets2.count()]
+
+        for i, item in enumerate(info_list):
+            if not item:
+                info_list[i] = 'nan'
 
         self._formatHeader = ['#star_name', 'delta(v)_pair (m/s)',
                               'err_stat_pair (m/s)', 'err_sys_pair (m/s)',
