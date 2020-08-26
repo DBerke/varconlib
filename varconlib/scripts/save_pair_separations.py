@@ -97,6 +97,8 @@ def main():
             continue
         else:
             star_list.append(star)
+            # Put updates to stars that don't require rebuilding here, just
+            # call saveDataToDisk() afterwards.
             if 'HD' in star.name:
                 star_names.append(star.name)
 
@@ -217,7 +219,8 @@ if __name__ == '__main__':
                         ' stars to be used in the plot.')
 
     parser.add_argument('-S', '--stars', action='store_true',
-                        help="Create the file of information for each star.")
+                        help="Create a file containing static information for"
+                        " each star.")
     parser.add_argument('-P', '--pairs', action='store_true',
                         help="Create files for each pair.")
 
