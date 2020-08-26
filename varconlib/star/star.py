@@ -755,7 +755,9 @@ class Star(object):
                          chi_squared2, offsets2.count()]
 
         for i, item in enumerate(info_list):
-            if not item:
+            if item == 0:
+                pass
+            elif not item :
                 info_list[i] = 'nan'
 
         self._formatHeader = ['#star_name', 'delta(v)_pair (m/s)',
