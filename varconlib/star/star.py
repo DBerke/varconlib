@@ -282,6 +282,7 @@ class Star(object):
         self._absoluteMagnitude = None
         self._apparentMagnitude = None
         self._logg = None
+        self._parallax = None
         self.specialAttributes = {}
 
         if transitions_list:
@@ -1084,12 +1085,17 @@ class Star(object):
     @property
     def distance(self):
         """Return the distance in parsecs to this star."""
-        return 1000./self.parallax * u.pc * u.mas
+        if 'HD' not in self.name:
+            return 0 * u.pc
+        return 1000./self.parallax.value * u.pc
 
     @property
     def parallax(self):
         """Return the parallax for this star."""
-        if not hasattr(self, '_parallax'):
+        if self._parallax is None:
+            if 'HD' not in self.name:
+                self._parallax = np.nan
+                self._parallaxError = np.nan
             plx_file = vcl.data_dir / 'Star_coords_and_parallaxes.csv'
             star_data = np.loadtxt(plx_file, dtype=str, delimiter=',')
             for row in star_data:
@@ -1102,7 +1108,7 @@ class Star(object):
     @property
     def parallaxError(self):
         """Return the error on the parallax for this star."""
-        if not hasattr(self, '_parallax'):
+        if self._parallax is None:
             self.parallax
         return self._parallaxError
 
