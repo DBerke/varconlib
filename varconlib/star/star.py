@@ -757,7 +757,7 @@ class Star(object):
         for i, item in enumerate(info_list):
             if item == 0:
                 pass
-            elif not item :
+            elif not item:
                 info_list[i] = 'nan'
 
         self._formatHeader = ['#star_name', 'delta(v)_pair (m/s)',
@@ -1080,6 +1080,31 @@ class Star(object):
         if not isinstance(new_log_g, (float, int)):
             new_log_g = float(new_log_g)
         self._logg = new_log_g
+
+    @property
+    def distance(self):
+        """Return the distance in parsecs to this star."""
+        return 1000./self.parallax * u.pc * u.mas
+
+    @property
+    def parallax(self):
+        """Return the parallax for this star."""
+        if not hasattr(self, '_parallax'):
+            plx_file = vcl.data_dir / 'Star_coords_and_parallaxes.csv'
+            star_data = np.loadtxt(plx_file, dtype=str, delimiter=',')
+            for row in star_data:
+                if self.name == row[0]:  # name
+                    self._parallax = float(row[5]) * u.mas  # parallax in mas
+                    self._parallaxError = float(row[6]) * u.mas
+                    break
+        return self._parallax
+
+    @property
+    def parallaxError(self):
+        """Return the error on the parallax for this star."""
+        if not hasattr(self, '_parallax'):
+            self.parallax
+        return self._parallaxError
 
     # TODO: Add an exposure time array?
     @property
