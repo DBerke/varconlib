@@ -154,14 +154,15 @@ def main():
         tqdm.write('Writing out data for each star.')
         properties_header = ['#star_name', 'RA', 'DEC', 'l', 'b',
                              'Teff (K)', '[Fe/H]', 'log(g)',
-                             'M_V', '#obs', 'start_date', 'end_date']
+                             'M_V', '#obs', 'start_date', 'end_date',
+                             'distance (pc)']
 
         star_properties_file = output_dir / 'star_properties.csv'
         with open(star_properties_file, 'w', newline='') as f:
             datawriter = csv.writer(f)
             datawriter.writerow(properties_header)
 
-            for star in star_list:
+            for star in tqdm(star_list):
                 if 'HD' in star.name:
                     info_list = coords_dict[star.name]
                 else:
@@ -175,7 +176,8 @@ def main():
                                   star.logg, star.absoluteMagnitude,
                                   star.getNumObs(),
                                   start_date.isoformat(timespec='milliseconds'),
-                                  end_date.isoformat(timespec='milliseconds')])
+                                  end_date.isoformat(timespec='milliseconds'),
+                                  star.distance.value])
                 datawriter.writerow(info_list)
 
     if args.pairs:
