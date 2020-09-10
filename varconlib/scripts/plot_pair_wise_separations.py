@@ -86,6 +86,9 @@ def plot_vs(parameter):
 
     """
 
+    plot_axis_labels = {'temperature': r'T_\text{eff}',
+                        'metallicity': '[Fe/H]',
+                        'logg': r'\log(g)'}
     tqdm.write('Writing out data for each pair.')
     for pair in tqdm(pairs_list):
         for order_num in pair.ordersToMeasureIn:
@@ -106,10 +109,10 @@ def plot_vs(parameter):
                                   sharex=ax_pre,
                                   sharey=ax_pre)
 
-        ax_pre.set_xlabel(f'{parameter.capitalize()} (pc)')
-        ax_post.set_xlabel('{parameter.capitalize()} (pc)')
-        ax_pre.set_ylabel(r'$\Delta V$ (pair)')
-        ax_post.set_ylabel(r'$\Delta V$ (pair)')
+        ax_pre.set_xlabel(plot_axis_labels[parameter])
+        ax_post.set_xlabel(plot_axis_labels[parameter])
+        ax_pre.set_ylabel(r'$\Delta V$ (pair, m/s)')
+        ax_post.set_ylabel(r'$\Delta V$ (pair, m/s)')
 
         for ax in (ax_pre, ax_post):
             ax.yaxis.set_major_locator(ticker.AutoLocator())

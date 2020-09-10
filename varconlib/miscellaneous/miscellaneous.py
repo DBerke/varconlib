@@ -154,6 +154,53 @@ def date2index(given_date, date_list):
             return i
 
 
+def calc_blended_centroid_shift(velocity_separation, intensity1, intensity2):
+    r"""
+    Find the expected shift in the centroid of a blended absorption feature.
+
+    Using Equation 1 from Murpy 2007 [1]_, caluculate the expected approximate
+    velocity shift of the measured centroid of an absorption feature blended
+    with an unresolved, weaker feature.
+
+    Parameters
+    ----------
+    velocity_separation : unyt.unyt_quantity with dimensions legnth / time
+        The velocity separation between the two features.
+    intensity1, intensity2 : float
+        The intensities of the two features. Intensity is 1 - the normalized
+        depth of the feature, i.e. it increases with increasing depth of a
+        feature up to 1 at saturation. A feature with a normalized depth of 0.75
+        would have an intensity of 0.25, etc..
+
+    Returns
+    -------
+    unyt.unyt_quantity with dimensions of length / time
+        A velocity representing the amount the measured centroid of the blended
+        feature will be compared to where it would have been if the weaker blend
+        were not present.
+
+    Notes
+    -----
+    The equation used is:
+    .. math::
+        \Delta v_c\approx\Delta V_\mathrm{sep}\frac{I_2/I_1}{1+I_2/I_1}
+
+    References
+    ----------
+    [1] M. T. Murphy, P. Tzanavaris, J. K. Webb, C. Lovis, "Selection of ThAr
+    lines for wavelength calibration of echelle spectra and implications for
+    variations in the fine-structure constant", Montly Notices of the Royal
+    Astronomical Society, 2007
+
+    """
+
+    assert velocity_separation.units.dimensions == u.dimensions.length /\
+                                                   u.dimensions.time
+
+    return velocity_separation * ((intensity2 / intensity1) /
+                                  (1 + (intensity2 / intensity1)))
+
+
 def shift_wavelength(wavelength, shift_velocity):
     """Find the new wavelength of a wavelength (single or an array) given a
     velocity to shift it by. Returns in the units given.
