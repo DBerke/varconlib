@@ -533,7 +533,7 @@ def find_sigma_sys(model_func, x_data, y_data, err_array, beta0,
     iterations = 0
     chi_squared_flips = 0
 
-    vprint('sigma_sys diff  chi^2   SSCA #stars flips')
+    vprint('  # sigma_sys      diff     chi^2      SSCA   #*   flips')
     while True:
         iterations += 1
         popt, pcov = curve_fit(model_func, x_data, y_data,
@@ -572,9 +572,10 @@ def find_sigma_sys(model_func, x_data, y_data, err_array, beta0,
         sigma_sys_change_amount = np.sqrt(chi_squared_nu)
         sigma_sys_change_list.append(sigma_sys_change_amount)
 
-        vprint(f'{sys_err:.4f}, {diff:.4f}, {chi_squared_nu:.4f},'
-               f' {sigma_sys_change_amount:.4f},'
-               f' {iter_residuals.count()}, {chi_squared_flips}')
+        vprint(f'{iterations:>3}, '
+               f'{sys_err:>8.4f}, {diff:>8.4f}, {chi_squared_nu:>8.4f},'
+               f' {sigma_sys_change_amount:>8.4f},'
+               f' {iter_residuals.count():>3},  {chi_squared_flips}')
         if verbose:
             sleep_length = 0.001 if chi_squared_flips < 3 else 0.4
             sleep(sleep_length)
@@ -608,7 +609,7 @@ def find_sigma_sys(model_func, x_data, y_data, err_array, beta0,
 
         # Set up the mask on the x and y data and errors for the next iteration.
         for array in (x_data, y_data, iter_err_array):
-            if chi_squared_flips < 3:
+            if chi_squared_flips < 5:
                 array.mask = new_mask
                 last_mask = new_mask
             # If chi^2 flips between less than and greater than one too many
@@ -629,11 +630,17 @@ def find_sigma_sys(model_func, x_data, y_data, err_array, beta0,
                 sys_err = 0.0001
         # If it's taking a really long time to convergy, but sigma_sys is less
         # than a millimeter per second, just set it to zero and end the loop.
-        elif iterations > 1000:
+        elif iterations == 999:
             if sys_err < 0.001:
                 sigma_sys_list[-1] = 0
                 break
             else:
+                print(f'Final sys_err = {sys_err}')
+                print(f'Final chi^2 = {chi_squared_nu}')
+                print(f'diff = {diff}')
+                print(np.all(last_mask == new_mask))
+                for i, j in zip(last_mask, new_mask):
+                    print(f'{i}  {j}')
                 raise RuntimeError("Process didn't converge.")
 
     # ---------
