@@ -441,8 +441,8 @@ def calc_chi_squared_nu(residuals, errors, n_params):
         return chi_squared / dof
 
 
-def find_sigma_sys(model_func, x_data, y_data, err_array, beta0,
-                   n_sigma=2.5, tolerance=0.001, verbose=False):
+def find_sys_scatter(model_func, x_data, y_data, err_array, beta0,
+                     n_sigma=2.5, tolerance=0.001, verbose=False):
     """Find the systematic scatter in a dataset with a given model.
 
     Takes a model function `model_func`, and arrays of x, y, and uncertainties

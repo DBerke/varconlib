@@ -455,12 +455,12 @@ def main():
                 beta0 = tuple(params_list)
                 vprint(beta0)
 
-                results = fit.find_sigma_sys(model_func,
-                                             x_data,
-                                             ma.array(offsets.value),
-                                             err_array, beta0,
-                                             n_sigma=2.5, tolerance=0.001,
-                                             verbose=args.verbose)
+                results = fit.find_sys_scatter(model_func,
+                                               x_data,
+                                               ma.array(offsets.value),
+                                               err_array, beta0,
+                                               n_sigma=2.5, tolerance=0.001,
+                                               verbose=args.verbose)
 
                 mask = results['mask_list'][-1]
                 residuals = ma.array(results['residuals'], mask=mask)
