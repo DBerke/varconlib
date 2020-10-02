@@ -533,7 +533,7 @@ def find_sys_scatter(model_func, x_data, y_data, err_array, beta0,
     iterations = 0
     chi_squared_flips = 0
 
-    vprint('  # sigma_sys      diff     chi^2      SSCA   #*   flips')
+    vprint('  #   sigma_sys      diff     chi^2      SSCA   #*   flips')
     while True:
         iterations += 1
         popt, pcov = curve_fit(model_func, x_data, y_data,
@@ -573,7 +573,7 @@ def find_sys_scatter(model_func, x_data, y_data, err_array, beta0,
         sigma_sys_change_list.append(sigma_sys_change_amount)
 
         vprint(f'{iterations:>3}, '
-               f'{sys_err:>8.4f}, {diff:>8.4f}, {chi_squared_nu:>8.4f},'
+               f'{sys_err:>10.6f}, {diff:>8.4f}, {chi_squared_nu:>8.4f},'
                f' {sigma_sys_change_amount:>8.4f},'
                f' {iter_residuals.count():>3},  {chi_squared_flips}')
         if verbose:
@@ -623,11 +623,23 @@ def find_sys_scatter(model_func, x_data, y_data, err_array, beta0,
         # last iteration, end the loop.
         if ((diff < chi_tol) and (np.all(last_mask == new_mask))):
             break
+
+        # If the mask is still changing, but the sigma_sys value has
+        # clearly converged to a value (by both the 10th and 100th most
+        # recent entries being within the given tolerance of the most recent
+        # entry), end the loop. Most runs terminate well under 100 steps so
+        # this should only catch the problem cases.
+        elif (iterations > 100 and (diff < chi_tol) and
+              (abs(sigma_sys_list[-1] - sigma_sys_list[-10]) < chi_tol) and
+              (abs(sigma_sys_list[-1] - sigma_sys_list[-100]) < chi_tol)):
+            break
+
         # If the iterations go on too long, it may be because it's converging
         # very slowly to zero sigma_sys, so give it a nudge if it's still large.
         elif iterations == 500:
-            if sys_err > 0.0001:
-                sys_err = 0.0001
+            if sys_err > 0.001:
+                sys_err = 0.001
+
         # If it's taking a really long time to convergy, but sigma_sys is less
         # than a millimeter per second, just set it to zero and end the loop.
         elif iterations == 999:
