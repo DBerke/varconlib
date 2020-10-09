@@ -582,16 +582,18 @@ def find_sys_scatter(model_func, x_data, y_data, err_array, beta0,
 
         if chi_squared_nu > 1:
             if sys_err == 0:
-                sys_err = np.sqrt(chi_squared_nu)
+                # Round the new systematic error to 4 decimal places
+                # (= 1/100 mm/s), to prevent extremely slow convergence.
+                sys_err = round(np.sqrt(chi_squared_nu), 5)
             else:
-                sys_err *= sigma_sys_change_amount
+                sys_err = round(sys_err * sigma_sys_change_amount, 5)
         elif chi_squared_nu < 1:
             if sys_err == 0:
                 # If the chi-squared value is naturally lower
                 # than 1, don't change anything, just exit.
                 break
             else:
-                sys_err *= sigma_sys_change_amount
+                sys_err = round(sys_err * sigma_sys_change_amount, 5)
 
         # Construct new error array using all errors.
         iter_err_array = np.sqrt(np.square(orig_errs) +
@@ -643,7 +645,7 @@ def find_sys_scatter(model_func, x_data, y_data, err_array, beta0,
         # If it's taking a really long time to convergy, but sigma_sys is less
         # than a millimeter per second, just set it to zero and end the loop.
         elif iterations == 999:
-            if sys_err < 0.001:
+            if sys_err < 0.0011:
                 sigma_sys_list[-1] = 0
                 break
             else:
