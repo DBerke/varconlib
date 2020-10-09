@@ -56,7 +56,7 @@ style_caps = {'capsize_thin': 4,
               'cap_thick': 2.5}
 
 
-def create_comparison_figure(ylims=None,
+def create_comparison_figure(ylims=None, fit_target='transitions',
                              temp_lims=(5300 * u.K, 6200 * u.K),
                              mtl_lims=(-0.75, 0.4),
                              mag_lims=(4, 5.8),
@@ -71,6 +71,8 @@ def create_comparison_figure(ylims=None,
     ylims : 2-tuple of floats or ints
         A tuple of length 2 containing the upper and lower limits of the
         subplots in the figure.
+    fit_target : str, ['transitions', 'pairs']
+        A string denoting whether these plots are for transitions or pairs.
     temp_lims : 2-tuple of floats or ints (optional dimensions of temperature)
         A tuple of length containing upper and lower limits for the x-axis of
         the temperature subplot.
@@ -165,7 +167,12 @@ def create_comparison_figure(ylims=None,
     # Just label the left-most two subplots' y-axes.
     for ax, era in zip((temp_ax_pre, temp_ax_post),
                        ('Pre', 'Post')):
-        ax.set_ylabel(f'{era}-fiber change offset (m/s)')
+        if fit_target == 'transitions':
+            ax.set_ylabel(f'{era}-fiber change offset (m/s)')
+        elif fit_target == 'pairs':
+            ax.set_ylabel(f'{era}-fiber change separation (m/s)')
+        else:
+            raise RuntimeError(f'Unallowed value for fit_target: {fit_target}')
 
     axes_dict = {'temp_pre': temp_ax_pre, 'temp_post': temp_ax_post,
                  'mtl_pre': mtl_ax_pre, 'mtl_post': mtl_ax_post,
@@ -302,29 +309,40 @@ def main():
 
     model_name = '_'.join(model_func.__name__.split('_')[:-1])
 
-    tqdm.write('Unpickling transitions list..')
-    with open(vcl.final_selection_file, 'r+b') as f:
-        transitions_list = pickle.load(f)
-    vprint(f'Found {len(transitions_list)} transitions.')
+    if args.transitions:
+        tqdm.write('Unpickling transitions list.')
+        with open(vcl.final_selection_file, 'r+b') as f:
+            transitions_list = pickle.load(f)
+        vprint(f'Found {len(transitions_list)} transitions.')
+    elif args.pairs:
+        tqdm.write('Unpickling pairs list.')
+        with open(vcl.final_pair_selection_file, 'r+b') as f:
+            pairs_list = pickle.load(f)
+        vprint(f'Found {len(pairs_list)} pairs in the list.')
 
-    if not args.use_corrected_transitions:
-        db_file = vcl.databases_dir / 'stellar_db_uncorrected.hdf5'
-    else:
-        db_file = vcl.databases_dir / f'stellar_db_{model_name}_params.hdf5'
-        if not db_file.exists():
-            raise FileNotFoundError('The given stellar database does not exist:'
-                                    f' {db_file}')
+    db_file = vcl.databases_dir / 'stellar_db_uncorrected.hdf5'
+    if not db_file.exists():
+        raise FileNotFoundError('The given stellar database does not exist:'
+                                f' {db_file}')
 
     # Load data from HDF5 database file.
     tqdm.write('Reading data from stellar database file...')
-    star_transition_offsets = u.unyt_array.from_hdf5(
-            db_file, dataset_name='star_transition_offsets')
-    star_transition_offsets_EotWM = u.unyt_array.from_hdf5(
-            db_file, dataset_name='star_transition_offsets_EotWM')
-    star_transition_offsets_EotM = u.unyt_array.from_hdf5(
-            db_file, dataset_name='star_transition_offsets_EotM')
-    # star_transition_offsets_stds = u.unyt_array.from_hdf5(
-    #         db_file, dataset_name='star_standard_deviations')
+    if args.transitions:
+        star_transition_offsets = u.unyt_array.from_hdf5(
+                db_file, dataset_name='star_transition_offsets')
+        star_transition_offsets_EotWM = u.unyt_array.from_hdf5(
+                db_file, dataset_name='star_transition_offsets_EotWM')
+        star_transition_offsets_EotM = u.unyt_array.from_hdf5(
+                db_file, dataset_name='star_transition_offsets_EotM')
+        # star_transition_offsets_stds = u.unyt_array.from_hdf5(
+        #         db_file, dataset_name='star_standard_deviations')
+    elif args.pairs:
+        star_pair_separations = u.unyt_array.from_hdf5(
+               db_file, dataset_name='star_pair_separations')
+        star_pair_separations_EotWM = u.unyt_array.from_hdf5(
+                db_file, dataset_name='star_pair_separations_EotWM')
+        star_pair_separations_EotM = u.unyt_array.from_hdf5(
+                db_file, dataset_name='star_pair_separations_EotM')
     star_temperatures = u.unyt_array.from_hdf5(
             db_file, dataset_name='star_temperatures')
 
@@ -333,7 +351,9 @@ def main():
         star_metallicities = hickle.load(f, path='/star_metallicities')
         # star_magnitudes = hickle.load(f, path='/star_magnitudes')
         star_gravities = hickle.load(f, path='/star_gravities')
-        column_dict = hickle.load(f, path='/transition_column_index')
+        transition_column_dict = hickle.load(f, path='/transition_column_index')
+        pair_column_dict = hickle.load(f, path='/pair_column_index')
+
         star_names = hickle.load(f, path='/star_row_index')
 
     # Handle various fitting and plotting setup:
@@ -346,16 +366,18 @@ def main():
     chi_squareds_post, sigmas_post, sigma_sys_post = [], [], []
     index_num = 0
 
-    params_list = []
     # Figure out how many parameters the model function takes, so we know how
     # many to dynamically give it later.
-    for i in range(len(signature(model_func).parameters)-1):
-        params_list.append(0.)
+    params_list = [0 for i in range(len(signature(model_func).parameters)-1)]
 
     # Define the folder to put plots in.
-    output_dir = Path(vcl.config['PATHS']['output_dir'])
-    extra = '_corrected' if args.use_corrected_transitions else ''
-    plots_folder = output_dir / f'stellar_parameter_fits/{model_name}{extra}'
+    output_dir = vcl.output_dir
+    if args.transitions:
+        fit_target = '_transitions'
+    elif args.pairs:
+        fit_target = '_pairs'
+    plots_folder = output_dir /\
+        f'stellar_parameter_fits{fit_target}/{model_name}'
     vprint(f'Creating plots in {plots_folder}')
     if not plots_folder.exists():
         os.makedirs(plots_folder)
@@ -367,204 +389,401 @@ def main():
     sigmas_dict = {}
     sigma_sys_dict = {}
 
-    tqdm.write('Creating plots for each transition...')
-    for transition in tqdm(transitions_list):
-        for order_num in transition.ordersToFitIn:
-            index_nums.append(index_num)
-            index_num += 1
-            label = '_'.join([transition.label, str(order_num)])
-            vprint(20 * '-')
-            vprint(f'Analyzing {label}...')
+    if args.transitions:
+        tqdm.write('Creating plots for each transition...')
+        for transition in tqdm(transitions_list):
+            for order_num in transition.ordersToFitIn:
+                index_nums.append(index_num)
+                index_num += 1
+                label = '_'.join([transition.label, str(order_num)])
+                vprint(20 * '-')
+                vprint(f'Analyzing {label}...')
 
-            # The column number to use for this transition:
-            col = column_dict[label]
-            ylimits = (-300 * u.m / u.s,
-                       300 * u.m / u.s) if not args.full_range else None
+                # The column number to use for this transition:
+                col = transition_column_dict[label]
+                ylimits = (-300 * u.m / u.s,
+                           300 * u.m / u.s) if not args.full_range else None
 
-            comp_fig, axes_dict = create_comparison_figure(
-                            ylims=ylimits,
-                            temp_lims=temp_lims,
-                            mtl_lims=mtl_lims,
-                            logg_lims=logg_lims)
+                comp_fig, axes_dict = create_comparison_figure(
+                                ylims=ylimits,
+                                fit_target='transitions',
+                                temp_lims=temp_lims,
+                                mtl_lims=mtl_lims,
+                                logg_lims=logg_lims)
 
-            for time in eras.keys():
+                for time in eras.keys():
 
-                vprint(20 * '=')
-                vprint(f'Working on {time}-change era.')
-                mean = np.nanmean(star_transition_offsets[eras[time],
-                                  :, col])
+                    vprint(20 * '=')
+                    vprint(f'Working on {time}-change era.')
+                    mean = np.nanmean(star_transition_offsets[eras[time],
+                                      :, col])
 
-                # First, create a masked version to catch any missing entries:
-                m_offsets = ma.masked_invalid(star_transition_offsets[
+                    # First, create a masked version to catch any missing
+                    # entries:
+                    m_offsets = ma.masked_invalid(star_transition_offsets[
+                                eras[time], :, col])
+                    m_offsets = m_offsets.reshape([len(m_offsets), 1])
+                    # Then create a new array from the non-masked data:
+                    offsets = u.unyt_array(m_offsets[~m_offsets.mask],
+                                           units=u.m/u.s)
+                    vprint(f'Median of offsets is {np.nanmedian(offsets)}')
+
+    #                m_stds = ma.masked_invalid(star_transition_offsets_stds[
+    #                            eras[time], :, col])
+    #                m_stds = m_stds.reshape([len(m_stds), 1])
+    #                stds = u.unyt_array(m_stds[~m_stds.mask],
+    #                                    units=u.m/u.s)
+
+                    m_eotwms = ma.masked_invalid(star_transition_offsets_EotWM[
                             eras[time], :, col])
-                m_offsets = m_offsets.reshape([len(m_offsets), 1])
-                # Then create a new array from the non-masked data:
-                offsets = u.unyt_array(m_offsets[~m_offsets.mask],
-                                       units=u.m/u.s)
-                vprint(f'Median of offsets is {np.nanmedian(offsets)}')
+                    m_eotwms = m_eotwms.reshape([len(m_eotwms), 1])
+                    eotwms = u.unyt_array(m_eotwms[~m_offsets.mask],
+                                          units=u.m/u.s)
 
-#                m_stds = ma.masked_invalid(star_transition_offsets_stds[
-#                            eras[time], :, col])
-#                m_stds = m_stds.reshape([len(m_stds), 1])
-#                stds = u.unyt_array(m_stds[~m_stds.mask],
-#                                    units=u.m/u.s)
+                    m_eotms = ma.masked_invalid(star_transition_offsets_EotM[
+                            eras[time], :, col])
+                    m_eotms = m_eotms.reshape([len(m_eotms), 1])
+                    # Use the same mask as for the offsets.
+                    eotms = u.unyt_array(m_eotms[~m_offsets.mask],
+                                         units=u.m/u.s)
+                    # Create an error array which uses the greater of the error
+                    # on the mean or the error on the weighted mean.
+                    err_array = ma.array(np.maximum(eotwms, eotms).value)
 
-                m_eotwms = ma.masked_invalid(star_transition_offsets_EotWM[
-                        eras[time], :, col])
-                m_eotwms = m_eotwms.reshape([len(m_eotwms), 1])
-                eotwms = u.unyt_array(m_eotwms[~m_offsets.mask],
-                                      units=u.m/u.s)
+                    vprint(f'Mean is {np.mean(offsets)}')
+                    weighted_mean = np.average(offsets, weights=err_array**-2)
+                    vprint(f'Weighted mean is {weighted_mean}')
 
-                m_eotms = ma.masked_invalid(star_transition_offsets_EotM[
-                        eras[time], :, col])
-                m_eotms = m_eotms.reshape([len(m_eotms), 1])
-                # Use the same mask as for the offsets.
-                eotms = u.unyt_array(m_eotms[~m_offsets.mask],
-                                     units=u.m/u.s)
-                # Create an error array which uses the greater of the error on
-                # the mean or the error on the weighted mean.
-                err_array = ma.array(np.maximum(eotwms, eotms).value)
+                    # Mask the various stellar parameter arrays with the same
+                    # mask so that everything stays in sync.
+                    temperatures = ma.masked_array(star_temperatures)
+                    temps = temperatures[~m_offsets.mask]
+                    metallicities = ma.masked_array(star_metallicities)
+                    metals = metallicities[~m_offsets.mask]
+                    # magnitudes = ma.masked_array(star_magnitudes)
+                    # mags = magnitudes[~m_offsets.mask]
+                    gravities = ma.masked_array(star_gravities)
+                    loggs = gravities[~m_offsets.mask]
 
-                vprint(f'Mean is {np.mean(offsets)}')
-                weighted_mean = np.average(offsets, weights=err_array**-2)
-                vprint(f'Weighted mean is {weighted_mean}')
+                    stars = ma.masked_array([key for key in
+                                             star_names.keys()]).reshape(
+                                                 len(star_names.keys()), 1)
+                    names = stars[~m_offsets.mask]
 
-                # Mask the various stellar parameter arrays with the same mask
-                # so that everything stays in sync.
-                temperatures = ma.masked_array(star_temperatures)
-                temps = temperatures[~m_offsets.mask]
-                metallicities = ma.masked_array(star_metallicities)
-                metals = metallicities[~m_offsets.mask]
-                # magnitudes = ma.masked_array(star_magnitudes)
-                # mags = magnitudes[~m_offsets.mask]
-                gravities = ma.masked_array(star_gravities)
-                loggs = gravities[~m_offsets.mask]
+                    # Stack the stellar parameters into vertical slices
+                    # for passing to model functions.
+                    x_data = ma.array(np.stack((temps, metals, loggs), axis=0))
 
-                stars = ma.masked_array([key for key in
-                                         star_names.keys()]).reshape(
-                                             len(star_names.keys()), 1)
-                names = stars[~m_offsets.mask]
+                    # Create the parameter list for this run of fitting.
+                    params_list[0] = float(mean)
 
-                # Stack the stellar parameters into vertical slices
-                # for passing to model functions.
-                x_data = ma.array(np.stack((temps, metals, loggs), axis=0))
+                    beta0 = tuple(params_list)
+                    vprint(beta0)
 
-                # Create the parameter list for this run of fitting.
-                params_list[0] = float(mean)
+                    results = fit.find_sys_scatter(model_func,
+                                                   x_data,
+                                                   ma.array(offsets.value),
+                                                   err_array, beta0,
+                                                   n_sigma=2.5, tolerance=0.001,
+                                                   verbose=args.verbose)
 
-                beta0 = tuple(params_list)
-                vprint(beta0)
+                    mask = results['mask_list'][-1]
+                    residuals = ma.array(results['residuals'], mask=mask)
+                    x_data.mask = mask
+                    err_array.mask = mask
 
-                results = fit.find_sys_scatter(model_func,
-                                               x_data,
-                                               ma.array(offsets.value),
-                                               err_array, beta0,
-                                               n_sigma=2.5, tolerance=0.001,
-                                               verbose=args.verbose)
+                    # for item1, item2 in zip(residuals, ma.getdata(residuals)):
+                    #     print(f'{item1:10.3f}   {item2:10.3f}')
 
-                mask = results['mask_list'][-1]
-                residuals = ma.array(results['residuals'], mask=mask)
-                x_data.mask = mask
-                err_array.mask = mask
+                    chi_squared_nu = results['chi_squared_list'][-1]
+                    sys_err = results['sys_err_list'][-1] * u.m / u.s
 
-                # for item1, item2 in zip(residuals, ma.getdata(residuals)):
-                #     print(f'{item1:10.3f}   {item2:10.3f}')
+                    vprint(f'Terminated with sys_err = {sys_err}')
+                    vprint(f'Finished {label}_{time} in'
+                           f' {len(results["sys_err_list"])} steps.')
+                    # Add the optimized parameters and covariances to the
+                    # dictionary. Make sure we separate them by time period.
+                    coefficients_dict[label + '_' + time] = results['popt']
+                    covariance_dict[label + '_' + time] = results['pcov']
 
-                chi_squared_nu = results['chi_squared_list'][-1]
-                sys_err = results['sys_err_list'][-1] * u.m / u.s
+                    sigma = np.nanstd(residuals) * u.m/u.s
 
-                vprint(f'Terminated with sys_err = {sys_err}')
-                vprint(f'Finished {label}_{time} in'
-                       f' {len(results["sys_err_list"])} steps.')
-                # Add the optimized parameters and covariances to the
-                # dictionary. Make sure we separate them by time period.
-                coefficients_dict[label + '_' + time] = results['popt']
-                covariance_dict[label + '_' + time] = results['pcov']
+                    sigmas_dict[label + '_' + time] = sigma
+                    sigma_sys_dict[label + '_' + time] = sys_err
 
-                sigma = np.nanstd(residuals) * u.m/u.s
+                    if time == 'pre':
+                        chi_squareds_pre.append(chi_squared_nu)
+                        sigmas_pre.append(sigma.value)
+                        sigma_sys_pre.append(sys_err.value)
+                    else:
+                        chi_squareds_post.append(chi_squared_nu)
+                        sigmas_post.append(sigma.value)
+                        sigma_sys_post.append(sys_err.value)
 
-                sigmas_dict[label + '_' + time] = sigma
-                sigma_sys_dict[label + '_' + time] = sys_err
+                    for plot_type, lims in zip(('temp', 'mtl', 'logg'),
+                                               (temp_lims, mtl_lims,
+                                                logg_lims)):
+                        ax = axes_dict[f'{plot_type}_{time}']
+                        plot_data_points(ax,
+                                         ma.compressed(x_data[
+                                             param_dict[plot_type]]),
+                                         ma.compressed(residuals),
+                                         thick_err=ma.compressed(err_array),
+                                         # thin_err=iter_err_array,
+                                         thin_err=None,
+                                         era=time)
+                        if args.label_outliers:
+                            # Find outliers more than 3 sigma away from zero so
+                            # we can label them.
+                            labels = []
+                            for x, y, e in zip(range(len(
+                                    x_data[param_dict[plot_type]])), residuals,
+                                    err_array):
+                                sig_lim = 3 * e
+                                if abs(y) > sig_lim:
+                                    star_name = find_star(x_data[:, x],
+                                                          x_data, names)
 
-                if time == 'pre':
-                    chi_squareds_pre.append(chi_squared_nu)
-                    sigmas_pre.append(sigma.value)
-                    sigma_sys_pre.append(sys_err.value)
-                else:
-                    chi_squareds_post.append(chi_squared_nu)
-                    sigmas_post.append(sigma.value)
-                    sigma_sys_post.append(sys_err.value)
+                                    labels.append(ax.text(
+                                        x_data[param_dict[plot_type], x],
+                                        y.value, star_name,
+                                        horizontalalignment='left',
+                                        verticalalignment='top',
+                                        size=8, weight='bold', color='Red'))
+                            # print(labels)
+                            adjust_text(labels,
+                                        ax=ax,
+                                        only_move={'points': 'y',
+                                                   'text': 'xy',
+                                                   'objects': 'xy'},
+                                        arrowprops=dict(arrowstyle='-',
+                                                        color='OliveDrab'),
+                                        autoalign=True,
+                                        lim=1000, fontsize=9)
 
-                for plot_type, lims in zip(('temp', 'mtl', 'logg'),
-                                           (temp_lims, mtl_lims, logg_lims)):
-                    ax = axes_dict[f'{plot_type}_{time}']
-                    plot_data_points(ax,
-                                     ma.compressed(x_data[
-                                         param_dict[plot_type]]),
-                                     ma.compressed(residuals),
-                                     thick_err=ma.compressed(err_array),
-                                     # thin_err=iter_err_array,
-                                     thin_err=None,
-                                     era=time)
-                    if args.label_outliers:
-                        # Find outliers more than 3 sigma away from zero so we
-                        # can label them.
-                        labels = []
-                        for x, y, e in zip(range(len(
-                                x_data[param_dict[plot_type]])), residuals,
-                                err_array):
-                            sig_lim = 3 * e
-                            if abs(y) > sig_lim:
-                                star_name = find_star(x_data[:, x],
-                                                      x_data, names)
+                        ax.annotate(f'Blendedness: {transition.blendedness}\n'
+                                    r'$\sigma_\mathrm{sys}$:'
+                                    f' {sys_err:.2f}\n'
+                                    f'#: {residuals.count()}',
+                                    (0.01, 0.99),
+                                    xycoords='axes fraction',
+                                    verticalalignment='top')
+                        ax.annotate(fr'$\chi^2_\nu$: {chi_squared_nu:.4f}'
+                                    '\n'
+                                    fr'$\sigma$: {sigma:.2f}',
+                                    (0.99, 0.99),
+                                    xycoords='axes fraction',
+                                    horizontalalignment='right',
+                                    verticalalignment='top')
+                        data = np.array(ma.masked_invalid(
+                            residuals).compressed())
+                        axes_dict[f'hist_{time}'].hist(data,
+                                                       bins='fd',
+                                                       color='Black',
+                                                       histtype='step',
+                                                       orientation='horizontal')
 
-                                labels.append(ax.text(
-                                    x_data[param_dict[plot_type], x],
-                                    y.value, star_name,
-                                    horizontalalignment='left',
-                                    verticalalignment='top',
-                                    size=8, weight='bold', color='Red'))
-                        # print(labels)
-                        adjust_text(labels,
-                                    ax=ax,
-                                    only_move={'points': 'y',
-                                               'text': 'xy',
-                                               'objects': 'xy'},
-                                    arrowprops=dict(arrowstyle='-',
-                                                    color='OliveDrab'),
-                                    autoalign=True,
-                                    lim=1000, fontsize=9)
+                file_name = plots_folder / f'{label}_{model_name}.png'
+                vprint(f'Saving file {label}.png')
+                vprint('\n')
 
-                    ax.annotate(f'Blendedness: {transition.blendedness}\n'
-                                r'$\sigma_\mathrm{sys}$:'
-                                f' {sys_err:.2f}\n'
-                                f'#: {residuals.count()}',
-                                (0.01, 0.99),
-                                xycoords='axes fraction',
-                                verticalalignment='top')
-                    ax.annotate(fr'$\chi^2_\nu$: {chi_squared_nu:.4f}'
-                                '\n'
-                                fr'$\sigma$: {sigma:.2f}',
-                                (0.99, 0.99),
-                                xycoords='axes fraction',
-                                horizontalalignment='right',
-                                verticalalignment='top')
-                    data = np.array(ma.masked_invalid(residuals).compressed())
-                    axes_dict[f'hist_{time}'].hist(data,
-                                                   bins='fd',
-                                                   color='Black',
-                                                   histtype='step',
-                                                   orientation='horizontal')
+                comp_fig.savefig(str(file_name))
+                plt.close('all')
 
-            file_name = plots_folder / f'{label}_{model_name}.png'
-            vprint(f'Saving file {label}.png')
-            vprint('\n')
+    elif args.pairs:
+        tqdm.write('Creating plots for each pair...')
+        for pair in tqdm(pairs_list):
+            for order_num in pair.ordersToMeasureIn:
+                index_nums.append(index_num)
+                index_num += 1
+                label = '_'.join([pair.label, str(order_num)])
+                vprint(20 * '-')
+                vprint(f'Analyzing {label}...')
 
-            comp_fig.savefig(str(file_name))
-            plt.close('all')
+                # The column number to use for this transition:
+                col = pair_column_dict[label]
+                ylimits = (-300 * u.m / u.s,
+                           300 * u.m / u.s) if not args.full_range else None
+
+                comp_fig, axes_dict = create_comparison_figure(
+                                ylims=ylimits,
+                                fit_target='pairs',
+                                temp_lims=temp_lims,
+                                mtl_lims=mtl_lims,
+                                logg_lims=logg_lims)
+
+                for time in eras.keys():
+
+                    vprint(20 * '=')
+                    vprint(f'Working on {time}-change era.')
+                    mean = np.nanmean(star_pair_separations[eras[time],
+                                      :, col])
+
+                    # First, create a masked version to catch any missing
+                    # entries:
+                    m_seps = ma.masked_invalid(star_pair_separations[
+                                eras[time], :, col])
+                    m_seps = m_seps.reshape([len(m_seps), 1])
+                    # Then create a new array from the non-masked data:
+                    separations = u.unyt_array(m_seps[~m_seps.mask],
+                                               units=u.m/u.s)
+                    vprint('Median of separations is'
+                           f' {np.nanmedian(separations)}')
+
+                    m_eotwms = ma.masked_invalid(star_pair_separations_EotWM[
+                            eras[time], :, col])
+                    m_eotwms = m_eotwms.reshape([len(m_eotwms), 1])
+                    eotwms = u.unyt_array(m_eotwms[~m_seps.mask],
+                                          units=u.m/u.s)
+
+                    m_eotms = ma.masked_invalid(star_pair_separations_EotM[
+                            eras[time], :, col])
+                    m_eotms = m_eotms.reshape([len(m_eotms), 1])
+                    # Use the same mask as for the offsets.
+                    eotms = u.unyt_array(m_eotms[~m_seps.mask],
+                                         units=u.m/u.s)
+                    # Create an error array which uses the greater of the error
+                    # on the mean or the error on the weighted mean.
+                    err_array = ma.array(np.maximum(eotwms, eotms).value)
+
+                    vprint(f'Mean is {np.mean(separations)}')
+                    weighted_mean = np.average(separations,
+                                               weights=err_array**-2)
+                    vprint(f'Weighted mean is {weighted_mean}')
+
+                    # Mask the various stellar parameter arrays with the same
+                    # mask so that everything stays in sync.
+                    temperatures = ma.masked_array(star_temperatures)
+                    temps = temperatures[~m_seps.mask]
+                    metallicities = ma.masked_array(star_metallicities)
+                    metals = metallicities[~m_seps.mask]
+                    gravities = ma.masked_array(star_gravities)
+                    loggs = gravities[~m_seps.mask]
+
+                    stars = ma.masked_array([key for key in
+                                             star_names.keys()]).reshape(
+                                                 len(star_names.keys()), 1)
+                    names = stars[~m_seps.mask]
+
+                    # Stack the stellar parameters into vertical slices
+                    # for passing to model functions.
+                    x_data = ma.array(np.stack((temps, metals, loggs), axis=0))
+
+                    # Create the parameter list for this run of fitting.
+                    params_list[0] = float(mean)
+
+                    beta0 = tuple(params_list)
+                    vprint(beta0)
+
+                    results = fit.find_sys_scatter(model_func,
+                                                   x_data,
+                                                   ma.array(separations.value),
+                                                   err_array, beta0,
+                                                   n_sigma=2.5, tolerance=0.001,
+                                                   verbose=args.verbose)
+
+                    mask = results['mask_list'][-1]
+                    residuals = ma.array(results['residuals'], mask=mask)
+                    x_data.mask = mask
+                    err_array.mask = mask
+
+                    chi_squared_nu = results['chi_squared_list'][-1]
+                    sys_err = results['sys_err_list'][-1] * u.m / u.s
+
+                    vprint(f'Terminated with sys_err = {sys_err}')
+                    vprint(f'Finished {label}_{time} in'
+                           f' {len(results["sys_err_list"])} steps.')
+                    # Add the optimized parameters and covariances to the
+                    # dictionary. Make sure we separate them by time period.
+                    coefficients_dict[label + '_' + time] = results['popt']
+                    covariance_dict[label + '_' + time] = results['pcov']
+
+                    sigma = np.nanstd(residuals) * u.m/u.s
+
+                    sigmas_dict[label + '_' + time] = sigma
+                    sigma_sys_dict[label + '_' + time] = sys_err
+
+                    if time == 'pre':
+                        chi_squareds_pre.append(chi_squared_nu)
+                        sigmas_pre.append(sigma.value)
+                        sigma_sys_pre.append(sys_err.value)
+                    else:
+                        chi_squareds_post.append(chi_squared_nu)
+                        sigmas_post.append(sigma.value)
+                        sigma_sys_post.append(sys_err.value)
+
+                    for plot_type, lims in zip(('temp', 'mtl', 'logg'),
+                                               (temp_lims, mtl_lims,
+                                                logg_lims)):
+                        ax = axes_dict[f'{plot_type}_{time}']
+                        plot_data_points(
+                            ax,
+                            ma.compressed(x_data[param_dict[plot_type]]),
+                            ma.compressed(residuals),
+                            thick_err=ma.compressed(err_array),
+                            # thin_err=iter_err_array,
+                            thin_err=None,
+                            era=time)
+                        if args.label_outliers:
+                            # Find outliers more than 3 sigma away from zero so
+                            # we can label them.
+                            labels = []
+                            for x, y, e in zip(range(len(
+                                    x_data[param_dict[plot_type]])), residuals,
+                                    err_array):
+                                sig_lim = 3 * e
+                                if abs(y) > sig_lim:
+                                    star_name = find_star(x_data[:, x],
+                                                          x_data, names)
+
+                                    labels.append(ax.text(
+                                        x_data[param_dict[plot_type], x],
+                                        y.value, star_name,
+                                        horizontalalignment='left',
+                                        verticalalignment='top',
+                                        size=8, weight='bold', color='Red'))
+                            # print(labels)
+                            adjust_text(labels,
+                                        ax=ax,
+                                        only_move={'points': 'y',
+                                                   'text': 'xy',
+                                                   'objects': 'xy'},
+                                        arrowprops=dict(arrowstyle='-',
+                                                        color='OliveDrab'),
+                                        autoalign=True,
+                                        lim=1000, fontsize=9)
+
+                        ax.annotate(f'Blend tuple: {pair.blendTuple}\n'
+                                    r'$\sigma_\mathrm{sys}$:'
+                                    f' {sys_err:.2f}\n'
+                                    f'#: {residuals.count()}',
+                                    (0.01, 0.99),
+                                    xycoords='axes fraction',
+                                    verticalalignment='top')
+                        ax.annotate(fr'$\chi^2_\nu$: {chi_squared_nu:.4f}'
+                                    '\n'
+                                    fr'$\sigma$: {sigma:.2f}',
+                                    (0.99, 0.99),
+                                    xycoords='axes fraction',
+                                    horizontalalignment='right',
+                                    verticalalignment='top')
+                        data = np.array(ma.masked_invalid(
+                            residuals).compressed())
+                        axes_dict[f'hist_{time}'].hist(data,
+                                                       bins='fd',
+                                                       color='Black',
+                                                       histtype='step',
+                                                       orientation='horizontal')
+
+                file_name = plots_folder / f'{label}_{model_name}.png'
+                vprint(f'Saving file {label}.png')
+                vprint('\n')
+
+                comp_fig.savefig(str(file_name))
+                plt.close('all')
 
     # Save metadata from this run's fits to CSV:
-    csv_file = plots_folder / f'{model_name}_fit_results.csv'
+    csv_file = plots_folder / f'{model_name}{fit_target}_fit_results.csv'
 
     with open(csv_file, 'w', newline='') as f:
         datawriter = csv.writer(f)
@@ -575,13 +794,9 @@ def main():
                        chi_squareds_post, sigmas_post, sigma_sys_post):
             datawriter.writerow(row)
 
-    # Save the function used and the parameters found for each transition to
-    # an HDF5 file for use in other scripts.
-    if not args.use_corrected_transitions:
-        hdf5_file = output_dir / f'fit_params/{model_name}_params.hdf5'
-    else:
-        hdf5_file = output_dir /\
-            f'fit_params/{model_name}_corrected_params.hdf5'
+    # Save the function used and the parameters found for each transition/pair
+    # to an HDF5 file for use in other scripts.
+    hdf5_file = output_dir / f'fit_params/{model_name}{fit_target}_params.hdf5'
     if not hdf5_file.parent.exists():
         os.mkdir(hdf5_file.parent)
 
@@ -590,8 +805,8 @@ def main():
         os.unlink(hdf5_file)
     with h5py.File(hdf5_file, mode='a') as f:
         f.attrs['type'] = 'A file containing a fitting function and the' +\
-                          ' parameters for it for each transition in' +\
-                          '/params_dict'
+                          ' parameters for it for each transition or pair' +\
+                          'in /coeffs_dict'
         hickle.dump(model_func, f, path='/fitting_function')
         hickle.dump(coefficients_dict, f, path='/coeffs_dict')
         hickle.dump(covariance_dict, f, path='/covariance_dict')
@@ -606,9 +821,6 @@ if __name__ == '__main__':
     parser.add_argument('--full-range', action='store_true',
                         help='Plot the full range of values instead of'
                         ' restricting to a  fixed range.')
-    parser.add_argument('--use-corrected-transitions', action='store_true',
-                        help='Use stellar database with outliers removed from'
-                        ' previously using the selected model.')
     parser.add_argument('--label-outliers', action='store_true',
                         help='Label the points which are more than'
                         ' 3 sigma away from the mean.')
@@ -647,6 +859,12 @@ if __name__ == '__main__':
                       help='Use a cross term with quadratic magnitude.')
     func.add_argument('--quad-cross-terms', action='store_true',
                       help='Use a quadratic model with full cross terms.')
+
+    fit_target = parser.add_mutually_exclusive_group(required=True)
+    fit_target.add_argument('-T', '--transitions', action='store_true',
+                            help='Fit individual transitions.')
+    fit_target.add_argument('-P', '--pairs', action='store_true',
+                            help='Fit pairs.')
 
     args = parser.parse_args()
 
