@@ -35,7 +35,7 @@ from varconlib.exceptions import (HDF5FileNotFoundError,
                                   StarDirectoryNotFoundError)
 from varconlib.fitting import calc_chi_squared_nu
 from varconlib.miscellaneous import wavelength2velocity as wave2vel
-from varconlib.miscellaneous import get_params_file
+from varconlib.miscellaneous import get_params_file, shift_wavelength
 
 
 class Star(object):
@@ -162,7 +162,7 @@ class Star(object):
     # Define the version of the format being saved.
     global CURRENT_VERSION
     # TODO: update this
-    CURRENT_VERSION = '3.0.0'
+    CURRENT_VERSION = '4.0.0'
 
     # Define dataset names and corresponding attribute names to be saved
     # and loaded when dumping star data.
@@ -171,8 +171,8 @@ class Star(object):
                    '/arrays/offsets': 'fitOffsetsArray',
                    '/arrays/pair_separations': 'pairSeparationsArray',
                    '/arrays/pair_separation_errors': 'pairSepErrorsArray',
-                   '/arrays/pair_separation_systematic_errors':
-                       'pairSepSysErrorsArray',
+                   # '/arrays/pair_separation_systematic_errors':
+                   #     'pairSepSysErrorsArray',
                    '/arrays/BERV_array': 'bervArray',
                    '/arrays/observation_rv': 'obsRVOffsetsArray',
                    '/arrays/normalized_offsets': 'fitOffsetsNormalizedArray',
@@ -180,13 +180,15 @@ class Star(object):
                    '/arrays/systematic_corrections': 'ccdCorrectionArray',
                    '/arrays/params_corrected_offsets': 'paramsOffsetsArray',
                    '/arrays/params_corrected_errors': 'paramsErrorsArray',
-                   '/arrays/params_corrections': 'paramsCorrectionsArray',
-                   '/arrays/params_systematic_error':
-                       'paramsSysErrorsArray'}
+                   '/arrays/params_corrections': 'paramsCorrectionsArray'}
+                   # '/arrays/params_systematic_error':
+                   #     'paramsSysErrorsArray'}
 
     other_attributes = {'/metadata/version': 'version',
                         '/arrays/reduced_chi_squareds': 'chiSquaredNuArray',
                         '/arrays/airmasses': 'airmassArray',
+                        '/arrays/transition_outliers_mask':
+                            'transitionOutliersMask',
                         '/bidicts/obs_date_bidict': '_obs_date_bidict',
                         '/bidicts/transition_bidict': '_transition_bidict',
                         '/bidicts/pair_bidict': '_pair_bidict',
@@ -523,8 +525,8 @@ class Star(object):
                                        fill_value=np.nan, dtype=float)
         # Initialize the mask to False (0, not masked) with the same shape
         # as the data for this star:
-        mask_array = np.zeros_like(self.fitOffsetsNormalizedArray,
-                                   dtype=int)
+        mask_array = np.full_like(self.fitOffsetsNormalizedArray, False,
+                                  dtype=bool)
         # Create a copy of the errors array which we can change values to NaN in
         # later on, since masks don't play well with Unyt arrays.
         masked_errs_array = self.fitErrorsArray.to_ndarray()
@@ -534,7 +536,7 @@ class Star(object):
                                     np.nan, dtype=float)
         # Create an indentically-shaped array to hold the systematic error
         # present for each transition, in pre- and post-fiber change eras.
-        sigma_sys_array = np.full_like(corrections_array, np.nan, dtype=float)
+        # sigma_sys_array = np.full_like(corrections_array, np.nan, dtype=float)
 
         for key, col_num in tqdm(self._transition_bidict.items()):
 
@@ -543,8 +545,8 @@ class Star(object):
                 pre_slice = slice(None, self.fiberSplitIndex)
 
                 # Get the systematic error for this transition:
-                sigma_sys = sigma_sys_dict[label]
-                sigma_sys_array[0, col_num] = sigma_sys.value
+                # sigma_sys = sigma_sys_dict[label]
+                # sigma_sys_array[0, col_num] = sigma_sys.value
 
                 # Compute the correction for this transition.
                 correction = u.unyt_array(function(stellar_params,
@@ -558,12 +560,12 @@ class Star(object):
                     correction
                 data_slice = corrected_array[pre_slice, col_num]
                 error_slice = self.fitErrorsArray[pre_slice, col_num]
-                full_error_slice = np.sqrt(error_slice ** 2 +
-                                           sigma_sys ** 2)
+                # full_error_slice = np.sqrt(error_slice ** 2 +
+                #                            sigma_sys ** 2)
 
                 for i in range(len(data_slice)):
-                    if abs(data_slice[i]) > n_sigma * full_error_slice[i]:
-                        mask_array[i, col_num] = 1
+                    if abs(data_slice[i]) > n_sigma * error_slice[i]:
+                        mask_array[i, col_num] = True
                         corrected_array[i, col_num] = np.nan
                         masked_errs_array[i, col_num] = np.nan
 
@@ -571,8 +573,8 @@ class Star(object):
                 label = key + '_post'
                 post_slice = slice(self.fiberSplitIndex, None)
 
-                sigma_sys = sigma_sys_dict[label]
-                sigma_sys_array[1, col_num] = sigma_sys.value
+                # sigma_sys = sigma_sys_dict[label]
+                # sigma_sys_array[1, col_num] = sigma_sys.value
 
                 correction = u.unyt_array(function(stellar_params,
                                                    *coeffs_dict[label]),
@@ -583,21 +585,22 @@ class Star(object):
                     correction
                 data_slice = corrected_array[post_slice, col_num]
                 error_slice = self.fitErrorsArray[post_slice, col_num]
-                full_error_slice = np.sqrt(error_slice ** 2 +
-                                           sigma_sys ** 2)
+                # full_error_slice = np.sqrt(error_slice ** 2 +
+                #                            sigma_sys ** 2)
 
                 for i in range(len(data_slice)):
-                    if abs(data_slice[i]) > n_sigma * full_error_slice[i]:
-                        mask_array[i+self.fiberSplitIndex, col_num] = 1
+                    if abs(data_slice[i]) > n_sigma * error_slice[i]:
+                        mask_array[i+self.fiberSplitIndex, col_num] = True
                         corrected_array[i, col_num] = np.nan
                         masked_errs_array[i, col_num] = np.nan
 
+        self.transitionOutliersMask = mask_array.to_ndarray()
         self.paramsOffsetsArray = corrected_array
         self.paramsErrorsArray = u.unyt_array(masked_errs_array,
                                               units='m/s')
         self.paramsCorrectionsArray = u.unyt_array(corrections_array,
                                                    units='m/s')
-        self.paramsSysErrorsArray = u.unyt_array(sigma_sys_array, units='m/s')
+        # self.paramsSysErrorsArray = u.unyt_array(sigma_sys_array, units='m/s')
 
     def createPairSeparationArrays(self):
         """Create attributes containing pair separations and associated errors.
@@ -606,26 +609,32 @@ class Star(object):
         pairSepErrorsArray containing lists of pair separations and associated
         errors in each row corresponding to an observation of this star.
 
+        It makes use of `self.maskArray`, created in
+        `self.createParamsCorrectedArray`, and thus needs to be run in sequence
+        after that method.
+
         Returns
         -------
         None
 
         """
 
-        # Set up the arrays for pair separations and errors
+        # Set up the arrays for pair separations and errors, with rows = number
+        # of observations and columns = number of individual pair instances.
         self.pairSeparationsArray = np.full([
             len(self._obs_date_bidict.keys()),
             len(self._pair_bidict.keys())], np.nan,
             dtype=float)
         self.pairSepErrorsArray = np.full_like(self.pairSeparationsArray,
                                                np.nan, dtype=float)
-        self.pairSepSysErrorsArray = np.full([2,
-                                              len(self._pair_bidict.keys())],
-                                             np.nan, dtype=float)
+        # self.pairSepSysErrorsArray = np.full([2,
+        #                                       len(self._pair_bidict.keys())],
+        #                                      np.nan, dtype=float)
 
-        corrected_array = self.paramsOffsetsArray
-        corrected_errs = self.paramsErrorsArray
-        sys_errors = self.paramsSysErrorsArray
+        self.fitMeansCorrectedArray = shift_wavelength(self.fitMeansArray,
+                                                       self.ccdCorrectionArray)
+        # Set all values where the mask is True (=bad) to NaN.
+        self.fitMeansCorrectedArray[self.transitionOutliersMask] = np.nan
 
         for pair in tqdm(self.pairsList):
             for order_num in pair.ordersToMeasureIn:
@@ -636,20 +645,43 @@ class Star(object):
                                    str(order_num)))
 
                 self.pairSeparationsArray[:, self.p_index(pair_label)] =\
-                    corrected_array[:, self.t_index(label2)] -\
-                    corrected_array[:, self.t_index(label1)]
+                    wave2vel(self.fitMeansCorrectedArray[:,
+                                                         self.t_index(label1)],
+                             self.fitMeansCorrectedArray[:,
+                                                         self.t_index(label2)])
 
                 self.pairSepErrorsArray[:, self.p_index(pair_label)] =\
-                    np.sqrt(corrected_errs[:, self.t_index(label1)]**2 +
-                            corrected_errs[:, self.t_index(label2)]**2)
+                    np.sqrt(self.fitErrorsArray[:, self.t_index(label1)]**2 +
+                            self.fitErrorsArray[:, self.t_index(label2)]**2)
 
-                self.pairSepSysErrorsArray[:, self.p_index(pair_label)] =\
-                    np.sqrt(sys_errors[:, self.t_index(label1)]**2 +
-                            sys_errors[:, self.t_index(label2)]**2)
+        # corrected_array = self.paramsOffsetsArray
+        # corrected_errs = self.paramsErrorsArray
+        # sys_errors = self.paramsSysErrorsArray
+
+        # for pair in tqdm(self.pairsList):
+        #     for order_num in pair.ordersToMeasureIn:
+        #         pair_label = '_'.join((pair.label, str(order_num)))
+        #         label1 = '_'.join((pair._higherEnergyTransition.label,
+        #                            str(order_num)))
+        #         label2 = '_'.join((pair._lowerEnergyTransition.label,
+        #                            str(order_num)))
+
+        #         self.pairSeparationsArray[:, self.p_index(pair_label)] =\
+        #             corrected_array[:, self.t_index(label2)] -\
+        #             corrected_array[:, self.t_index(label1)]
+
+        #         self.pairSepErrorsArray[:, self.p_index(pair_label)] =\
+        #             np.sqrt(corrected_errs[:, self.t_index(label1)]**2 +
+        #                     corrected_errs[:, self.t_index(label2)]**2)
+
+        #         self.pairSepSysErrorsArray[:, self.p_index(pair_label)] =\
+        #             np.sqrt(sys_errors[:, self.t_index(label1)]**2 +
+        #                     sys_errors[:, self.t_index(label2)]**2)
 
         self.pairSeparationsArray *= u.m/u.s
+        self.pairSeparationsArray.convert_to_units(u.km/u.s)
         self.pairSepErrorsArray *= u.m/u.s
-        self.pairSepSysErrorsArray *= u.m/u.s
+        # self.pairSepSysErrorsArray *= u.m/u.s
 
     def formatPairData(self, pair, order_num, era):
         """Return a list of information about a given pair.
