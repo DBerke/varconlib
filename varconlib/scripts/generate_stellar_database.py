@@ -131,21 +131,15 @@ def get_transition_data_point(star, time_slice, col_index, fit_params=None):
 
     """
 
-    errs = star.fitErrorsArray[time_slice, col_index]
-    if fit_params is None:
-        offsets = star.fitOffsetsNormalizedArray[time_slice, col_index]
-        weighted_mean, weight_sum = np.average(offsets.value,
-                                               weights=errs.value**-2,
-                                               returned=True)
-    else:
-        corrected_array, mask_array = star.getCorrectedArray(fit_params,
-                                                             n_sigma=2.5)
-        offsets = ma.array(corrected_array, mask=mask_array)[time_slice,
-                                                             col_index]
-        weighted_mean, weight_sum = ma.average(offsets,
-                                               weights=errs.value**-2,
-                                               returned=True)
+    data_slice = star.fitOffsetsNormalizedArray[time_slice, col_index]
+    mask = np.full_like(data_slice, True, dtype=bool)
+    mask[np.isnan(data_slice)] = False
+    offsets = data_slice[mask]
+    errs = star.fitErrorsArray[time_slice, col_index][mask]
 
+    weighted_mean, weight_sum = np.average(offsets.value,
+                                           weights=errs.value**-2,
+                                           returned=True)
     weighted_mean *= u.m/u.s
     error_on_weighted_mean = (1 / np.sqrt(weight_sum)) * u.m / u.s
     if len(offsets) > 1:
@@ -158,8 +152,68 @@ def get_transition_data_point(star, time_slice, col_index, fit_params=None):
     return (weighted_mean, error_on_weighted_mean, error_on_mean, stddev)
 
 
+def get_pair_data_point(star, time_slice, col_index, fit_params=None):
+    """Return the weighted mean and some statistics for a given star and pair.
+
+    The returned values will be the weighted mean of the pair for all
+    observations of the star where it exists, the error on the weighted mean,
+    the error on the mean, and the standard deviation of all the observations.
+
+    Parameters
+    ----------
+    star : `star.Star`
+        The star to get the data from.
+    time_slice : slice
+        A slice object specifying the data to use from the star.
+    col_index : int
+        The index of the columnn to read from.
+
+    Optional
+    --------
+    fit_params : dict, Default : None
+        Should be the results of a varconlib.miscellaneous.get_params_file()
+        call, a dictionary containing various information about a fitting model.
+
+    Returns
+    -------
+    tuple
+        Returns a 4-tuple of the weighted mean, the error on the
+        weighted mean, the error on the mean (standard deviation / sqrt(N))
+        and the standard deviation.
+
+        If there is only one observation for the star, the standard deviation
+        returned will be zero and the error on the mean will instead be the
+        error from the fit itself.
+
+    """
+
+    data_slice = star.pairSeparationsArray[time_slice, col_index]
+    mask = np.full_like(data_slice, True, dtype=bool)
+    mask[np.isnan(data_slice)] = False
+    separations = data_slice[mask]
+    errs = star.pairSepErrorsArray[time_slice, col_index][mask]
+
+    weighted_mean, weight_sum = np.average(separations.to(u.m/u.s).value,
+                                           weights=errs.value**-2,
+                                           returned=True)
+    weighted_mean *= u.m/u.s
+    error_on_weighted_mean = (1 / np.sqrt(weight_sum)) * u.m / u.s
+    if len(separations) > 1:
+        stddev = np.std(separations)
+        error_on_mean = stddev / np.sqrt(star.getNumObs(time_slice))
+    else:
+        stddev = 0
+        error_on_mean = errs[0]  # Because there's only one error in the array.
+
+    return (weighted_mean, error_on_weighted_mean, error_on_mean, stddev)
+
+
 def main():
     """Run the main function for the script.
+
+    This collects stars given at the command line and finds the weighted mean
+    of the measurements of each transition and pair of transitions taken across
+    all their observations, before storing it all in an HDF5 file.
 
     Returns
     -------
@@ -170,15 +224,6 @@ def main():
     main_dir = Path(args.main_dir[0])
     if not main_dir.exists():
         raise FileNotFoundError(f'{main_dir} does not exist!')
-
-    if args.fit_params_file:
-        vprint(f'Reading params file {args.fit_params_file}...')
-
-        params_file = main_dir / f'fit_params/{args.fit_params_file}'
-        fit_results = get_params_file(params_file)
-
-    else:
-        fit_results = None
 
     tqdm.write(f'Looking in main directory {main_dir}')
 
@@ -227,15 +272,30 @@ def main():
         transitions_list = pickle.load(f)
     vprint(f'Found {len(transitions_list)} transitions in the list.')
 
+    # Collect all the transition labels.
     transition_labels = []
     for transition in transitions_list:
         for order_num in transition.ordersToFitIn:
             transition_labels.append('_'.join([transition.label,
                                                str(order_num)]))
 
-    # Create a bidict to map transition labels to column numbers.
+    tqdm.write('Unpickling pairs list.')
+    with open(vcl.final_pair_selection_file, 'r+b') as f:
+        pairs_list = pickle.load(f)
+    vprint(f'Found {len(pairs_list)} pairs in the list.')
+
+    # Collect all the pair labels.
+    pair_labels = []
+    for pair in pairs_list:
+        for order_num in pair.ordersToMeasureIn:
+            pair_labels.append('_'.join((pair.label, str(order_num))))
+
+    # Create bidicts to map transition and pair labels to column numbers.
     columns = {label: num for num, label in enumerate(transition_labels)}
-    column_dict = bidict(columns)
+    transition_column_dict = bidict(columns)
+
+    pair_columns = {label: num for num, label in enumerate(pair_labels)}
+    pair_column_dict = bidict(pair_columns)
 
     # Define the data structures to fill with results:
     # EotM = error on the mean
@@ -243,6 +303,7 @@ def main():
 
     row_len = len(star_list)
     col_len = len(transition_labels)
+    pair_col_len = len(pair_labels)
 
     # Use three-dimensional arrays here -- first axis is for pre- and post-
     # fiber change results. 0 = pre, 1 = post.
@@ -250,6 +311,10 @@ def main():
     star_transition_offsets_EotWM = np.full([2, row_len, col_len], np.nan)
     star_transition_offsets_EotM = np.full([2, row_len, col_len], np.nan)
     star_transition_offsets_stds = np.full([2, row_len, col_len], np.nan)
+
+    star_pair_separations = np.full([2, row_len, pair_col_len], np.nan)
+    star_pair_separations_EotWM = np.full([2, row_len, pair_col_len], np.nan)
+    star_pair_separations_EotM = np.full([2, row_len, pair_col_len], np.nan)
 
     star_temperatures = np.full([row_len, 1], np.nan)
     star_metallicities = np.full([row_len, 1], np.nan)
@@ -270,15 +335,15 @@ def main():
         total_obs += star_num_obs
         star_names[star.name] = i
 
+        pre_slice = slice(None, star.fiberSplitIndex)
+        post_slice = slice(star.fiberSplitIndex, None)
+
         for j, label in enumerate(tqdm(transition_labels)):
-            pre_slice = slice(None, star.fiberSplitIndex)
-            post_slice = slice(star.fiberSplitIndex, None)
             col_index = star.t_index(label)
 
             if star.hasObsPre:
                 star_mean, star_eotwm, star_eotm, star_std =\
-                    get_transition_data_point(star, pre_slice, col_index,
-                                              fit_params=fit_results)
+                    get_transition_data_point(star, pre_slice, col_index)
                 star_transition_offsets[0, i, j] = star_mean
                 star_transition_offsets_EotWM[0, i, j] = star_eotwm
                 star_transition_offsets_EotM[0, i, j] = star_eotm
@@ -286,38 +351,54 @@ def main():
 
             if star.hasObsPost:
                 star_mean, star_eotwm, star_eotm, star_std =\
-                    get_transition_data_point(star, post_slice, col_index,
-                                              fit_params=fit_results)
+                    get_transition_data_point(star, post_slice, col_index)
                 star_transition_offsets[1, i, j] = star_mean
                 star_transition_offsets_EotWM[1, i, j] = star_eotwm
                 star_transition_offsets_EotM[1, i, j] = star_eotm
                 star_transition_offsets_stds[1, i, j] = star_std
 
-            star_temperatures[i] = star.temperature
-            star_metallicities[i] = star.metallicity
-            star_magnitudes[i] = star.absoluteMagnitude
-            star_gravities[i] = star.logg
+        for k, label in enumerate(tqdm(pair_labels)):
+            col_index = star.p_index(label)
+
+            if star.hasObsPre:
+                star_mean, star_eotwm, star_eotm, star_std =\
+                    get_pair_data_point(star, pre_slice, col_index)
+                star_pair_separations[0, i, k] = star_mean
+                star_pair_separations_EotWM[0, i, k] = star_eotwm
+                star_pair_separations_EotM[0, i, k] = star_eotm
+
+            if star.hasObsPost:
+                star_mean, star_eotwm, star_eotm, star_std =\
+                    get_pair_data_point(star, post_slice, col_index)
+                star_pair_separations[1, i, k] = star_mean
+                star_pair_separations_EotWM[1, i, k] = star_eotwm
+                star_pair_separations_EotM[1, i, k] = star_eotm
+
+        star_temperatures[i] = star.temperature
+        star_metallicities[i] = star.metallicity
+        star_magnitudes[i] = star.absoluteMagnitude
+        star_gravities[i] = star.logg
 
     star_transition_offsets *= star.fitOffsetsArray.units
     star_transition_offsets_EotWM *= star.fitErrorsArray.units
     star_transition_offsets_EotM *= star.fitErrorsArray.units
     star_transition_offsets_stds *= star.fitErrorsArray.units
+    star_pair_separations *= star.pairSeparationsArray.units
+    star_pair_separations_EotWM *= star.pairSepErrorsArray.units
+    star_pair_separations_EotM *= star.pairSepErrorsArray.units
     star_temperatures *= u.K
 
     # Save the output to disk.
     unyt_arrays = ('star_transition_offsets', 'star_transition_offsets_EotWM',
                    'star_transition_offsets_EotM', 'star_standard_deviations',
-                   'star_temperatures')
+                   'star_pair_separations', 'star_pair_separations_EotWM',
+                   'star_pair_separations_EotM', 'star_temperatures')
     other_arrays = ('star_metallicities', 'star_magnitudes', 'star_gravities')
 
     if not vcl.databases_dir.exists():
         os.mkdir(vcl.databases_dir)
 
-    if not args.fit_params_file:
-        db_file = vcl.databases_dir / 'stellar_db_uncorrected.hdf5'
-    else:
-        model_name = Path(args.fit_params_file).stem
-        db_file = vcl.databases_dir / f'stellar_db_{model_name}.hdf5'
+    db_file = vcl.databases_dir / 'stellar_db_uncorrected.hdf5'
 
     tqdm.write(f'Writing output to {str(db_file)}')
     if db_file.exists():
@@ -329,6 +410,9 @@ def main():
                                 star_transition_offsets_EotWM,
                                 star_transition_offsets_EotM,
                                 star_transition_offsets_stds,
+                                star_pair_separations,
+                                star_pair_separations_EotWM,
+                                star_pair_separations_EotM,
                                 star_temperatures)):
             vprint(f'{name}: {array.shape}')
             array.write_hdf5(db_file, dataset_name=f'/{name}')
@@ -338,7 +422,8 @@ def main():
                                               star_gravities)):
             hickle.dump(array, f, path=f'/{name}')
             vprint(f'{name}: {array.shape}')
-        hickle.dump(column_dict, f, path='/transition_column_index')
+        hickle.dump(transition_column_dict, f, path='/transition_column_index')
+        hickle.dump(pair_column_dict, f, path='/pair_column_index')
         hickle.dump(star_names, f, path='/star_row_index')
     tqdm.write(f'Collected {total_obs} observations in total from'
                f' {len(star_list)} stars.')
@@ -367,13 +452,6 @@ if __name__ == '__main__':
                        help='Use values from Casagrande et al. 2011.')
     paper.add_argument('--nordstrom2004', action='store_true',
                        help='Use values from Nordstrom et al. 2004.')
-
-    parser.add_argument('--correct-transitions', action='store',
-                        type=str, dest='fit_params_file',
-                        help='The name of the file containing the fitting'
-                        ' function and parameters for each transition. It will'
-                        ' automatically be looked for in the fit_params folder'
-                        ' in the output data directory.')
 
     args = parser.parse_args()
 
