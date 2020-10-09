@@ -17,6 +17,7 @@ from pathlib import Path
 from bidict import bidict
 import h5py
 import hickle
+from numpy import logical_not, isnan
 import unyt as u
 import unyt.dimensions as udim
 
@@ -221,14 +222,16 @@ def shift_wavelength(wavelength, shift_velocity):
 
     """
 
+    assert shift_velocity.units.dimensions == udim.length / udim.time,\
+        "shift_velocity requires units of length/time."
+    assert wavelength.units.dimensions == udim.length,\
+        "wavelength requires units of length."
+
     original_units = wavelength.units
 
-    # Convert the wavelength and radial velocity to base units.
-    wavelength.convert_to_units(u.m)
-    shift_velocity.convert_to_units(u.m/u.s)
-
     # Make sure we're not using unphysical velocities!
-    assert abs(shift_velocity) < u.c, 'Given velocity exceeds speed of light!'
+    # assert (abs(shift_velocity) < u.c).all(),\
+    #     'Given velocity exceeds speed of light!'
 
     result = ((shift_velocity / u.c) * wavelength) + wavelength
 
@@ -347,6 +350,26 @@ def q_alpha_shift(omega, q_coefficient, delta_alpha):
                                                  equivalence='spectral'),
                                new_value.to(u.angstrom,
                                             equivalence='spectral'))
+
+
+def remove_nans(input_array):
+    """
+    Return a new array formed from the non-NaN entries of the input array.
+
+    Parameters
+    ----------
+    input_array : `array_like`
+        An `array_like` object (a list or tuple won't work) containing zero or
+        more NaN values.
+
+    Returns
+    -------
+    np.array
+        An array formed of the non-NaN entries of the input array.
+
+    """
+
+    return input_array[logical_not(isnan(input_array))]
 
 
 def get_params_file(filename):
