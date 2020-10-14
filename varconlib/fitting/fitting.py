@@ -512,7 +512,6 @@ def find_sys_scatter(model_func, x_data, y_data, err_array, beta0,
     sys_err = 0
     iter_err_array = np.sqrt(np.square(err_array) +
                              np.square(sys_err))
-    sigma_sys_change_amount = 0.25  # Range (0, 1)
 
     chi_squared_list = []
     sigma_sys_list = []
@@ -569,7 +568,7 @@ def find_sys_scatter(model_func, x_data, y_data, err_array, beta0,
         diff = abs(chi_squared_nu - 1)
 
         # Set the amount to change by using the latest chi^2 value.
-        sigma_sys_change_amount = np.sqrt(chi_squared_nu)
+        sigma_sys_change_amount = np.power(chi_squared_nu, 2/3)
         sigma_sys_change_list.append(sigma_sys_change_amount)
 
         vprint(f'{iterations:>3}, '
@@ -577,23 +576,23 @@ def find_sys_scatter(model_func, x_data, y_data, err_array, beta0,
                f' {sigma_sys_change_amount:>8.4f},'
                f' {iter_residuals.count():>3},  {chi_squared_flips}')
         if verbose:
-            sleep_length = 0.001 if chi_squared_flips < 3 else 0.4
+            sleep_length = 0 if chi_squared_flips < 3 else 0.1
             sleep(sleep_length)
 
         if chi_squared_nu > 1:
             if sys_err == 0:
                 # Round the new systematic error to 4 decimal places
                 # (= 1/100 mm/s), to prevent extremely slow convergence.
-                sys_err = round(np.sqrt(chi_squared_nu), 5)
+                sys_err = np.sqrt(chi_squared_nu)
             else:
-                sys_err = round(sys_err * sigma_sys_change_amount, 5)
+                sys_err = sys_err * sigma_sys_change_amount
         elif chi_squared_nu < 1:
             if sys_err == 0:
                 # If the chi-squared value is naturally lower
                 # than 1, don't change anything, just exit.
                 break
             else:
-                sys_err = round(sys_err * sigma_sys_change_amount, 5)
+                sys_err = sys_err * sigma_sys_change_amount
 
         # Construct new error array using all errors.
         iter_err_array = np.sqrt(np.square(orig_errs) +
@@ -631,18 +630,32 @@ def find_sys_scatter(model_func, x_data, y_data, err_array, beta0,
         # recent entries being within the given tolerance of the most recent
         # entry), end the loop. Most runs terminate well under 100 steps so
         # this should only catch the problem cases.
-        elif (iterations > 100 and (diff < chi_tol) and
+        elif ((iterations > 100) and (diff < chi_tol) and
               (abs(sigma_sys_list[-1] - sigma_sys_list[-10]) < chi_tol) and
               (abs(sigma_sys_list[-1] - sigma_sys_list[-100]) < chi_tol)):
+            break
+
+        # If the chi^2 value is approaching 1 from the bottom, it may be the
+        # case that it can never reach 1, even if sigma_sys goes to 0 (but it
+        # will take forever to get there). In the case that chi^2_nu < 1,
+        # and the values have clearly converged to a value within the tolerance
+        # over the last 100 iterations, break the loop. This does leave the
+        # derived sigma_sys value somewhat meaningless, but it should be small
+        # enough in these cases as to be basically negligible.
+
+        elif ((iterations > 100) and (chi_squared_nu < 1.) and
+              (abs(chi_squared_list[-1]) - chi_squared_list[-10] < chi_tol) and
+              (abs(chi_squared_list[-1]) - chi_squared_list[-100] < chi_tol)):
             break
 
         # If the iterations go on too long, it may be because it's converging
         # very slowly to zero sigma_sys, so give it a nudge if it's still large.
         elif iterations == 500:
-            if sys_err > 0.001:
+            if (sys_err > 0.001) and (sys_err < 0.01) and\
+                    (sigma_sys_list[-1] < sigma_sys_list[-2]):
                 sys_err = 0.001
 
-        # If it's taking a really long time to convergy, but sigma_sys is less
+        # If it's taking a really long time to converge, but sigma_sys is less
         # than a millimeter per second, just set it to zero and end the loop.
         elif iterations == 999:
             if sys_err < 0.0011:
