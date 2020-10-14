@@ -511,7 +511,7 @@ class Star(object):
 
         # Use the parameters derived from results with outliers removed.
         filename = vcl.output_dir /\
-            f'fit_params/{model_func}_params.hdf5'
+            f'fit_params/{model_func}_transitions_params.hdf5'
         fit_results_dict = get_params_file(filename)
         function = fit_results_dict['model_func']
         coeffs_dict = fit_results_dict['coeffs']
