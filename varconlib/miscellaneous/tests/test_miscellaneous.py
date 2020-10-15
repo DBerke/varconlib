@@ -189,9 +189,7 @@ class TestShiftWavelength(object):
     @pytest.mark.parametrize(
             'shift_velocity',
             [1e8, -1e8] * u.km / u.s)
-    def testUnphysicalVelocity(self, wavelength, shift_velocity):
-        with pytest.raises(AssertionError):
-            vcl.shift_wavelength(wavelength, shift_velocity)
+    def testSuperluminalVelocity(self, wavelength, shift_velocity):
         with pytest.raises(AssertionError):
             vcl.shift_wavelength(wavelength, shift_velocity)
 
@@ -204,6 +202,11 @@ class TestShiftWavelength(object):
         assert pytest.approx(vcl.shift_wavelength(wavelength_array[:2],
                                                   100 * u.km / u.s),
                              [4001.33425638, 4501.50103843] * u.angstrom)
+
+    def testShiftMultipleWithSuperluminal(self):
+        wavelengths = [400, 500, 600] * u.nm
+        with pytest.raises(AssertionError):
+            vcl.shift_wavelength(wavelengths, 1e8 * u.km / u.s)
 
 
 class TestWavelength2Index(object):

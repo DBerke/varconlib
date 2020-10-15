@@ -19,7 +19,9 @@ import h5py
 import hickle
 from numpy import logical_not, isnan
 import unyt as u
-import unyt.dimensions as udim
+from unyt import accepts, returns
+from unyt.dimensions import length, time
+
 
 import varconlib as vcl
 
@@ -202,6 +204,8 @@ def calc_blended_centroid_shift(velocity_separation, intensity1, intensity2):
                                   (1 + (intensity2 / intensity1)))
 
 
+@returns(length)
+@accepts(wavelength=length, shift_wavelength=length/time)
 def shift_wavelength(wavelength, shift_velocity):
     """Find the new wavelength of a wavelength (single or an array) given a
     velocity to shift it by. Returns in the units given.
@@ -222,22 +226,19 @@ def shift_wavelength(wavelength, shift_velocity):
 
     """
 
-    assert shift_velocity.units.dimensions == udim.length / udim.time,\
-        "shift_velocity requires units of length/time."
-    assert wavelength.units.dimensions == udim.length,\
-        "wavelength requires units of length."
-
     original_units = wavelength.units
 
     # Make sure we're not using unphysical velocities!
-    # assert (abs(shift_velocity) < u.c).all(),\
-    #     'Given velocity exceeds speed of light!'
+    assert (abs(shift_velocity) < u.c).all(),\
+        'Given velocity exceeds speed of light!'
 
     result = ((shift_velocity / u.c) * wavelength) + wavelength
 
     return result.to(original_units)
 
 
+@returns(length)
+@accepts(velocity_offset=length/time, wavelength=length)
 def velocity2wavelength(velocity_offset, wavelength, unit=None):
     """Return the wavelength separation for a given velocity separation at the
     given wavelength.
@@ -266,11 +267,6 @@ def velocity2wavelength(velocity_offset, wavelength, unit=None):
 
     """
 
-    assert velocity_offset.units.dimensions == udim.length / udim.time,\
-        "velocity_offset requires units of length/time."
-    assert wavelength.units.dimensions == udim.length,\
-        "wavelength requires units of length."
-
     original_units = wavelength.units
     result = (velocity_offset * wavelength) / u.c
     if not unit:
@@ -279,6 +275,8 @@ def velocity2wavelength(velocity_offset, wavelength, unit=None):
         return result.to(unit)
 
 
+@returns(length/time)
+@accepts(wavelength1=length, wavelength2=length)
 def wavelength2velocity(wavelength1, wavelength2):
     """Return velocity separation of a pair of wavelengths.
 
@@ -297,11 +295,6 @@ def wavelength2velocity(wavelength1, wavelength2):
         The velocity separation between the given wavelengths in m/s.
 
     """
-
-    assert wavelength1.units.dimensions == udim.length,\
-        "wavelength1 needs dimensions of length."
-    assert wavelength2.units.dimensions == udim.length,\
-        "wavelength2 needs dimensions of length."
 
     result = (wavelength2 - wavelength1) * u.c /\
              ((wavelength1 + wavelength2) / 2)
