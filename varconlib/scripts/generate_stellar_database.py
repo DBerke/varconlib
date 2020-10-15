@@ -95,7 +95,7 @@ def get_star(star_path, verbose=False, recreate=False):
         pass
 
 
-def get_transition_data_point(star, time_slice, col_index, fit_params=None):
+def get_transition_data_point(star, time_slice, col_index):
     """Return the weighted mean and some statistics for a given star and
     transition.
 
@@ -111,12 +111,6 @@ def get_transition_data_point(star, time_slice, col_index, fit_params=None):
         A slice object specifying the data to use from the star.
     col_index : int
         The index of the columnn to read from.
-
-    Optional
-    --------
-    fit_params : dict, Default : None
-        Should be the results of a varconlib.miscellaneous.get_params_file()
-        call, a dictionary containing various information about a fitting model.
 
     Returns
     -------
@@ -137,9 +131,15 @@ def get_transition_data_point(star, time_slice, col_index, fit_params=None):
     offsets = data_slice[mask]
     errs = star.fitErrorsArray[time_slice, col_index][mask]
 
-    weighted_mean, weight_sum = np.average(offsets.value,
-                                           weights=errs.value**-2,
-                                           returned=True)
+    try:
+        weighted_mean, weight_sum = np.average(offsets.value,
+                                               weights=errs.value**-2,
+                                               returned=True)
+    except ZeroDivisionError:
+        # If all the observations have been masked out, just return a 4-tuple of
+        # NaNs.
+        return tuple([u.unyt_quantity(np.nan, units=u.m/u.s, dtype=float)] * 4)
+
     weighted_mean *= u.m/u.s
     error_on_weighted_mean = (1 / np.sqrt(weight_sum)) * u.m / u.s
     if len(offsets) > 1:
@@ -152,7 +152,7 @@ def get_transition_data_point(star, time_slice, col_index, fit_params=None):
     return (weighted_mean, error_on_weighted_mean, error_on_mean, stddev)
 
 
-def get_pair_data_point(star, time_slice, col_index, fit_params=None):
+def get_pair_data_point(star, time_slice, col_index):
     """Return the weighted mean and some statistics for a given star and pair.
 
     The returned values will be the weighted mean of the pair for all
@@ -167,12 +167,6 @@ def get_pair_data_point(star, time_slice, col_index, fit_params=None):
         A slice object specifying the data to use from the star.
     col_index : int
         The index of the columnn to read from.
-
-    Optional
-    --------
-    fit_params : dict, Default : None
-        Should be the results of a varconlib.miscellaneous.get_params_file()
-        call, a dictionary containing various information about a fitting model.
 
     Returns
     -------
@@ -193,9 +187,15 @@ def get_pair_data_point(star, time_slice, col_index, fit_params=None):
     separations = data_slice[mask]
     errs = star.pairSepErrorsArray[time_slice, col_index][mask]
 
-    weighted_mean, weight_sum = np.average(separations.to(u.m/u.s).value,
-                                           weights=errs.value**-2,
-                                           returned=True)
+    try:
+        weighted_mean, weight_sum = np.average(separations.to(u.m/u.s).value,
+                                               weights=errs.value**-2,
+                                               returned=True)
+    except ZeroDivisionError:
+        # If all the observations have been masked out, just return a 4-tuple of
+        # NaNs.
+        return tuple([u.unyt_quantity(np.nan, units=u.m/u.s, dtype=float)] * 4)
+
     weighted_mean *= u.m/u.s
     error_on_weighted_mean = (1 / np.sqrt(weight_sum)) * u.m / u.s
     if len(separations) > 1:
@@ -430,8 +430,9 @@ def main():
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Collate date from stars into'
-                                     ' a standard form saved to disk.')
+    parser = argparse.ArgumentParser(description='Collate data from stars on'
+                                     ' their transition and pair measurements'
+                                     ' into a standard form saved to disk.')
     parser.add_argument('main_dir', action='store', type=str, nargs=1,
                         help='The main directory within which to find'
                         ' additional star directories.')
