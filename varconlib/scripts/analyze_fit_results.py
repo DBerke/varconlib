@@ -111,10 +111,10 @@ def create_transition_offset_plots(plots_dir):
         mean_measured = np.average(ma.masked_invalid(
                                    star.fitMeansArray[time_slice,
                                                       column_index].value),
-                                   weights=(1/errors**2))
+                                   weights=(1/errors**2)) * u.angstrom
 
         vprint(f'Mean for {star.t_label(column_index)} is'
-               f' {mean_measured * u.angstrom:.4f}')
+               f' {mean_measured:.4f}')
 
         w_mean, weight_sum = np.average(offsets,
                                         weights=(1/errors**2),
@@ -185,18 +185,22 @@ def create_transition_offset_plots(plots_dir):
         vs_ax.xaxis.grid(which='major', color='Gray', linestyle='--',
                          alpha=0.6)
 
-        vs_ax.errorbar(x=fit_chis, y=offsets, yerr=errors,
-                       label=f'$\mu$: {mean_measured * u.angstrom:.4f},'
-                       f' {w_mean * u.m/u.s:.2f} $\\pm$'
-                       f' {std_dev * u.m/u.s:.3f}\n'
-                       r'$\chi^2_\nu=$'
-                       f'{reduced_chi_squared:.3f},'
-                       f' $N=${len(offsets)}',
-                       **params)
+        try:
+            vs_ax.errorbar(x=fit_chis, y=offsets, yerr=errors,
+                           label=f'$\mu$: {mean_measured:.4f},'
+                           f' {w_mean:.2f} $\\pm$'
+                           f' {std_dev:.3f}\n'
+                           r'$\chi^2_\nu=$'
+                           f'{reduced_chi_squared:.3f},'
+                           f' $N=${len(offsets)}',
+                           **params)
+        except TypeError:
+            print(f'mean_measured = {mean_measured}')
+            raise
 
         vs_ax.legend(loc='lower right', markerscale=0.7,
-                         framealpha=1, mode='expand',
-                         bbox_to_anchor=(-0.04, -0.35, 1.04, -0.35))
+                     framealpha=1, mode='expand',
+                     bbox_to_anchor=(-0.04, -0.35, 1.04, -0.35))
 
         hist_ax.yaxis.grid(which='major', color='Gray', alpha=0.6,
                            linestyle='--')

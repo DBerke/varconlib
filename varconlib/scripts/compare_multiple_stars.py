@@ -26,6 +26,7 @@ import numpy as np
 import numpy.ma as ma
 from tqdm import tqdm
 import unyt as u
+import unyt.dimensions as udim
 
 import varconlib as vcl
 from varconlib.exceptions import HDF5FileNotFoundError
@@ -33,7 +34,7 @@ import varconlib.fitting.fitting
 from varconlib.miscellaneous import get_params_file
 from varconlib.star import Star
 
-
+breakpoint()
 # Define style parameters to use for stellar parameter plots.
 style_pre = {'color': 'Chocolate',
              'ecolor_thick': 'DarkOrange',
@@ -371,10 +372,11 @@ def get_transition_data_point(star, time_slice, transition_label,
         weighted_mean, weight_sum = ma.average(offsets,
                                                weights=errs.value**-2,
                                                returned=True)
-        error_on_weighted_mean = 1 / np.sqrt(weight_sum) * u.m / u.s
-
-        error_on_mean = ma.std(offsets) /\
-            np.sqrt(star.getNumObs(time_slice)) * u.m / u.s
+        weighted_mean *= u.m / u.s
+        error_on_weighted_mean = (1 / np.sqrt(weight_sum)) * u.m / u.s
+        print(offsets[0])
+        error_on_mean = (ma.std(offsets) /
+                         np.sqrt(star.getNumObs(time_slice))) * u.m / u.s
 
     # print(f'Weighted mean: {weighted_mean}')
     # print(f'Weight sum: {weight_sum}')
@@ -385,6 +387,14 @@ def get_transition_data_point(star, time_slice, transition_label,
     # print(f'EotWM: {error_on_weighted_mean}')
     # print(f'EotM: {error_on_mean}')
     # raise RuntimeError
+
+    assert weighted_mean.units.dimensions == udim.length / udim.time,\
+        f'weighted_mean has dimensions of {weighted_mean.units.dimensions}'
+    assert error_on_weighted_mean.units.dimensions == udim.length / udim.time,\
+        'error_on_weighted_mean has dimensions of'\
+        f' {error_on_weighted_mean.units.dimensions}'
+    assert error_on_mean.units.dimensions == udim.length / udim.time,\
+        f'error_on_mean has dimensions of {error_on_mean.units.dimensions}'
 
     return (weighted_mean, error_on_weighted_mean, error_on_mean)
 
@@ -718,7 +728,7 @@ def main():
                     # means_pre = ma.masked_invalid(means_pre)
                     # means_pre -= corrections
                     sigma_sys_pre.append(sigma_sys[transition_label +
-                                                    '_pre'].value)
+                                                   '_pre'].value)
 
                     # data_post = np.stack((temp_post, mtl_post, mag_post),
                     #                      axis=0)
