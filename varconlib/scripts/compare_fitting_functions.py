@@ -5,8 +5,8 @@ Created on Mon Mar 23 10:49:20 2020
 
 @author: dberke
 
-A script to compare the results of fitting transition velocity offsets as a
-function of stellar parameters using different functions.
+A script to compare the results of fitting transition velocity offsets and pairs
+as a function of stellar parameters using different functions.
 """
 
 import argparse
@@ -35,9 +35,14 @@ corr_colors = {'pre_uncorr': 'SaddleBrown',
                'post_corr': 'LightSkyBlue'}
 
 
-def plot_histograms():
+def plot_histograms(target):
     """Create plots of histograms for the various quantities of interest.
 
+    Parameters
+    ----------
+    target : str, ['transitions', 'pairs']
+        A string denoting whether to compare the results for transitions, or for
+        pairs.
 
     Returns
     -------
@@ -46,40 +51,62 @@ def plot_histograms():
     """
 
     cols = {'index': 0,
-            'sigma_pre': 1,
-            'sigma_sys_pre': 2,
-            'sigma_post': 3,
-            'sigma_sys_post': 4}
+            'chi_squared_pre': 1,
+            'sigma_pre': 2,
+            'sigma_sys_pre': 3,
+            'chi_squared_post': 4,
+            'sigma_post': 5,
+            'sigma_sys_post': 6}
 
-    main_dir = Path(vcl.config['PATHS']['output_dir']) /\
-        'star_comparisons/transitions'
+    main_dir = vcl.output_dir / f'stellar_parameter_fits_{target}'
 
-    functions = {#'uncorrected': 'Uncorrected',
-                 'linear': 'Linear',
+    functions = {'linear': 'Linear',
                  'quadratic': 'Quadratic',
                  'cross_term': 'Linear, [Fe/H]/T$_{eff}$',
                  'quadratic_mag': r'Linear, cross term, $\mathrm{M}_{v}^2$'}
-    files = [main_dir / f'{x}/{x}_sigmas.csv' for x in functions.keys()]
+
+    files = {x: main_dir / f'{x}/{x}_{target}_fit_results.csv' for
+             x in functions.keys()}
+
+    x_lims = {'left': -15, 'right': 15}
 
     fig = plt.figure(figsize=(11, 5), tight_layout=True)
     ax_pre = fig.add_subplot(1, 2, 1)
-    # ax_pre.set_xscale('log')
-    ax_pre.set_xlabel(r'Pre-fiber change $\sigma_\mathrm{sys}$ (m/s)')
-    ax_pre.set_xlim(left=0, right=100)
+    ax_pre.set_yscale('log')
+    ax_pre.set_xlabel(r'Pre-change $\Delta\sigma_\mathrm{sys}$ vs. linear'
+                      ' (m/s)')
+    ax_pre.set_xlim(**x_lims)
     ax_post = fig.add_subplot(1, 2, 2)
-    # ax_post.set_xscale('log')
-    ax_post.set_xlabel(r'Post-fiber change $\sigma_\mathrm{sys}$ (m/s)')
-    ax_post.set_xlim(left=0, right=100)
+    ax_post.set_yscale('log')
+    ax_post.set_xlabel(r'Post-change $\Delta\sigma_\mathrm{sys}$ vs. linear'
+                       ' (m/s)')
+    ax_post.set_xlim(**x_lims)
 
-    bin_edges = [x for x in range(0, 1005, 3)]
+    bin_edges = np.linspace(x_lims['left'], x_lims['right'], num=70)
 
-    for file, function in zip(files, functions.keys()):
-        with open(file, 'r', newline='') as f:
-            data = np.loadtxt(f, delimiter=',')
-        ax_pre.hist(data[:, cols['sigma_sys_pre']],
+    data_dict = {}
+    for function in functions.keys():
+        with open(files[function], 'r', newline='') as f:
+            data_dict[function] = np.loadtxt(f, delimiter=',')
+
+    linear_sigma_sys_pre = np.array(data_dict['linear']
+                                    [:, cols['sigma_sys_pre']])
+    linear_sigma_sys_post = np.array(data_dict['linear']
+                                     [:, cols['sigma_sys_post']])
+
+    for function in ('cross_term', 'quadratic', 'quadratic_mag'):
+        data_pre = np.array(data_dict[function]
+                            [:, cols['sigma_sys_pre']])
+        data_post = np.array(data_dict[function]
+                             [:, cols['sigma_sys_post']])
+
+        diffs_pre = data_pre - linear_sigma_sys_pre
+        diffs_post = data_post - linear_sigma_sys_post
+
+        ax_pre.hist(diffs_pre,
                     cumulative=False, histtype='step',
                     label=functions[function], bins=bin_edges)
-        ax_post.hist(data[:, cols['sigma_sys_post']],
+        ax_post.hist(diffs_post,
                      cumulative=False, histtype='step',
                      label=functions[function], bins=bin_edges)
 
@@ -254,10 +281,15 @@ def main():
 
     """
 
+    if args.transitions:
+        target = 'transitions'
+    elif args.pairs:
+        target = 'pairs'
+
     if args.histogram:
-        plot_histograms()
+        plot_histograms(target)
     elif args.per_transition:
-        plot_per_transition()
+        plot_per_transition(target)
 
 
 if __name__ == '__main__':
@@ -275,6 +307,13 @@ if __name__ == '__main__':
     plot_type.add_argument('--per-transition', action='store_true',
                            help='Create plots which show various quantities as'
                            ' a function of transition number.')
+
+    target_type = parser.add_mutually_exclusive_group(required=True)
+    target_type.add_argument('-T', '--transitions', action='store_true',
+                             help='Plot for individual transitions.')
+    target_type.add_argument('-P', '--pairs', action='store_true',
+                             help='Plot for pairs.')
+
     args = parser.parse_args()
 
     vprint = vcl.verbose_print(args.verbose)
