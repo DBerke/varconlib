@@ -144,7 +144,7 @@ def create_comparison_figure(ylims=None, fit_target='transitions',
             ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax.axhline(y=0, color='Black', linestyle='--')
         ax.yaxis.grid(which='major', color='Gray',
-                      linestyle='--', alpha=0.65)
+                      linestyle='--', alpha=0.5)
         ax.yaxis.grid(which='minor', color='Gray',
                       linestyle=':', alpha=0.5)
         if ax not in (hist_ax_pre, hist_ax_post):
@@ -422,6 +422,8 @@ def main():
                     # entries:
                     m_offsets = ma.masked_invalid(star_transition_offsets[
                                 eras[time], :, col])
+                    total_stars = ma.count(m_offsets)
+                    vprint(f'Found {total_stars} stars with data.')
                     m_offsets = m_offsets.reshape([len(m_offsets), 1])
                     # Then create a new array from the non-masked data:
                     offsets = u.unyt_array(m_offsets[~m_offsets.mask],
@@ -561,16 +563,20 @@ def main():
                                         autoalign=True,
                                         lim=1000, fontsize=9)
 
+                        points = residuals.count()
+                        outliers = total_stars - points
                         ax.annotate(f'Blendedness: {transition.blendedness}\n'
-                                    r'$\sigma_\mathrm{sys}$:'
-                                    f' {sys_err:.2f}\n'
-                                    f'#: {residuals.count()}',
+                                    f'#Stars: {points}\n'
+                                    f'#Outliers: {outliers}',
                                     (0.01, 0.99),
                                     xycoords='axes fraction',
                                     verticalalignment='top')
                         ax.annotate(fr'$\chi^2_\nu$: {chi_squared_nu:.4f}'
                                     '\n'
-                                    fr'$\sigma$: {sigma:.2f}',
+                                    fr'$\sigma$: {sigma:.2f}'
+                                    '\n'
+                                    r'$\sigma_\mathrm{sys}$:'
+                                    f' {sys_err:.2f}',
                                     (0.99, 0.99),
                                     xycoords='axes fraction',
                                     horizontalalignment='right',
@@ -623,6 +629,8 @@ def main():
                     # entries:
                     m_seps = ma.masked_invalid(star_pair_separations[
                                 eras[time], :, col])
+                    total_stars = ma.count(m_seps)
+                    vprint(f'Found {total_stars} stars with data.')
                     m_seps = m_seps.reshape([len(m_seps), 1])
                     # Then create a new array from the non-masked data:
                     separations = u.unyt_array(m_seps[~m_seps.mask],
@@ -753,16 +761,20 @@ def main():
                                         autoalign=True,
                                         lim=1000, fontsize=9)
 
+                        points = residuals.count()
+                        outliers = total_stars - points
                         ax.annotate(f'Blend tuple: {pair.blendTuple}\n'
-                                    r'$\sigma_\mathrm{sys}$:'
-                                    f' {sys_err:.2f}\n'
-                                    f'#: {residuals.count()}',
+                                    f'#Stars: {points}\n'
+                                    f'#Outliers: {outliers}',
                                     (0.01, 0.99),
                                     xycoords='axes fraction',
                                     verticalalignment='top')
                         ax.annotate(fr'$\chi^2_\nu$: {chi_squared_nu:.4f}'
                                     '\n'
-                                    fr'$\sigma$: {sigma:.2f}',
+                                    fr'$\sigma$: {sigma:.2f}'
+                                    '\n'
+                                    r'$\sigma_\mathrm{sys}$:'
+                                    f' {sys_err:.2f}',
                                     (0.99, 0.99),
                                     xycoords='axes fraction',
                                     horizontalalignment='right',
