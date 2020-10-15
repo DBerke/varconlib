@@ -581,9 +581,7 @@ def find_sys_scatter(model_func, x_data, y_data, err_array, beta0,
 
         if chi_squared_nu > 1:
             if sys_err == 0:
-                # Round the new systematic error to 4 decimal places
-                # (= 1/100 mm/s), to prevent extremely slow convergence.
-                sys_err = np.sqrt(chi_squared_nu)
+                sys_err = np.sqrt(chi_squared_nu - 1) * np.nanmedian(err_array)
             else:
                 sys_err = sys_err * sigma_sys_change_amount
         elif chi_squared_nu < 1:
@@ -631,8 +629,8 @@ def find_sys_scatter(model_func, x_data, y_data, err_array, beta0,
         # entry), end the loop. Most runs terminate well under 100 steps so
         # this should only catch the problem cases.
         elif ((iterations > 100) and (diff < chi_tol) and
-              (abs(sigma_sys_list[-1] - sigma_sys_list[-10]) < chi_tol) and
-              (abs(sigma_sys_list[-1] - sigma_sys_list[-100]) < chi_tol)):
+              ((abs(sigma_sys_list[-1] - sigma_sys_list[-10])) < chi_tol) and
+              ((abs(sigma_sys_list[-1] - sigma_sys_list[-100])) < chi_tol)):
             break
 
         # If the chi^2 value is approaching 1 from the bottom, it may be the
@@ -644,8 +642,14 @@ def find_sys_scatter(model_func, x_data, y_data, err_array, beta0,
         # enough in these cases as to be basically negligible.
 
         elif ((iterations > 100) and (chi_squared_nu < 1.) and
-              (abs(chi_squared_list[-1]) - chi_squared_list[-10] < chi_tol) and
-              (abs(chi_squared_list[-1]) - chi_squared_list[-100] < chi_tol)):
+              ((abs(chi_squared_list[-1]) -
+                chi_squared_list[-10]) < chi_tol) and
+              ((abs(chi_squared_list[-1]) -
+                chi_squared_list[-100]) < chi_tol)):
+            # If sigma_sys is less than a millimeter per second, just set it
+            # to zero.
+            if sys_err < 0.0011:
+                sigma_sys_list[-1] = 0
             break
 
         # If the iterations go on too long, it may be because it's converging
