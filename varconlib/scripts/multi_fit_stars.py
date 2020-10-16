@@ -305,7 +305,7 @@ def main():
     elif args.quadratic_magnitude:
         model_func = fit.quadratic_mag_model
     elif args.quad_cross_terms:
-        model_func = fit.quad_full_cross_terms_model
+        model_func = fit.quad_cross_terms_model
 
     model_name = '_'.join(model_func.__name__.split('_')[:-1])
 
@@ -373,11 +373,11 @@ def main():
     # Define the folder to put plots in.
     output_dir = vcl.output_dir
     if args.transitions:
-        fit_target = '_transitions'
+        fit_target = 'transitions'
     elif args.pairs:
-        fit_target = '_pairs'
+        fit_target = 'pairs'
     plots_folder = output_dir /\
-        f'stellar_parameter_fits{fit_target}/{model_name}'
+        f'stellar_parameter_fits_{fit_target}_{args.sigma}sigma/{model_name}'
     vprint(f'Creating plots in {plots_folder}')
     if not plots_folder.exists():
         os.makedirs(plots_folder)
@@ -486,7 +486,8 @@ def main():
                                                    x_data,
                                                    ma.array(offsets.value),
                                                    err_array, beta0,
-                                                   n_sigma=2.5, tolerance=0.001,
+                                                   n_sigma=args.sigma,
+                                                   tolerance=0.001,
                                                    verbose=args.verbose)
 
                     mask = results['mask_list'][-1]
@@ -541,7 +542,7 @@ def main():
                             for x, y, e in zip(range(len(
                                     x_data[param_dict[plot_type]])), residuals,
                                     err_array):
-                                sig_lim = 3 * e
+                                sig_lim = args.sigma * e
                                 if abs(y) > sig_lim:
                                     star_name = find_star(x_data[:, x],
                                                           x_data, names)
@@ -687,7 +688,8 @@ def main():
                                                    x_data,
                                                    ma.array(separations.value),
                                                    err_array, beta0,
-                                                   n_sigma=2.5, tolerance=0.001,
+                                                   n_sigma=args.sigma,
+                                                   tolerance=0.001,
                                                    verbose=args.verbose)
 
                     mask = results['mask_list'][-1]
@@ -739,7 +741,7 @@ def main():
                             for x, y, e in zip(range(len(
                                     x_data[param_dict[plot_type]])), residuals,
                                     err_array):
-                                sig_lim = 3 * e
+                                sig_lim = args.sigma * e
                                 if abs(y) > sig_lim:
                                     star_name = find_star(x_data[:, x],
                                                           x_data, names)
@@ -839,15 +841,9 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Print out more information about the script.')
 
-    # parser.add_argument('--temp', action='store', type=float, nargs=2,
-    #                     metavar=('T_low', 'T_high'),
-    #                     help='The limits in temperature of stars to use.')
-    # parser.add_argument('--mtl', action='store', type=float, nargs=2,
-    #                     metavar=('FeH_low', 'FeH_high'),
-    #                     help='The limits in metallicity of stars to use.')
-    # parser.add_argument('--mag', action='store', type=float, nargs=2,
-    #                     metavar=('M_low', 'M_high'),
-    #                     help='The limits in magnitude of stars to use.')
+    parser.add_argument('--sigma', action='store', type=float, default=2.5,
+                        help='The number to use (in standard deviations)'
+                        ' beyond which to consider a data point an outlier.')
 
     func = parser.add_mutually_exclusive_group(required=True)
     func.add_argument('--constant', action='store_true',
