@@ -89,6 +89,7 @@ def quadratic_model(data, a, b, c, d, e, f, g):
     -------
      float
         The value of the function for the given data and coefficients.
+
     """
 
     return a + b * data[0] + c * data[1] + d * data[2] +\
@@ -154,6 +155,65 @@ def quadratic_mag_model(data, a, b, c, d, e, f):
 
     return a + b * data[0] + c * data[1] + d * data[2] +\
         e * data[1] / data[0] + f * data[2] ** 2
+
+
+def quad_cross_terms_model(data, a, b, c, d, e, f, g, h, i, j):
+    """
+
+    Parameters
+    ----------
+    data : array-like with dimensions (3, n)
+        The idenpendent variable. Each column represents a collection of three
+        values to be passed to the thee dimensions of the function.
+    a : float or int
+        The constant term for the function.
+    b, c, d : float or int
+        The values of the coefficients for the linear terms of the function.
+    e, f, g : float or int
+        The values of the coefficients for the quadratic terms of the function.
+    h, i, j : float or int
+        The values of the coefficients for the three linear cross-term between
+        the three pairs of data values: [Fe/H]/Teff, [Fe/H]/log g, Teff/log g.
+
+    Returns
+    -------
+    float
+        The value of the function for the given data and coefficients.
+
+    """
+
+    return a + b * data[0] + c * data[1] + d * data[2] +\
+        e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2 +\
+        h * data[1] / data[0] + i * data[1] / data[2] + j * data[0] / data[2]
+
+
+def cubic_model(data, a, b, c, d, e, f, g, h, i, j):
+    """
+
+    Parameters
+    ----------
+    data : array-like with dimensions (3, n)
+        The idenpendent variable. Each column represents a collection of three
+        values to be passed to the thee dimensions of the function.
+    a : float or int
+        The constant term for the function.
+    b, c, d : float or int
+        The values of the coefficients for the linear terms of the function.
+    e, f, g : float or int
+        The values of the coefficients for the quadratic terms of the function.
+    h, i, j : float or int
+        The values of the coefficients for the cubic terms of the function.
+
+    Returns
+    -------
+    float
+        The value of the function for the given data and coefficients.
+
+    """
+
+    return a + b * data[0] + c * data[1] + d * data[2] +\
+        e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2 +\
+        h * data[0] ** 3 + i * data[1] ** 3 + j * data[2] ** 3
 
 
 def gaussian(x, a, b, c, d=0):
@@ -603,7 +663,7 @@ def find_sys_scatter(model_func, x_data, y_data, err_array, beta0,
 
         # Check for outliers at each point, and mark the mask appropriately.
         for i in range(len(iter_err_array)):
-            if abs(full_residuals[i]) > n_sigma * iter_err_array[i]:
+            if abs(full_residuals[i]) > (n_sigma * iter_err_array[i]):
                 new_mask[i] = 1
 
         # Set up the mask on the x and y data and errors for the next iteration.
