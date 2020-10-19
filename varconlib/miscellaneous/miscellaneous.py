@@ -345,7 +345,7 @@ def q_alpha_shift(omega, q_coefficient, delta_alpha):
                                             equivalence='spectral'))
 
 
-def remove_nans(input_array):
+def remove_nans(input_array, return_mask=False):
     """
     Return a new array formed from the non-NaN entries of the input array.
 
@@ -355,6 +355,12 @@ def remove_nans(input_array):
         An `array_like` object (a list or tuple won't work) containing zero or
         more NaN values.
 
+    Optional
+    --------
+    return_mask : bool, Default : False
+        If *True*, the array without NaNs plus the mask used are returned as a
+        tuple. Otherwise, just return the array.
+
     Returns
     -------
     np.array
@@ -362,7 +368,12 @@ def remove_nans(input_array):
 
     """
 
-    return input_array[logical_not(isnan(input_array))]
+    mask = logical_not(isnan(input_array))
+
+    if return_mask:
+        return (input_array[mask], mask)
+    else:
+        return input_array[mask]
 
 
 def get_params_file(filename):
