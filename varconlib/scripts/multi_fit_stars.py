@@ -797,7 +797,7 @@ def main():
                 plt.close('all')
 
     # Save metadata from this run's fits to CSV:
-    csv_file = plots_folder / f'{model_name}{fit_target}_fit_results.csv'
+    csv_file = plots_folder / f'{model_name}_{fit_target}_fit_results.csv'
 
     with open(csv_file, 'w', newline='') as f:
         datawriter = csv.writer(f)
