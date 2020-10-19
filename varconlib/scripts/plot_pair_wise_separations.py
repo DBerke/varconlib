@@ -31,9 +31,11 @@ from tqdm import tqdm
 import unyt as u
 
 import varconlib as vcl
+from varconlib.miscellaneous import remove_nans
 from varconlib.star import Star
 from varconlib.transition_line import roman_numerals
-from varconlib.fitting import calc_chi_squared_nu
+from varconlib.fitting import (calc_chi_squared_nu, constant_model,
+                               find_sys_scatter)
 
 params_dict = {'temperature': 'Teff (K)',
                'metallicity': '[Fe/H]',
@@ -388,18 +390,47 @@ def plot_pair_stability(star):
         raise
 
     x = [i for i in range(star.numObs)]
+    bervs = star.bervArray
     diffs = star.pairSeparationsArray[:, col_num]
     errs_stat = star.pairSepErrorsArray[:, col_num]
+    # print(diffs)
 
-    vprint(np.std(diffs))
+    diffs_no_nans, mask = remove_nans(diffs, return_mask=True)
+    # print(diffs_no_nans)
+    m_diffs = ma.array(diffs_no_nans.to(u.m/u.s).value)
+    # print(m_diffs)
+    m_errs = ma.array(errs_stat[mask].value)
+    bervs_masked = bervs[mask]
 
-    fig = plt.figure(figsize=(10, 8), tight_layout=True)
+    weighted_mean = np.average(m_diffs, weights=m_errs**-2)
+    print(weighted_mean)
+
+    sigma = np.std(diffs_no_nans).to(u.m/u.s)
+
+    results = find_sys_scatter(constant_model, bervs_masked,
+                               m_diffs,
+                               m_errs, (weighted_mean,),
+                               n_sigma=3, tolerance=0.001,
+                               verbose=True)
+
+    sys_err = results['sys_err_list'][-1] * u.m / u.s
+    print(results['chi_squared_list'][-1])
+
+    # vprint(np.std(diffs))
+
+    fig = plt.figure(figsize=(10, 7), tight_layout=True)
     ax = fig.add_subplot(1, 1, 1)
 
-    ax.axvline(x=star.fiberSplitIndex, linestyle='--', color='Black')
-    ax.errorbar(x, diffs, yerr=errs_stat, linestyle='',
+    # ax.axvline(x=star.fiberSplitIndex, linestyle='--', color='Black')
+    ax.errorbar(bervs_masked, m_diffs, yerr=m_errs, linestyle='',
                 marker='o',
-                color='Navy')
+                color='DarkSalmon', ecolor='Black', markeredgecolor='Black',
+                label=r'$\sigma:$'
+                f' {sigma:.3f},'
+                r' $\sigma_\mathrm{sys}:$'
+                f' {sys_err:.3f}')
+
+    ax.legend()
     plt.show()
 
 
