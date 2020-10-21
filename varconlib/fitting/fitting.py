@@ -157,7 +157,7 @@ def quadratic_mag_model(data, a, b, c, d, e, f):
         e * data[1] / data[0] + f * data[2] ** 2
 
 
-def quad_cross_terms_model(data, a, b, c, d, e, f, g, h, i, j):
+def quad_cross_term_model(data, a, b, c, d, e, f, g, h):
     """
 
     Parameters
@@ -171,9 +171,9 @@ def quad_cross_terms_model(data, a, b, c, d, e, f, g, h, i, j):
         The values of the coefficients for the linear terms of the function.
     e, f, g : float or int
         The values of the coefficients for the quadratic terms of the function.
-    h, i, j : float or int
-        The values of the coefficients for the three linear cross-term between
-        the three pairs of data values: [Fe/H]/Teff, [Fe/H]/log g, Teff/log g.
+    h : float or int
+        The value of the coefficients for the linear cross-term between
+        the [Fe/H]/Teff.
 
     Returns
     -------
@@ -184,7 +184,7 @@ def quad_cross_terms_model(data, a, b, c, d, e, f, g, h, i, j):
 
     return a + b * data[0] + c * data[1] + d * data[2] +\
         e * data[0] ** 2 + f * data[1] ** 2 + g * data[2] ** 2 +\
-        h * data[1] / data[0] + i * data[1] / data[2] + j * data[0] / data[2]
+        h * data[1] / data[0]
 
 
 def cubic_model(data, a, b, c, d, e, f, g, h, i, j):
@@ -642,6 +642,7 @@ def find_sys_scatter(model_func, x_data, y_data, err_array, beta0,
         if chi_squared_nu > 1:
             if sys_err == 0:
                 sys_err = np.sqrt(chi_squared_nu - 1) * np.nanmedian(err_array)
+                # sys_err = np.sqrt(chi_squared_nu)
             else:
                 sys_err = sys_err * sigma_sys_change_amount
         elif chi_squared_nu < 1:
