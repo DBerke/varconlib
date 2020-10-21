@@ -21,8 +21,8 @@ import varconlib as vcl
 
 
 sigma_lims = ('2.5', '5.0')
-models = ('linear', 'cross_term', 'quadratic_mag', 'quadratic',
-          'quad_cross_terms', 'cubic')
+models = ('linear', 'cross_term', 'quadratic',
+          'quad_cross_term', 'cubic')
 
 
 data_dict = {}
@@ -44,8 +44,8 @@ for model in models:
     ax_pre.set_xlim(left=-1, right=230)
     ax_post = fig.add_subplot(2, 1, 2, sharex=ax_pre, sharey=ax_pre)
 
-    for ax in (ax_pre, ax_post):
-        ax.set_ylabel(r'$\sigma_\mathrm{sys}$ (m/s)')
+    ax_pre.set_ylabel(r'$\sigma_\mathrm{sys}$ (pre) (m/s)')
+    ax_post.set_ylabel(r'$\sigma_\mathrm{sys}$ (post) (m/s)')
     ax_post.set_xlabel('Pair index number')
 
     for sigma_lim in sigma_lims:
