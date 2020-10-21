@@ -549,9 +549,9 @@ class Star(object):
                 # sigma_sys_array[0, col_num] = sigma_sys.value
 
                 # Compute the correction for this transition.
-                correction = u.unyt_array(function(stellar_params,
-                                                   *coeffs_dict[label]),
-                                          units=u.m/u.s)
+                correction = u.unyt_quantity(function(stellar_params,
+                                                      *coeffs_dict[label]),
+                                             units=u.m/u.s)
                 # Store the correction.
                 corrections_array[0, col_num] = correction.value
                 # Apply it to all measurements of this transition.
