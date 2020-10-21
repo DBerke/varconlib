@@ -301,7 +301,7 @@ def main():
     elif args.cross_term:
         model_func = fit.cross_term_model
     elif args.quadratic_cross_term:
-        model_func = fit.quadratic_cross_term_model
+        model_func = fit.quad_cross_term_model
     elif args.quadratic_magnitude:
         model_func = fit.quadratic_mag_model
     elif args.quad_cross_terms:
@@ -549,7 +549,7 @@ def main():
 
                                     labels.append(ax.text(
                                         x_data[param_dict[plot_type], x],
-                                        y.value, star_name,
+                                        y, star_name,
                                         horizontalalignment='left',
                                         verticalalignment='top',
                                         size=8, weight='bold', color='Red'))
@@ -748,7 +748,7 @@ def main():
 
                                     labels.append(ax.text(
                                         x_data[param_dict[plot_type], x],
-                                        y.value, star_name,
+                                        y, star_name,
                                         horizontalalignment='left',
                                         verticalalignment='top',
                                         size=8, weight='bold', color='Red'))
