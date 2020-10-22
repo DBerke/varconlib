@@ -64,18 +64,17 @@ def plot_histograms(target):
     functions = {'linear': 'Linear',
                  'quadratic': 'Quadratic',
                  'cross_term': 'Linear, [Fe/H]/T$_{eff}$',
-                 'quadratic_mag': r'Linear, cross term, $\mathrm{M}_{v}^2$',
-                 'quad_cross_terms': 'Quadratic, full cross terms',
+                 'quad_cross_term': 'Quadratic, cross term',
                  'cubic': 'Cubic'}
 
     files = {x: main_dir / f'{x}/{x}_{target}_fit_results.csv' for
              x in functions.keys()}
 
-    x_lims = {'left': -20, 'right': 20}
+    x_lims = {'left': -5, 'right': 5}
 
     fig = plt.figure(figsize=(12, 7), tight_layout=True)
     ax_pre = fig.add_subplot(1, 2, 1)
-    ax_pre.set_yscale('log')
+    # ax_pre.set_yscale('log')
     ax_pre.set_xlim(**x_lims)
     ax_pre.set_xlabel(r'Pre-change $\sigma_\mathrm{sys}-'
                       r'\sigma_\mathrm{sys,linear}$ (m/s)')
@@ -86,9 +85,11 @@ def plot_histograms(target):
 
     for ax in (ax_pre, ax_post):
         ax.axvline(color='Black', linestyle='-')
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(base=1))
+        ax.xaxis.grid(which='major', color='Gray', alpha=0.4)
 
     # Set the number of bins.
-    bin_edges = np.linspace(x_lims['left'], x_lims['right'], num=30)
+    bin_edges = np.linspace(x_lims['left'], x_lims['right'], num=40)
 
     data_dict = {}
     for function in functions.keys():
@@ -100,8 +101,11 @@ def plot_histograms(target):
     linear_sigma_sys_post = np.array(data_dict['linear']
                                      [:, cols['sigma_sys_post']])
 
-    for function in ('cross_term', 'quadratic_mag', 'quadratic',
-                     'quad_cross_terms', 'cubic'):
+    # for function in ('cross_term', 'quadratic',
+    #                  'quad_cross_term', 'cubic'):
+    for function in functions.keys():
+        if function == 'linear':
+            continue
         data_pre = np.array(data_dict[function]
                             [:, cols['sigma_sys_pre']])
         data_post = np.array(data_dict[function]
@@ -119,8 +123,8 @@ def plot_histograms(target):
                      label=f'{function}: {np.median(diffs_post):.2f} m/s',
                      bins=bin_edges)
 
-    ax_pre.legend(loc='upper right')
-    ax_post.legend(loc='upper right')
+    ax_pre.legend(loc='upper left')
+    ax_post.legend(loc='upper left')
 
     file_name = main_dir /\
         f'Model_comparison_histograms_{target}_{args.sigma}sigma.png'
