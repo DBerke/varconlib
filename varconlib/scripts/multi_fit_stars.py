@@ -235,7 +235,7 @@ def plot_data_points(axis, x_pos, y_pos, thick_err, thin_err, era=None,
                       ecolor=params['ecolor_thin'],
                       elinewidth=style_caps['linewidth_thin'],
                       capthick=style_caps['cap_thin'])
-    elif thick_err is not None:
+    if thick_err is not None:
         axis.errorbar(x=x_pos, y=y_pos,
                       yerr=thick_err, linestyle='',
                       marker='o', markersize=style_markers['markersize'],
@@ -731,8 +731,9 @@ def main():
                             ma.compressed(x_data[param_dict[plot_type]]),
                             ma.compressed(residuals),
                             thick_err=ma.compressed(err_array),
-                            # thin_err=iter_err_array,
-                            thin_err=None,
+                            # thin_err=None,
+                            thin_err=np.sqrt(ma.compressed(err_array) ** 2 +
+                                             sys_err.value ** 2),
                             era=time)
                         if args.label_outliers:
                             # Find outliers more than 3 sigma away from zero so
