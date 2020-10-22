@@ -106,13 +106,13 @@ def main():
 
             pair_results_dict[pair_label] = pair_results_list
 
-
     with open(csv_file, 'w', newline='') as f:
         datawriter = csv.writer(f)
         header = ('pair_label', 'sigma_sys_pre (m/s)', 'sigma_sys_post (m/s)')
         datawriter.writerow(header)
         for value in pair_results_dict.values():
             datawriter.writerow(value)
+
 
 if __name__ == '__main__':
 
