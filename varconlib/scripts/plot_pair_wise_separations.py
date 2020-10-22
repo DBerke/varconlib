@@ -420,6 +420,8 @@ def plot_pair_stability(star):
 
     fig = plt.figure(figsize=(10, 7), tight_layout=True)
     ax = fig.add_subplot(1, 1, 1)
+    ax.set_xlabel('BERV (km/s)')
+    ax.set_ylabel('Pair difference (m/s)')
 
     # ax.axvline(x=star.fiberSplitIndex, linestyle='--', color='Black')
     ax.errorbar(bervs_masked, m_diffs, yerr=m_errs, linestyle='',
@@ -431,6 +433,60 @@ def plot_pair_stability(star):
                 f' {sys_err:.3f}')
 
     ax.legend()
+    plt.show()
+
+
+def plot_sigma_sys_vs_pair_separation(star):
+    """
+    Plot the sigma_sys for each pair as a function of the average separation.
+
+    Parameters
+    ----------
+    star : `varconlib.star.Star`
+        A `Star` for which to do the plotting.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    print(f'{star.name} has {star.numObs} observations.')
+
+    average_seps_pre = []
+    average_seps_post = []
+    sigma_sys_list_pre = []
+    sigma_sys_list_post = []
+    for pair, col_num in tqdm(star._pair_bidict.items()):
+
+        x = ma.array([i for i in range(star.numObs)])
+        diffs = star.pairSeparationsArray[:, col_num]
+        errs_stat = star.pairSepErrorsArray[:, col_num]
+
+        diffs_no_nans, mask = remove_nans(diffs, return_mask=True)
+        m_diffs = ma.array(diffs_no_nans.to(u.m/u.s).value)
+        m_errs = ma.array(errs_stat[mask].value)
+
+        weighted_mean = np.average(m_diffs, weights=m_errs**-2)
+
+        sigma = np.std(diffs_no_nans).to(u.m/u.s)
+
+        results = find_sys_scatter(constant_model, x,
+                                   m_diffs,
+                                   m_errs, (weighted_mean,),
+                                   n_sigma=3, tolerance=0.001,
+                                   verbose=False)
+
+        sys_err = results['sys_err_list'][-1] * u.m / u.s
+        average_seps_pre.append((weighted_mean * u.m/u.s).to(u.km/u.s))
+        sigma_sys_list_pre.append(sys_err)
+
+    fig = plt.figure(figsize=(10, 7), tight_layout=True)
+    ax = fig.add_subplot(1, 1, 1)
+    ax.set_xlabel('Weighted mean pair separation (km/s)')
+    ax.set_ylabel(r'$\sigma_\mathrm{sys}$ (m/s)')
+    ax.plot(average_seps_pre, sigma_sys_list_pre,
+            linestyle='', marker='o')
     plt.show()
 
 
@@ -662,6 +718,26 @@ def format_pair_label(pair_label, use_latex=False):
                f' {wavelength2}'
 
 
+def get_star(star_name):
+    """
+    Return a `varconlib.star.Star` object using this name.
+
+    Parameters
+    ----------
+    star_name : str
+        The name of a star corresponding the name of a directory for that star
+        in `varconlib.output_dir`.
+
+    Returns
+    -------
+    `varconlib.star.Star`
+        A `Star` object made by using the name given and the default values.
+
+    """
+
+    return Star(star_name, vcl.output_dir / star_name)
+
+
 # Main script body.
 parser = argparse.ArgumentParser(description="Plot results for each pair"
                                  " of transitions for various parameters.")
@@ -671,7 +747,7 @@ parameter_options = parser.add_argument_group(
     description="Select what parameters to plot the pairs-wise velocity"
     " separations by.")
 
-parser.add_argument('star', nargs='?', default=None, const=None,
+parser.add_argument('star', nargs='?', default=None, const=None, type=str,
                     help='The name of a single, specific star to make a plot'
                     ' from. If not given will default to using all stars.')
 
@@ -679,6 +755,9 @@ parser.add_argument('--heliocentric-distance', action='store_true',
                     help='Plot as a function of distance from the Sun.')
 parser.add_argument('--galactocentric-distance', action='store_true',
                     help='Plot as a function of distance from galactic center.')
+parser.add_argument('--vs-pair-separations', action='store_true',
+                    help='Plot the sigma_sys for each pair pair as a function'
+                    ' of its weighted-mean separation.')
 
 parameter_options.add_argument('-T', '--temperature',
                                dest='parameters_to_plot',
@@ -745,4 +824,7 @@ if args.example_plot:
     create_example_plots()
 
 if args.star is not None and args.pair_label:
-    plot_pair_stability(Star(args.star, vcl.output_dir / args.star))
+    plot_pair_stability(get_star(args.star))
+
+if args.star is not None and args.vs_pair_separations:
+    plot_sigma_sys_vs_pair_separation(get_star(args.star))
