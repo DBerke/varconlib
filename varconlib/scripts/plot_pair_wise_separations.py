@@ -12,6 +12,7 @@ tansitions by various parameters.
 
 import argparse
 import csv
+from inspect import signature
 import os
 from pathlib import Path
 import pickle
@@ -20,6 +21,7 @@ import sys
 from astropy.coordinates import SkyCoord
 import astropy.units as units
 import matplotlib
+from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.ticker as ticker
@@ -31,11 +33,13 @@ from tqdm import tqdm
 import unyt as u
 
 import varconlib as vcl
-from varconlib.miscellaneous import remove_nans
-from varconlib.star import Star
-from varconlib.transition_line import roman_numerals
 from varconlib.fitting import (calc_chi_squared_nu, constant_model,
                                find_sys_scatter)
+from varconlib.miscellaneous import remove_nans, get_params_file
+from varconlib.star import Star
+from varconlib.transition_line import roman_numerals
+
+import varconlib.fitting
 
 params_dict = {'temperature': 'Teff (K)',
                'metallicity': '[Fe/H]',
@@ -452,6 +456,10 @@ def plot_sigma_sys_vs_pair_separation(star):
     """
 
     print(f'{star.name} has {star.numObs} observations.')
+    n_sigma = 3
+
+    plots_dir = Path('/Users/dberke/Pictures/'
+                     'pair_separation_investigation/vs_sigma_sys')
 
     average_seps_pre = []
     average_seps_post = []
@@ -460,21 +468,21 @@ def plot_sigma_sys_vs_pair_separation(star):
     for pair, col_num in tqdm(star._pair_bidict.items()):
 
         x = ma.array([i for i in range(star.numObs)])
-        diffs = star.pairSeparationsArray[:, col_num]
+        separations = star.pairSeparationsArray[:, col_num]
         errs_stat = star.pairSepErrorsArray[:, col_num]
 
-        diffs_no_nans, mask = remove_nans(diffs, return_mask=True)
-        m_diffs = ma.array(diffs_no_nans.to(u.m/u.s).value)
+        seps_no_nans, mask = remove_nans(separations, return_mask=True)
+        m_seps = ma.array(seps_no_nans.to(u.m/u.s).value)
         m_errs = ma.array(errs_stat[mask].value)
 
-        weighted_mean = np.average(m_diffs, weights=m_errs**-2)
+        weighted_mean = np.average(m_seps, weights=m_errs**-2)
 
-        sigma = np.std(diffs_no_nans).to(u.m/u.s)
+        sigma = np.std(seps_no_nans).to(u.m/u.s)
 
         results = find_sys_scatter(constant_model, x,
-                                   m_diffs,
+                                   m_seps,
                                    m_errs, (weighted_mean,),
-                                   n_sigma=3, tolerance=0.001,
+                                   n_sigma=n_sigma, tolerance=0.001,
                                    verbose=False)
 
         sys_err = results['sys_err_list'][-1] * u.m / u.s
@@ -487,7 +495,188 @@ def plot_sigma_sys_vs_pair_separation(star):
     ax.set_ylabel(r'$\sigma_\mathrm{sys}$ (m/s)')
     ax.plot(average_seps_pre, sigma_sys_list_pre,
             linestyle='', marker='o')
-    plt.show()
+
+    filepath = plots_dir / f'{star.name}_{star.numObs}_obs_{n_sigma}sigma.png'
+    fig.savefig(str(filepath))
+    # plt.show()
+
+
+def plot_model_diff_vs_pair_separation(star, model):
+    """
+    Create a plot showing the difference from a model vs. the pair separation.
+
+    Parameters
+    ----------
+    star : `varconlib.star.Star`
+        The star to analyze.
+    model : str
+        The name of the model to test against.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    print(f'{star.name} has {star.numObs} observations.')
+    n_sigma = 5
+
+    plots_dir = Path('/Users/dberke/Pictures/'
+                     'pair_separation_investigation')
+
+    # Get the star pair corrections arrays for the given model.
+    star.createPairsModelCorrectedArrays(model, n_sigma=5)
+
+    # model_func = getattr(varconlib.fitting, f'{model}_model')
+    # num_params = len(signature(model_func).parameters) - 1
+    num_params = 1
+
+    filename = vcl.output_dir /\
+        f'fit_params/{model}_pairs_params.hdf5'
+    fit_results_dict = get_params_file(filename)
+    sigma_sys_dict = fit_results_dict['sigmas_sys']
+
+    pre_slice = slice(None, star.fiberSplitIndex)
+    post_slice = slice(star.fiberSplitIndex, None)
+
+    average_separations_pre = []
+    model_offsets_pre = []
+    pair_sep_errs_pre = []
+    average_separations_post = []
+    model_offsets_post = []
+    pair_sep_errs_post = []
+
+    sigmas_sys_pre = []
+    sigmas_sys_post = []
+
+    for pair_label, col_num in tqdm(star._pair_bidict.items()):
+
+        sigmas_sys_pre.append(sigma_sys_dict[pair_label + '_pre'])
+        sigmas_sys_post.append(sigma_sys_dict[pair_label + '_post'])
+
+        if star.hasObsPre:
+            separations = star.pairSeparationsArray[pre_slice, col_num]
+            errs_stat = star.pairSepErrorsArray[pre_slice, col_num]
+
+            seps_no_nans, mask = remove_nans(separations, return_mask=True)
+            m_seps = ma.array(seps_no_nans.to(u.m/u.s).value)
+            m_errs = ma.array(errs_stat[mask].value)
+
+            weighted_mean, weight_sum = np.average(m_seps, weights=m_errs**-2,
+                                                   returned=True)
+            error_on_weighted_mean = (1 / np.sqrt(weight_sum))
+
+            average_separations_pre.append((weighted_mean
+                                            * u.m/u.s).to(u.km/u.s))
+            pair_sep_errs_pre.append(error_on_weighted_mean * u.m/u.s)
+
+            # Now get the weighted mean of the remaining offset from the model.
+            corrected_separations = star.pairParamsOffsetsArray[pre_slice,
+                                                                col_num]
+            corrected_errs_stat = star.pairParamsErrorsArray[pre_slice,
+                                                             col_num]
+
+            seps_no_nans, mask = remove_nans(corrected_separations,
+                                             return_mask=True)
+            m_c_seps = ma.array(seps_no_nans.to(u.m/u.s).value)
+            m_c_errs = ma.array(errs_stat[mask].value)
+
+            weighted_c_mean, weight_c_sum = np.average(m_c_seps,
+                                                       weights=m_c_errs**-2,
+                                                       returned=True)
+
+            model_offsets_pre.append(weighted_c_mean * u.m/u.s)
+
+        if star.hasObsPost:
+            separations = star.pairSeparationsArray[post_slice, col_num]
+            errs_stat = star.pairSepErrorsArray[post_slice, col_num]
+
+            seps_no_nans, mask = remove_nans(separations, return_mask=True)
+            m_seps = ma.array(seps_no_nans.to(u.m/u.s).value)
+            m_errs = ma.array(errs_stat[mask].value)
+
+            weighted_mean, weight_sum = np.average(m_seps, weights=m_errs**-2,
+                                                   returned=True)
+            error_on_weighted_mean = (1 / np.sqrt(weight_sum))
+
+            average_separations_post.append((weighted_mean
+                                            * u.m/u.s).to(u.km/u.s))
+            pair_sep_errs_post.append(error_on_weighted_mean * u.m/u.s)
+
+            # Now get the weighted mean of the remaining offset from the model.
+            corrected_separations = star.pairParamsOffsetsArray[post_slice,
+                                                                col_num]
+            corrected_errs_stat = star.pairParamsErrorsArray[post_slice,
+                                                             col_num]
+
+            seps_no_nans, mask = remove_nans(corrected_separations,
+                                             return_mask=True)
+            m_c_seps = ma.array(seps_no_nans.to(u.m/u.s).value)
+            m_c_errs = ma.array(errs_stat[mask].value)
+
+            weighted_c_mean, weight_c_sum = np.average(m_c_seps,
+                                                       weights=m_c_errs**-2,
+                                                       returned=True)
+
+            model_offsets_post.append(weighted_c_mean * u.m/u.s)
+
+    # Plot the results.
+    fig = plt.figure(figsize=(11, 7), tight_layout=True)
+    gs = GridSpec(ncols=2, nrows=2, figure=fig,
+                  width_ratios=(6, 1))
+    ax_pre = fig.add_subplot(gs[0, 0])
+    ax_hist_pre = fig.add_subplot(gs[0, 1], sharey=ax_pre)
+    ax_post = fig.add_subplot(gs[1, 0], sharex=ax_pre, sharey=ax_pre)
+    ax_hist_post = fig.add_subplot(gs[1, 1], sharey=ax_pre)
+
+    ax_pre.set_xlim(left=0, right=805)
+    ax_pre.set_ylim(bottom=-100, top=100)
+    ax_post.set_xlabel('Weighted mean pair separation (km/s)')
+    ax_pre.set_ylabel('Offset from model value (pre) (m/s)')
+    ax_post.set_ylabel('Offset from model value (post) (m/s)')
+    for ax in (ax_pre, ax_post, ax_hist_pre, ax_hist_post):
+        ax.axhline(y=0, linestyle='-', color='Black')
+
+    full_errs_pre = np.sqrt(u.unyt_array(pair_sep_errs_pre, units='m/s') ** 2 +
+                            u.unyt_array(sigmas_sys_pre, units='m/s') ** 2)
+    full_errs_post = np.sqrt(u.unyt_array(pair_sep_errs_post, units='m/s') ** 2
+                             + u.unyt_array(sigmas_sys_post, units='m/s') ** 2)
+    # vprint(f'{np.median(pair_sep_errs_pre)},   {sigma_sys_pre}')
+    # vprint(f'{np.median(pair_sep_errs_post)},   {sigma_sys_post}')
+
+    # Calculate the chi^2 value for the residuals.
+    chi_squared_nu_pre = calc_chi_squared_nu(model_offsets_pre,
+                                             full_errs_pre,
+                                             num_params).value
+    chi_squared_nu_post = calc_chi_squared_nu(model_offsets_post,
+                                              full_errs_post,
+                                              num_params).value
+    ax_pre.errorbar(average_separations_pre, model_offsets_pre,
+                    yerr=full_errs_pre,
+                    linestyle='', marker='o',
+                    color='Chocolate',
+                    markeredgecolor='Black',
+                    label=r'$\chi^2_\nu$:'
+                    f' {chi_squared_nu_pre:.2f}, {star.numObsPre} obs')
+    ax_post.errorbar(average_separations_post, model_offsets_post,
+                     yerr=full_errs_post,
+                     linestyle='', marker='o',
+                     color='DodgerBlue',
+                     markeredgecolor='Black',
+                     label=r'$\chi^2_\nu$:'
+                     f' { chi_squared_nu_post:.2f}, {star.numObsPost} obs')
+    bottom, top = ax_pre.get_ylim()
+    bins = [x for x in range(int(bottom), int(top), 1)]
+    ax_hist_pre.hist(model_offsets_pre, bins=bins, color='Black',
+                     histtype='step', orientation='horizontal')
+    ax_hist_post.hist(model_offsets_post, bins=bins, color='Black',
+                      histtype='step', orientation='horizontal')
+
+    ax_pre.legend()
+    ax_post.legend()
+    filepath = plots_dir /\
+        f'{star.name}_{star.numObs}_obs_{n_sigma}sigma_{model}_offsets.png'
+    fig.savefig(str(filepath))
 
 
 def create_example_plots():
@@ -751,13 +940,18 @@ parser.add_argument('star', nargs='?', default=None, const=None, type=str,
                     help='The name of a single, specific star to make a plot'
                     ' from. If not given will default to using all stars.')
 
+parser.add_argument('-m', '--model', type=str, action='store',
+                    help='The name of a model to test against.')
 parser.add_argument('--heliocentric-distance', action='store_true',
                     help='Plot as a function of distance from the Sun.')
 parser.add_argument('--galactocentric-distance', action='store_true',
                     help='Plot as a function of distance from galactic center.')
-parser.add_argument('--vs-pair-separations', action='store_true',
-                    help='Plot the sigma_sys for each pair pair as a function'
+parser.add_argument('--sigma-sys-vs-pair-separations', action='store_true',
+                    help='Plot the sigma_sys for each pair as a function'
                     ' of its weighted-mean separation.')
+parser.add_argument('--model-diff-vs-pair-separations', action='store_true',
+                    help='Plot the model difference for each pair as a function'
+                    ' of it weighted-mean separation.')
 
 parameter_options.add_argument('-T', '--temperature',
                                dest='parameters_to_plot',
@@ -792,6 +986,8 @@ args = parser.parse_args()
 # Define vprint to only print when the verbose flag is given.
 vprint = vcl.verbose_print(args.verbose)
 
+# Get the star from the name.
+star = get_star(args.star)
 
 csv_dir = vcl.output_dir / 'pair_separation_files'
 
@@ -824,7 +1020,11 @@ if args.example_plot:
     create_example_plots()
 
 if args.star is not None and args.pair_label:
-    plot_pair_stability(get_star(args.star))
+    plot_pair_stability(star)
 
-if args.star is not None and args.vs_pair_separations:
-    plot_sigma_sys_vs_pair_separation(get_star(args.star))
+if args.star is not None and args.sigma_sys_vs_pair_separations:
+    plot_sigma_sys_vs_pair_separation(star)
+
+if args.star is not None and args.model is not None\
+        and args.model_diff_vs_pair_separations:
+    plot_model_diff_vs_pair_separation(star, args.model.replace('-', '_'))
