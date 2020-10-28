@@ -485,11 +485,11 @@ class Star(object):
         coefficients. These coefficients are provided in a dictionary for each
         transition, for pre- and post-fiber change instances. It then calculates
         a correction for each observation's fitted wavelength and checks if the
-        resultant position is more than `n_sigma` times the standard deviation
-        for that transition given in `sigmas_dict` from zero. It returns an
-        array corrected by the value of the function for each transition given
-        the stars's temperature, metallicity, and surface gravity and a mask
-        for measurements more than 2.5 sigma away from the mean.
+        resultant position is more than `n_sigma` times the statistical error
+        for that transition from zero. It returns an array corrected by the
+        value of the function for each transition (given the stars's
+        temperature, metallicity, and surface gravity) and a mask
+        for measurements more than `n_sigma` sigma away from the mean.
 
 
         Parameters
@@ -682,6 +682,131 @@ class Star(object):
         self.pairSeparationsArray.convert_to_units(u.km/u.s)
         self.pairSepErrorsArray *= u.m/u.s
         # self.pairSepSysErrorsArray *= u.m/u.s
+
+    def createPairsModelCorrectedArrays(self, model_func, n_sigma=2.5):
+        """Return an array corrected by a function and a mask of outliers.
+
+        This method takes a function of three stellar parameters (temperature,
+        metallicity, and surface gravity) and a variable number of
+        coefficients. These coefficients are provided in a dictionary for each
+        pair, for pre- and post-fiber change instances. It then calculates
+        a correction for each observation's pair separation and checks if the
+        resultant position is more than `n_sigma` times the statistical error
+        for that pair. It returns an array corrected by the value of the
+        function for each transition (given the stars's temperature,
+        metallicity, and surface gravity) and a mask for measurements more than
+        `n_sigma` sigma away from the mean.
+
+
+        Parameters
+        ----------
+        model_func : str, ['cross_term']
+            The name of a fitting model used to fit the dependence of the
+            transition offsets on stellar parameters. Currently the only one
+            which should be used is 'cross_term', but 'linear', 'quadratic',
+            and 'quadratic_mag' are also possible.
+
+        Optional
+        --------
+        n_sigma : float, Default : 2.5
+            The number of standard deviations a point must be away from the
+            value for this transition found by correcting using the fitting
+            function to be considered an outlier (and thus masked).
+
+        """
+
+        # Use the parameters derived from results with outliers removed.
+        filename = vcl.output_dir /\
+            f'fit_params/{model_func}_pairs_params.hdf5'
+        fit_results_dict = get_params_file(filename)
+        function = fit_results_dict['model_func']
+        coeffs_dict = fit_results_dict['coeffs']
+        sigma_sys_dict = fit_results_dict['sigmas_sys']
+
+        stellar_params = np.stack((self.temperature, self.metallicity,
+                                   self.logg), axis=0)
+
+        # Set up an array to hold the corrected values.
+        corrected_array = np.full_like(self.pairSeparationsArray,
+                                       fill_value=np.nan, dtype=float)
+        # Initialize the mask to False (0, not masked) with the same shape
+        # as the data for this star:
+        mask_array = np.full_like(self.pairSeparationsArray, False,
+                                  dtype=bool)
+        # Create a copy of the errors array which we can change values to NaN in
+        # later on, since masks don't play well with Unyt arrays.
+        masked_errs_array = self.pairSepErrorsArray.to_ndarray()
+        # Create an array to keep track of the corrections themselves.
+        # Two rows: 0 = pre, 1 = post.
+        corrections_array = np.full((2, len(self._pair_bidict.keys())),
+                                    np.nan, dtype=float)
+        # Create an indentically-shaped array to hold the systematic error
+        # present for each transition, in pre- and post-fiber change eras.
+        # sigma_sys_array = np.full_like(corrections_array, np.nan, dtype=float)
+
+        for key, col_num in tqdm(self._pair_bidict.items()):
+
+            if self.hasObsPre:
+                label = key + '_pre'
+                pre_slice = slice(None, self.fiberSplitIndex)
+
+                # Get the systematic error for this transition:
+                # sigma_sys = sigma_sys_dict[label]
+                # sigma_sys_array[0, col_num] = sigma_sys.value
+
+                # Compute the correction for this transition.
+                correction = u.unyt_quantity(function(stellar_params,
+                                                      *coeffs_dict[label]),
+                                             units=u.m/u.s)
+                # Store the correction.
+                corrections_array[0, col_num] = correction.value
+                # Apply it to all measurements of this transition.
+                corrected_array[pre_slice, col_num] =\
+                    self.pairSeparationsArray[pre_slice, col_num] -\
+                    correction
+                data_slice = corrected_array[pre_slice, col_num]
+                error_slice = self.pairSepErrorsArray[pre_slice, col_num]
+                # full_error_slice = np.sqrt(error_slice ** 2 +
+                #                            sigma_sys ** 2)
+
+                for i in range(len(data_slice)):
+                    if abs(data_slice[i]) > n_sigma * error_slice[i]:
+                        mask_array[i, col_num] = True
+                        corrected_array[i, col_num] = np.nan
+                        masked_errs_array[i, col_num] = np.nan
+
+            if self.hasObsPost:
+                label = key + '_post'
+                post_slice = slice(self.fiberSplitIndex, None)
+
+                # sigma_sys = sigma_sys_dict[label]
+                # sigma_sys_array[1, col_num] = sigma_sys.value
+
+                correction = u.unyt_array(function(stellar_params,
+                                                   *coeffs_dict[label]),
+                                          units=u.m/u.s)
+                corrections_array[1, col_num] = correction.value
+                corrected_array[post_slice, col_num] =\
+                    self.pairSeparationsArray[post_slice, col_num] -\
+                    correction
+                data_slice = corrected_array[post_slice, col_num]
+                error_slice = self.pairSepErrorsArray[post_slice, col_num]
+                # full_error_slice = np.sqrt(error_slice ** 2 +
+                #                            sigma_sys ** 2)
+
+                for i in range(len(data_slice)):
+                    if abs(data_slice[i]) > n_sigma * error_slice[i]:
+                        mask_array[i+self.fiberSplitIndex, col_num] = True
+                        corrected_array[i, col_num] = np.nan
+                        masked_errs_array[i, col_num] = np.nan
+
+        self.pairOutliersMask = mask_array.to_ndarray()
+        self.pairParamsOffsetsArray = corrected_array
+        self.pairParamsErrorsArray = u.unyt_array(masked_errs_array,
+                                                  units='m/s')
+        self.pairParamsCorrectionsArray = u.unyt_array(corrections_array,
+                                                       units='m/s')
+        # self.paramsSysErrorsArray = u.unyt_array(sigma_sys_array, units='m/s')
 
     def formatPairData(self, pair, order_num, era):
         """Return a list of information about a given pair.
