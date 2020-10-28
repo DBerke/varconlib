@@ -62,8 +62,8 @@ def plot_histograms(target):
         f'stellar_parameter_fits_{target}_{args.sigma}sigma'
 
     functions = {'linear': 'Linear',
-                 'quadratic': 'Quadratic',
                  'cross_term': 'Linear, [Fe/H]/T$_{eff}$',
+                 'quadratic': 'Quadratic',
                  'quad_cross_term': 'Quadratic, cross term',
                  'cubic': 'Cubic'}
 
