@@ -367,7 +367,8 @@ def main():
     index_num = 0
 
     # Figure out how many parameters the model function takes, so we know how
-    # many to dynamically give it later.
+    # many to dynamically give it later. Subtract 1 for the parameter which
+    # takes the stellar parameters.
     params_list = [0 for i in range(len(signature(model_func).parameters)-1)]
 
     # Define the folder to put plots in.
