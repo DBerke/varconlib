@@ -229,7 +229,8 @@ def shift_wavelength(wavelength, shift_velocity):
     original_units = wavelength.units
 
     # Make sure we're not using unphysical velocities!
-    assert (abs(shift_velocity) < u.c).all(),\
+    # But mask out NaNs first because they don't compare.
+    assert (abs(shift_velocity[~isnan(shift_velocity)]) < u.c).all(),\
         'Given velocity exceeds speed of light!'
 
     result = ((shift_velocity / u.c) * wavelength) + wavelength
