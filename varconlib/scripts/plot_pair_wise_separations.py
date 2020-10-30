@@ -627,7 +627,7 @@ def plot_model_diff_vs_pair_separation(star, model):
     ax_pre = fig.add_subplot(gs[0, 0])
     ax_hist_pre = fig.add_subplot(gs[0, 1], sharey=ax_pre)
     ax_post = fig.add_subplot(gs[1, 0], sharex=ax_pre, sharey=ax_pre)
-    ax_hist_post = fig.add_subplot(gs[1, 1], sharey=ax_pre)
+    ax_hist_post = fig.add_subplot(gs[1, 1], sharex=ax_hist_pre, sharey=ax_pre)
 
     ax_pre.set_xlim(left=0, right=805)
     ax_pre.set_ylim(bottom=-100, top=100)
@@ -635,7 +635,7 @@ def plot_model_diff_vs_pair_separation(star, model):
     ax_pre.set_ylabel('Offset from model value (pre) (m/s)')
     ax_post.set_ylabel('Offset from model value (post) (m/s)')
     for ax in (ax_pre, ax_post, ax_hist_pre, ax_hist_post):
-        ax.axhline(y=0, linestyle='-', color='Black')
+        ax.axhline(y=0, linestyle='--', color='Gray')
 
     full_errs_pre = np.sqrt(u.unyt_array(pair_sep_errs_pre, units='m/s') ** 2 +
                             u.unyt_array(sigmas_sys_pre, units='m/s') ** 2)
