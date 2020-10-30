@@ -981,7 +981,11 @@ class Star(object):
         for dataset_name, attr_name in self.unyt_arrays.items():
             dataset = u.unyt_array.from_hdf5(filename,
                                              dataset_name=dataset_name)
-            setattr(self, attr_name, dataset)
+            try:
+                setattr(self, attr_name, dataset)
+            except AttributeError:
+                print(f'Attribute "{attr_name}" with path "{path_name}"'
+                      f' was not found in saved data for {self.name}.')
 
         with h5py.File(filename, mode='r') as f:
 
