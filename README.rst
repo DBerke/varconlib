@@ -50,8 +50,8 @@ Within the ``varconlib`` folder, there are:
 
 .. |Travis| image:: https://travis-ci.com/DBerke/varconlib.svg?branch=master
     :alt: Travis Badge
-    :target: https://travis-ci.com/DBerke/alpha-var-code
+    :target: https://travis-ci.com/DBerke/varconlib
 
-.. |Codecov| image:: https://codecov.io/gh/DBerke/alpha-var-code/branch/master/graph/badge.svg
+.. |Codecov| image:: https://codecov.io/gh/DBerke/varconlib/branch/master/graph/badge.svg
     :alt: Codecov Badge
-    :target: https://codecov.io/gh/DBerke/alpha-var-code
+    :target: https://codecov.io/gh/DBerke/varconlib
