@@ -50,47 +50,86 @@ class Star(object):
     Attributes
     ----------
     fitMeansArray : `unyt.unyt_array`
-        A two-dimensional array holding the mean of the fit (in wavelength
-        space) for each absorption feature in each observation of the star.
+        A 2D array holding the mean of the fit (in wavelength space)
+        for each absorption feature in each observation of the star.
         Rows correspond to observations, columns to transitions. Units are Å.
     fitErrorsArray : `unyt.unyt_array`
-        A two-diemsional array holding the standard deviation of the measured
-        mean of the fit for each absorption feature of each observation of the
-        star. Rows correspond to observations, columns to transitions. Units
-        are m/s.
+        A 2D array holding the standard deviation of the measured mean of the
+        fit for each absorption feature of each observation of the star.
+        Rows correspond to observations, columns to transitions. Units are m/s.
     fitOffsetsArray : `unyt.unyt_array`
-        A two-dimensional array holding the offset from the expected wavelength
-        of the measured mean of each absorption feature in each observation of
+        A 2D array holding the offset from the expected wavelength of the
+        measured mean of each absorption feature in each observation of
         the star. Rows correspond to observations, columns to transitions.
         Units are m/s.
-    fitOffsetsCorrectedArray : `unyt.unyt_array`
-        A two-dimensional array holding the measured offsets from
-        fitOffsetsArray corrected for the systematic calibration errors in
-        HARPS.
-    ccdCorrectionArray : `unyt.unyt_array`
-        A two-dimensional array holding the corrections computed for each
-        transition at its location on the CCD, applied to fitOffsetsArray to
-        create fitOffsetsCorrectedArray.
+    bervArray : `unyt.unyt_array`
+        A 1D array holding the barycentric Earth radial velocity (BERV)
+        for each observation of the star. Index number corresponds to
+        row numbers in the two-dimensional arrays. Units are km/s.
+    obsRVOffsetsArray : `unyt.unyt_array`
+        A 1D array holding the median value of the offsets of each observation,
+        which is use to normalize the results of fitOffsetsCorrectecArray to
+        create `fitOffsetsNormalizedArray`.
     fitOffsetsNormalizedArray : 'unyt.unyt_array'
-        A two-dimensional array holding the offset from the expected wavelength
+        A 2D array holding the offset from the expected wavelength
         of the measured mean of each absorption feature in each observations of
         the star, with each row (corresponding to an observation) having been
         corrected by the measured radial velocity offset for that observation,
         determined as the mean value of the offsets of all transitions for that
         observation from fitOffsetsCorrectedArray.
+    fitOffsetsCorrectedArray : `unyt.unyt_array`
+        A 2D array holding the measured offsets from `fitOffsetsArray`
+        corrected for the systematic calibration errors in HARPS.
+    ccdCorrectionArray : `unyt.unyt_array`
+        A 2D array holding the corrections computed for each transition at its
+        location on the CCD, applied to `fitOffsetsArray` to create
+        `fitOffsetsCorrectedArray`.
+    transitionModelArray : `unyt.unyt_array`
+        A 2D array of model values for each transition offset based on the
+        stellar parameters of this star. Has two rows, with row 0 being the pre-
+        fiber change values, and row 1 the post-change values.
+    transitionOutliersMask : `np.array`
+        A 2D array of boolean values where True indicates a masked value, made
+        from `transitionModelOffsetsArray` by masking any outliers beyond the
+        given sigma limit (2.5 by default).
+    transitionModelOffsetsArray : `unyt.unyt_array`
+        A 2D array holding transition offsets with the values from
+        `transitionModelArray` subtracted from them, with outliers above the
+        given sigma limit (2.5 by default) marked as NaNs.
+    transitionModelErrorsArray : `unyt.unyt_array`
+        A 2D array of errors, made by applying the same mask
+        (`transitionOutliersMask`) as for `transitionModelOffsetsArray`.
+    transitionSysErrorsArray : `unyt.unyt_array`
+        A 2D array containing the empirically-determined systematic error found
+        for each trantion, with row 0 holding the pre-fiber change values and
+        row 1 the post-change values.
     pairSeparationsArray : `unyt.unyt_array`
         A two-dimensional array holding the velocity separation values for each
-        pair of transitions for each observation of the star. Rows correspond
-        to observations, columns to pairs. Units are m/s.
+        pair of transitions for each observation of the star created from
+        `transitionModelOffsetsArray`. Rows correspond to observations, columns
+        to pairs. Units are m/s.
     pairSepErrorsArray : `unyt.unyt_array`
-        A two-dimensional array holding the standard deviation of the velocity
-        separation values for each pair of transitions for each observation of
-        the star. Rows correspond to observations, columns to pairs. Units are
-        m/s.
-    bervArray : `unyt.unyt_array`
-        A one-dimensional array holding the barycentric Earth radial velocity
-        (BERV) for each observation of the star. Index number corresponds to
-        row numbers in the two-dimensional arrays. Units are km/s.
+        A two-dimensional array holding the uncertainty values for each pair of
+        transitions for each observation of the star. Rows correspond to
+        observations, columns to pairs. Units are m/s.
+    pairModelArray : `unyt.unyt_array`
+        A 2D array holding the values of a given fitting model for each pair's
+        separation based on the stellar parameters of the star.
+    pairOutliersMask: `np.array`
+        A 2D array of boolean values as a mask for pair outliers (where True
+        is masked).
+    pairModelOffsetsArray : `unyt.unyt_array`
+        A 2D array of pair separation values from `pairSeparationsArray` with
+        the values from `pairModelArray` subtracted from them, and the mask from
+        `pairOutliersMask` applied to remove outliers beyond a given sigma limit
+        (5.0 by default).
+    pairModelErrorsArray : `unyt.unyt_array`
+        A 2D array holding the uncertainties for `pairModelOffsetsArray`, using
+        the same `pairOutliersMask`.
+    pairSysErrorsArray : `unyt.unyt_array`
+        A 2D array containing the empirically-determined systematic error found
+        for each pair, with row 0 holding the pre-fiber change values and
+        row 1 the post-change values.
     chiSquaredNuArray : `unyt.unyt_array`
         A two-dimensional array holding the reduced chi-squared value of the
         Gaussian fit to each transition for each observation of the star.
@@ -138,57 +177,69 @@ class Star(object):
         A dictionary (possibly empty) of certain characteristics or attributes
         of some stars which are rare enough to not warrant storing for every
         stars, e.g., whether a star has a known companion (planet or star) or if
-        it is know to be variable. Currently has two recognized keywords:
+        it is known to be variable. Currently has two recognized keywords:
             'is_variable' : the type of variable (BY Draconis, etc.)
             'is_multiple' : the total number of stars in the system
             'has_planets': the number of planets around this star
         This dictionary is constructed from JSON files stored in each star's
         directory as appropriate.
-    paramsOffsetsArray : `unyt.unyt_array`
-        A temporary array containing the transition offsets corrected for the
-        stellar parameters of the star based on the given 'correction_model'. It
-        contains NaN values for offsets whose residuals were more than 2.5 sigma
-        away from zero.
-    paramsErrorsArray : `unyt.unyt_array`
-        A temporary array containing the errors for the transition offsets, with
-        NaN values in the corresponding locations to cachedCorrectedArray.
-    paramsCorrectionsArray : `unyt.unyt_array`
-        A temporary array containing the corrections applied to each transition
-        from the given 'correction_model'. Row 0 contains values for pre-change,
-        row 1 for post-change values. (NaNs otherwise.)
 
     """
 
     # Define the version of the format being saved.
     global CURRENT_VERSION
     # TODO: update this
-    CURRENT_VERSION = '4.0.0'
+    CURRENT_VERSION = '5.0.0'
 
     # Define dataset names and corresponding attribute names to be saved
     # and loaded when dumping star data.
-    unyt_arrays = {'/arrays/transition_means': 'fitMeansArray',
-                   '/arrays/transition_errors': 'fitErrorsArray',
-                   '/arrays/offsets': 'fitOffsetsArray',
-                   '/arrays/pair_separations': 'pairSeparationsArray',
-                   '/arrays/pair_separation_errors': 'pairSepErrorsArray',
-                   # '/arrays/pair_separation_systematic_errors':
-                   #     'pairSepSysErrorsArray',
-                   '/arrays/BERV_array': 'bervArray',
-                   '/arrays/observation_rv': 'obsRVOffsetsArray',
-                   '/arrays/normalized_offsets': 'fitOffsetsNormalizedArray',
-                   '/arrays/corrected_offsets': 'fitOffsetsCorrectedArray',
-                   '/arrays/systematic_corrections': 'ccdCorrectionArray',
-                   '/arrays/params_corrected_offsets': 'paramsOffsetsArray',
-                   '/arrays/params_corrected_errors': 'paramsErrorsArray',
-                   '/arrays/params_corrections': 'paramsCorrectionsArray'}
-                   # '/arrays/params_systematic_error':
-                   #     'paramsSysErrorsArray'}
+    unyt_arrays = {'/arrays/transition_means':
+                       'fitMeansArray',
+                   '/arrays/transition_errors':
+                       'fitErrorsArray',
+                   '/arrays/offsets':
+                       'fitOffsetsArray',
+                   '/arrays/BERV_array':
+                       'bervArray',
+                   '/arrays/observation_rv':
+                       'obsRVOffsetsArray',
+                   '/arrays/normalized_offsets':
+                       'fitOffsetsNormalizedArray',
+                   '/arrays/corrected_offsets':
+                       'fitOffsetsCorrectedArray',
+                   '/arrays/systematic_corrections':
+                       'ccdCorrectionArray',
+                   # Transition values corrected by a model:
+                   '/arrays/model_corrected_masked_transitions':
+                       'transitionModelOffsetsArray',
+                   '/arrays/model_corrected_masked_transition_errors':
+                       'transitionModelErrorsArray',
+                   '/arrays/transition_model_values':
+                       'transitionModelArray',
+                   '/arrays/transition_systematic_errors':
+                       'transitionSysErrorsArray',
+                   # Pair separations measured from corrected transitions:
+                   '/arrays/pair_separations':
+                       'pairSeparationsArray',
+                   '/arrays/pair_separation_errors':
+                       'pairSepErrorsArray',
+                   # Pair separation values corrected by a model:
+                   '/arrays/model_corrected_masked_pairs':
+                       'pairModelOffsetsArray',
+                   '/arrays/model_corrected_masked_pair_errors':
+                       'pairModelErrorsArray',
+                   '/arrays/pair_model_values':
+                       'pairModelArray',
+                   '/arrays/pair_systematic_errors':
+                       'pairSysErrorsArray'}
 
     other_attributes = {'/metadata/version': 'version',
                         '/arrays/reduced_chi_squareds': 'chiSquaredNuArray',
                         '/arrays/airmasses': 'airmassArray',
                         '/arrays/transition_outliers_mask':
                             'transitionOutliersMask',
+                        '/arrays/pair_outliers_mask':
+                            'pairOutliersMask',
                         '/bidicts/obs_date_bidict': '_obs_date_bidict',
                         '/bidicts/transition_bidict': '_transition_bidict',
                         '/bidicts/pair_bidict': '_pair_bidict',
@@ -208,10 +259,10 @@ class Star(object):
     fiber_change_date = dt.datetime(year=2015, month=6, day=1,
                                     hour=0, minute=0, second=0)
 
-    def __init__(self, name, star_dir=None, suffix='int',
+    def __init__(self, name, star_dir=None,
                  transitions_list=None, pairs_list=None,
                  load_data=None, init_params="Casagrande2011",
-                 correction_model='cross_term'):
+                 correction_model='quadratic'):
         """Instantiate a `star.Star` object.
 
         Parameters
@@ -225,10 +276,6 @@ class Star(object):
             A Path object specifying the root directory to look in for fits of
             the star's spectra. If given, will be passed to the
             `initializeFromFits` method.
-        suffix : str, Default: 'int'
-            A string to be added to the subdirectory names to distinguish
-            between different reduction methods. Defaults to 'int' for
-            'integrated Gaussian' fits.
         transitions_list : list
             A list of `transition_line.Transition` objects. If `star_dir` is
             given, will be passed to `initializeFromFits`, otherwise no effect.
@@ -254,7 +301,7 @@ class Star(object):
             use.
         correction_model : str, ['linear', 'quadratic',
                                  'cross_term', 'quadratic_mag'],
-                         Default : 'cross_term'
+                         Default : 'quadratic'
             The name of a correction model to apply to the transition offsets
             data to correct for stellar parameters.
 
@@ -301,11 +348,20 @@ class Star(object):
             self.hdf5file = star_dir / f'{name}_data.hdf5'
             if load_data is False or\
                     (load_data is None and not self.hdf5file.exists()):
-                self.constructFromDir(star_dir, suffix,
+                self.constructFromDir(star_dir,
                                       pairs_list=pairs_list,
                                       transitions_list=transitions_list)
-                self.createParamsCorrectedArrays(correction_model)
-                self.createPairSeparationArrays()
+                t_filename = vcl.output_dir /\
+                    f'fit_params/{correction_model}_transitions_params.hdf5'
+                if t_filename.is_file():
+                    self.createTransitionModelCorrectedArrays(
+                        filename=t_filename)
+                    self.createPairSeparationArrays()
+                    p_filename = vcl.output_dir /\
+                        f'fit_params/{correction_model}_pairs_params.hdf5'
+                    if p_filename.is_file():
+                        self.createPairModelCorrectedArrays(
+                            filename=p_filename)
 
                 self.saveDataToDisk(self.hdf5file)
                 self.specialAttributes.update(self.
@@ -318,7 +374,7 @@ class Star(object):
                 raise HDF5FileNotFoundError('No HDF5 file found for'
                                             f' {self.hdf5file}.')
 
-    def constructFromDir(self, star_dir, suffix='int', transitions_list=None,
+    def constructFromDir(self, star_dir, transitions_list=None,
                          pairs_list=None):
         """
         Collect information on fits in observations of the star, and organize
@@ -332,9 +388,6 @@ class Star(object):
 
         Optional
         --------
-        suffix : str, default "int"
-            The suffix to affix to end of the sub-directories under the main
-            star directory. The default stands for "integrated Gaussian".
         transitions_list : list
             A list of `transition_line.Transition` objects. If this is omitted
             the default list of transitions selected for use will be read, but
@@ -355,7 +408,7 @@ class Star(object):
                                              f' exist: {star_dir}')
 
         # Get a list of pickled fit results in the given directory.
-        search_str = str(star_dir) + f'/HARPS*/pickles_{suffix}/*fits.lzma'
+        search_str = str(star_dir) + f'/HARPS*/pickles_int/*fits.lzma'
         pickle_files = [Path(path) for path in sorted(glob(search_str))]
 
         if len(pickle_files) == 0:
@@ -477,7 +530,8 @@ class Star(object):
                                                       in enumerate(
                                                           transition_labels)})
 
-    def createParamsCorrectedArrays(self, model_func, n_sigma=2.5):
+    def createTransitionModelCorrectedArrays(self, model_func='quadratic',
+                                             filename=None, n_sigma=2.5):
         """Return an array corrected by a function and a mask of outliers.
 
         This method takes a function of three stellar parameters (temperature,
@@ -492,16 +546,17 @@ class Star(object):
         for measurements more than `n_sigma` sigma away from the mean.
 
 
-        Parameters
-        ----------
-        model_func : str, ['cross_term']
-            The name of a fitting model used to fit the dependence of the
-            transition offsets on stellar parameters. Currently the only one
-            which should be used is 'cross_term', but 'linear', 'quadratic',
-            and 'quadratic_mag' are also possible.
-
         Optional
         --------
+        model_func : str, Default : 'quadratic'
+            The name of a fitting model used to fit the dependence of the
+            transition offsets on stellar parameters. Currently the default is
+            'quadratic, but 'linear', 'cross-term', and 'quad-cross-term' are
+            also possible.
+        filename : `pathlib.Path` or str, Default : None
+            The path to a file containing a model function and fitting
+            coefficients for each transition. If not give, the filename to use
+            will be created from `model_func`.
         n_sigma : float, Default : 2.5
             The number of standard deviations a point must be away from the
             value for this transition found by correcting using the fitting
@@ -510,8 +565,9 @@ class Star(object):
         """
 
         # Use the parameters derived from results with outliers removed.
-        filename = vcl.output_dir /\
-            f'fit_params/{model_func}_transitions_params.hdf5'
+        if filename is None:
+            filename = vcl.output_dir /\
+                f'fit_params/{model_func}_transitions_params.hdf5'
         fit_results_dict = get_params_file(filename)
         function = fit_results_dict['model_func']
         coeffs_dict = fit_results_dict['coeffs']
@@ -530,13 +586,13 @@ class Star(object):
         # Create a copy of the errors array which we can change values to NaN in
         # later on, since masks don't play well with Unyt arrays.
         masked_errs_array = self.fitErrorsArray.to_ndarray()
-        # Create an array to keep track of the corrections themselves.
+        # Create an array to keep track of the model values.
         # Two rows: 0 = pre, 1 = post.
-        corrections_array = np.full((2, len(self._transition_bidict.keys())),
-                                    np.nan, dtype=float)
+        model_values_array = np.full((2, len(self._transition_bidict.keys())),
+                                     np.nan, dtype=float)
         # Create an indentically-shaped array to hold the systematic error
         # present for each transition, in pre- and post-fiber change eras.
-        # sigma_sys_array = np.full_like(corrections_array, np.nan, dtype=float)
+        sigma_sys_array = np.full_like(model_values_array, np.nan, dtype=float)
 
         for key, col_num in tqdm(self._transition_bidict.items()):
 
@@ -545,62 +601,52 @@ class Star(object):
                 pre_slice = slice(None, self.fiberSplitIndex)
 
                 # Get the systematic error for this transition:
-                # sigma_sys = sigma_sys_dict[label]
-                # sigma_sys_array[0, col_num] = sigma_sys.value
+                sigma_sys = sigma_sys_dict[label]
+                sigma_sys_array[0, col_num] = sigma_sys.value
 
-                # Compute the correction for this transition.
-                correction = u.unyt_quantity(function(stellar_params,
-                                                      *coeffs_dict[label]),
-                                             units=u.m/u.s)
-                # Store the correction.
-                corrections_array[0, col_num] = correction.value
+                # Compute the model value for this transition and star.
+                model_value = u.unyt_quantity(function(stellar_params,
+                                                       *coeffs_dict[label]),
+                                              units=u.m/u.s)
+                # Store the model value for the pre-change era.
+                model_values_array[0, col_num] = model_value.value
                 # Apply it to all measurements of this transition.
                 corrected_array[pre_slice, col_num] =\
                     self.fitOffsetsNormalizedArray[pre_slice, col_num] -\
-                    correction
-                data_slice = corrected_array[pre_slice, col_num]
-                error_slice = self.fitErrorsArray[pre_slice, col_num]
-                # full_error_slice = np.sqrt(error_slice ** 2 +
-                #                            sigma_sys ** 2)
-
-                for i in range(len(data_slice)):
-                    if abs(data_slice[i]) > n_sigma * error_slice[i]:
-                        mask_array[i, col_num] = True
-                        corrected_array[i, col_num] = np.nan
-                        masked_errs_array[i, col_num] = np.nan
+                    model_value
 
             if self.hasObsPost:
                 label = key + '_post'
                 post_slice = slice(self.fiberSplitIndex, None)
 
-                # sigma_sys = sigma_sys_dict[label]
-                # sigma_sys_array[1, col_num] = sigma_sys.value
+                sigma_sys = sigma_sys_dict[label]
+                sigma_sys_array[1, col_num] = sigma_sys.value
 
-                correction = u.unyt_array(function(stellar_params,
-                                                   *coeffs_dict[label]),
-                                          units=u.m/u.s)
-                corrections_array[1, col_num] = correction.value
+                model_value = u.unyt_array(function(stellar_params,
+                                                    *coeffs_dict[label]),
+                                           units=u.m/u.s)
+                model_values_array[1, col_num] = model_value.value
                 corrected_array[post_slice, col_num] =\
                     self.fitOffsetsNormalizedArray[post_slice, col_num] -\
-                    correction
-                data_slice = corrected_array[post_slice, col_num]
-                error_slice = self.fitErrorsArray[post_slice, col_num]
-                # full_error_slice = np.sqrt(error_slice ** 2 +
-                #                            sigma_sys ** 2)
+                    model_value
 
-                for i in range(len(data_slice)):
-                    if abs(data_slice[i]) > n_sigma * error_slice[i]:
-                        mask_array[i+self.fiberSplitIndex, col_num] = True
-                        corrected_array[i, col_num] = np.nan
-                        masked_errs_array[i, col_num] = np.nan
+        # True means outlier; this finds all the points more than n_sigma away
+        # from zero after correction.
+        self.transitionOutliersMask = abs(corrected_array) -\
+            n_sigma * self.fitErrorsArray > 0
 
-        self.transitionOutliersMask = mask_array.to_ndarray()
-        self.paramsOffsetsArray = corrected_array
-        self.paramsErrorsArray = u.unyt_array(masked_errs_array,
-                                              units='m/s')
-        self.paramsCorrectionsArray = u.unyt_array(corrections_array,
-                                                   units='m/s')
-        # self.paramsSysErrorsArray = u.unyt_array(sigma_sys_array, units='m/s')
+        # Set all outlier values and associated errors in model-corrected array
+        # to NaN.
+        corrected_array[self.transitionOutliersMask] = np.nan
+        masked_errs_array[self.transitionOutliersMask] = np.nan
+
+        self.transitionModelOffsetsArray = corrected_array
+        self.transitionModelErrorsArray = u.unyt_array(masked_errs_array,
+                                                       units='m/s')
+        self.transitionModelArray = u.unyt_array(model_values_array,
+                                                 units='m/s')
+        self.transitionSysErrorsArray = u.unyt_array(sigma_sys_array,
+                                                     units='m/s')
 
     def createPairSeparationArrays(self):
         """Create attributes containing pair separations and associated errors.
@@ -609,7 +655,7 @@ class Star(object):
         pairSepErrorsArray containing lists of pair separations and associated
         errors in each row corresponding to an observation of this star.
 
-        It makes use of `self.maskArray`, created in
+        It makes use of `self.transitionOutliersMask`, created in
         `self.createParamsCorrectedArray`, and thus needs to be run in sequence
         after that method.
 
@@ -627,9 +673,6 @@ class Star(object):
             dtype=float)
         self.pairSepErrorsArray = np.full_like(self.pairSeparationsArray,
                                                np.nan, dtype=float)
-        # self.pairSepSysErrorsArray = np.full([2,
-        #                                       len(self._pair_bidict.keys())],
-        #                                      np.nan, dtype=float)
 
         self.fitMeansCorrectedArray = shift_wavelength(self.fitMeansArray,
                                                        self.ccdCorrectionArray)
@@ -654,36 +697,12 @@ class Star(object):
                     np.sqrt(self.fitErrorsArray[:, self.t_index(label1)]**2 +
                             self.fitErrorsArray[:, self.t_index(label2)]**2)
 
-        # corrected_array = self.paramsOffsetsArray
-        # corrected_errs = self.paramsErrorsArray
-        # sys_errors = self.paramsSysErrorsArray
-
-        # for pair in tqdm(self.pairsList):
-        #     for order_num in pair.ordersToMeasureIn:
-        #         pair_label = '_'.join((pair.label, str(order_num)))
-        #         label1 = '_'.join((pair._higherEnergyTransition.label,
-        #                            str(order_num)))
-        #         label2 = '_'.join((pair._lowerEnergyTransition.label,
-        #                            str(order_num)))
-
-        #         self.pairSeparationsArray[:, self.p_index(pair_label)] =\
-        #             corrected_array[:, self.t_index(label2)] -\
-        #             corrected_array[:, self.t_index(label1)]
-
-        #         self.pairSepErrorsArray[:, self.p_index(pair_label)] =\
-        #             np.sqrt(corrected_errs[:, self.t_index(label1)]**2 +
-        #                     corrected_errs[:, self.t_index(label2)]**2)
-
-        #         self.pairSepSysErrorsArray[:, self.p_index(pair_label)] =\
-        #             np.sqrt(sys_errors[:, self.t_index(label1)]**2 +
-        #                     sys_errors[:, self.t_index(label2)]**2)
-
         self.pairSeparationsArray *= u.m/u.s
         self.pairSeparationsArray.convert_to_units(u.km/u.s)
         self.pairSepErrorsArray *= u.m/u.s
-        # self.pairSepSysErrorsArray *= u.m/u.s
 
-    def createPairsModelCorrectedArrays(self, model_func, n_sigma=2.5):
+    def createPairModelCorrectedArrays(self, model_func='quadratic',
+                                       filename=None, n_sigma=5.0):
         """Return an array corrected by a function and a mask of outliers.
 
         This method takes a function of three stellar parameters (temperature,
@@ -693,31 +712,33 @@ class Star(object):
         a correction for each observation's pair separation and checks if the
         resultant position is more than `n_sigma` times the statistical error
         for that pair. It returns an array corrected by the value of the
-        function for each transition (given the stars's temperature,
+        function for each pair (given the stars's temperature,
         metallicity, and surface gravity) and a mask for measurements more than
         `n_sigma` sigma away from the mean.
 
 
-        Parameters
-        ----------
-        model_func : str, ['cross_term']
-            The name of a fitting model used to fit the dependence of the
-            transition offsets on stellar parameters. Currently the only one
-            which should be used is 'cross_term', but 'linear', 'quadratic',
-            and 'quadratic_mag' are also possible.
-
         Optional
         --------
-        n_sigma : float, Default : 2.5
+        model_func : str, Default : 'quadratic'
+            The name of a fitting model used to fit the dependence of the
+            pair offsets on stellar parameters. Currently the default is
+            'quadratic, but 'linear', 'cross-term', and 'quad-cross-term' are
+            also possible.
+        filename : `pathlib.Path` or str, Default : None
+            The path to a file containing a model function and fitting
+            coefficients for each pair. If not given, the filename will be
+            created from `model_func`.
+        n_sigma : float, Default : 5.0
             The number of standard deviations a point must be away from the
-            value for this transition found by correcting using the fitting
+            value for this pair found by correcting using the fitting
             function to be considered an outlier (and thus masked).
 
         """
 
         # Use the parameters derived from results with outliers removed.
-        filename = vcl.output_dir /\
-            f'fit_params/{model_func}_pairs_params.hdf5'
+        if filename is None:
+            filename = vcl.output_dir /\
+                f'fit_params/{model_func}_pairs_params.hdf5'
         fit_results_dict = get_params_file(filename)
         function = fit_results_dict['model_func']
         coeffs_dict = fit_results_dict['coeffs']
@@ -738,11 +759,11 @@ class Star(object):
         masked_errs_array = self.pairSepErrorsArray.to_ndarray()
         # Create an array to keep track of the corrections themselves.
         # Two rows: 0 = pre, 1 = post.
-        corrections_array = np.full((2, len(self._pair_bidict.keys())),
-                                    np.nan, dtype=float)
+        model_values_array = np.full((2, len(self._pair_bidict.keys())),
+                                     np.nan, dtype=float)
         # Create an indentically-shaped array to hold the systematic error
         # present for each transition, in pre- and post-fiber change eras.
-        # sigma_sys_array = np.full_like(corrections_array, np.nan, dtype=float)
+        sigma_sys_array = np.full_like(model_values_array, np.nan, dtype=float)
 
         for key, col_num in tqdm(self._pair_bidict.items()):
 
@@ -751,62 +772,49 @@ class Star(object):
                 pre_slice = slice(None, self.fiberSplitIndex)
 
                 # Get the systematic error for this transition:
-                # sigma_sys = sigma_sys_dict[label]
-                # sigma_sys_array[0, col_num] = sigma_sys.value
+                sigma_sys = sigma_sys_dict[label]
+                sigma_sys_array[0, col_num] = sigma_sys.value
 
-                # Compute the correction for this transition.
-                correction = u.unyt_quantity(function(stellar_params,
-                                                      *coeffs_dict[label]),
-                                             units=u.m/u.s)
-                # Store the correction.
-                corrections_array[0, col_num] = correction.value
-                # Apply it to all measurements of this transition.
+                # Compute the model_value for this transition.
+                model_value = u.unyt_quantity(function(stellar_params,
+                                                       *coeffs_dict[label]),
+                                              units=u.m/u.s)
+                # Store the model value for the pre-change era.
+                model_values_array[0, col_num] = model_value.value
+                # Apply it to all measurements of this pair.
                 corrected_array[pre_slice, col_num] =\
                     self.pairSeparationsArray[pre_slice, col_num] -\
-                    correction
-                data_slice = corrected_array[pre_slice, col_num]
-                error_slice = self.pairSepErrorsArray[pre_slice, col_num]
-                # full_error_slice = np.sqrt(error_slice ** 2 +
-                #                            sigma_sys ** 2)
-
-                for i in range(len(data_slice)):
-                    if abs(data_slice[i]) > n_sigma * error_slice[i]:
-                        mask_array[i, col_num] = True
-                        corrected_array[i, col_num] = np.nan
-                        masked_errs_array[i, col_num] = np.nan
+                    model_value
 
             if self.hasObsPost:
                 label = key + '_post'
                 post_slice = slice(self.fiberSplitIndex, None)
 
-                # sigma_sys = sigma_sys_dict[label]
-                # sigma_sys_array[1, col_num] = sigma_sys.value
+                sigma_sys = sigma_sys_dict[label]
+                sigma_sys_array[1, col_num] = sigma_sys.value
 
-                correction = u.unyt_array(function(stellar_params,
-                                                   *coeffs_dict[label]),
-                                          units=u.m/u.s)
-                corrections_array[1, col_num] = correction.value
+                model_value = u.unyt_array(function(stellar_params,
+                                                    *coeffs_dict[label]),
+                                           units=u.m/u.s)
+                model_values_array[1, col_num] = model_value.value
                 corrected_array[post_slice, col_num] =\
                     self.pairSeparationsArray[post_slice, col_num] -\
-                    correction
-                data_slice = corrected_array[post_slice, col_num]
-                error_slice = self.pairSepErrorsArray[post_slice, col_num]
-                # full_error_slice = np.sqrt(error_slice ** 2 +
-                #                            sigma_sys ** 2)
+                    model_value
 
-                for i in range(len(data_slice)):
-                    if abs(data_slice[i]) > n_sigma * error_slice[i]:
-                        mask_array[i+self.fiberSplitIndex, col_num] = True
-                        corrected_array[i, col_num] = np.nan
-                        masked_errs_array[i, col_num] = np.nan
+        # self.pairOutliersMask = mask_array.to_ndarray()
+        self.pairOutliersMask = abs(corrected_array) -\
+            n_sigma * self.pairSepErrorsArray > 0
 
-        self.pairOutliersMask = mask_array.to_ndarray()
-        self.pairParamsOffsetsArray = corrected_array
-        self.pairParamsErrorsArray = u.unyt_array(masked_errs_array,
-                                                  units='m/s')
-        self.pairParamsCorrectionsArray = u.unyt_array(corrections_array,
-                                                       units='m/s')
-        # self.paramsSysErrorsArray = u.unyt_array(sigma_sys_array, units='m/s')
+        # Mask any outlier values in the pair separations and error arrays.
+        corrected_array[self.pairOutliersMask] = np.nan
+        masked_errs_array[self.pairOutliersMask] = np.nan
+
+        self.pairModelOffsetsArray = corrected_array
+        self.pairModelErrorsArray = u.unyt_array(masked_errs_array,
+                                                 units='m/s')
+        self.pairModelArray = u.unyt_array(model_values_array,
+                                           units='m/s')
+        self.pairSysErrorsArray = u.unyt_array(sigma_sys_array, units='m/s')
 
     def formatPairData(self, pair, order_num, era):
         """Return a list of information about a given pair.
@@ -868,20 +876,24 @@ class Star(object):
 
         else:
 
-            offsets1 = ma.masked_invalid(self.paramsOffsetsArray[time_slice,
-                                         col1].value)
-            offsets2 = ma.masked_invalid(self.paramsOffsetsArray[time_slice,
-                                         col2].value)
+            offsets1 = ma.masked_invalid(
+                self.transitionModelOffsetsArray[time_slice,
+                                                 col1].value)
+            offsets2 = ma.masked_invalid(
+                self.transitionModelOffsetsArray[time_slice,
+                                                 col2].value)
 
             for i in range(len(offsets1)):
                 if not (offsets1[i] and offsets2[i]):
                     offsets1.mask[i] = True
                     offsets2.mask[i] = True
 
-            errs1 = ma.masked_invalid(self.paramsErrorsArray[time_slice,
-                                      col1].value)
-            errs2 = ma.masked_invalid(self.paramsErrorsArray[time_slice,
-                                      col2].value)
+            errs1 = ma.masked_invalid(
+                self.transitionModelErrorsArray[time_slice,
+                                                col1].value)
+            errs2 = ma.masked_invalid(
+                self.transitionModelErrorsArray[time_slice,
+                                                col2].value)
             errs1.mask = offsets1.mask
             errs2.mask = offsets2.mask
             assert offsets1.count() == offsets2.count()
@@ -957,12 +969,16 @@ class Star(object):
                                                     dataset_name=dataset_name)
             except AttributeError:
                 print(f'Missing attribute {attr_name}.')
-                raise
+                continue
 
         with h5py.File(file_path, mode='a') as f:
 
             for path_name, attr_name in self.other_attributes.items():
-                hickle.dump(getattr(self, attr_name), f, path=path_name)
+                try:
+                    hickle.dump(getattr(self, attr_name), f, path=path_name)
+                except AttributeError:
+                    print(f'Missing attribute {attr_name}.')
+                    continue
 
     def constructFromHDF5(self, filename):
         """Retrieve datasets from HDF5 file.
@@ -979,13 +995,14 @@ class Star(object):
 
         # TODO: Add check for version metadata.
         for dataset_name, attr_name in self.unyt_arrays.items():
-            dataset = u.unyt_array.from_hdf5(filename,
-                                             dataset_name=dataset_name)
             try:
+                dataset = u.unyt_array.from_hdf5(filename,
+                                                 dataset_name=dataset_name)
                 setattr(self, attr_name, dataset)
-            except AttributeError:
-                print(f'Attribute "{attr_name}" with path "{path_name}"'
+            except KeyError:
+                print(f'Key "{attr_name}" with path "{dataset_name}"'
                       f' was not found in saved data for {self.name}.')
+                pass
 
         with h5py.File(filename, mode='r') as f:
 
@@ -995,6 +1012,7 @@ class Star(object):
                 except AttributeError:
                     print(f'Attribute "{attr_name}" with path "{path_name}"'
                           f' was not found in saved data for {self.name}.')
+                pass
 
     def _correctCCDSystematic(self, order, pixel):
         """Return the velocity correction for a given pixel and order number.
