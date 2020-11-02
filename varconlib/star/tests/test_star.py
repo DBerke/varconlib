@@ -50,14 +50,13 @@ class TestStar(object):
 
     @pytest.fixture(scope='class')
     def test_star(self, test_dir):
-        return Star('HD117618', star_dir=test_dir, suffix='int',
+        return Star('HD117618', star_dir=test_dir,
                     load_data=False, init_params='Nordstrom2004',
-                    correction_model='cross_term')
+                    correction_model='quadratic')
 
     def testNonExistentDir(self):
         with pytest.raises(StarDirectoryNotFoundError):
-            Star('HD117618', star_dir='/nonsensical_dir_that_should_not_exist',
-                 suffix='int')
+            Star('HD117618', star_dir='/nonsensical_dir_that_should_not_exist')
 
     def testIndexMethods(self):
         s = Star('HD1111')
