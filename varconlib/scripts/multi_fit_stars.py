@@ -294,18 +294,12 @@ def main():
         model_func = fit.quadratic_model
     elif args.cubic:
         model_func = fit.cubic_model
-    elif args.quartic:
-        model_func = fit.quartic_model
-    elif args.quintic:
-        model_func = fit.quintic_model
     elif args.cross_term:
         model_func = fit.cross_term_model
     elif args.quadratic_cross_term:
         model_func = fit.quad_cross_term_model
-    elif args.quadratic_magnitude:
-        model_func = fit.quadratic_mag_model
-    elif args.quad_cross_terms:
-        model_func = fit.quad_cross_terms_model
+    elif args.quad_cross_term:
+        model_func = fit.quad_cross_term_model
 
     model_name = '_'.join(model_func.__name__.split('_')[:-1])
 
