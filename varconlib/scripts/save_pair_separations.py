@@ -194,6 +194,8 @@ def main():
                            ' change era.')
                     csv_file = output_dir /\
                         f'{era}/{pair_label}_pair_separations_{era}.csv'
+                    if not csv_file.parent.exists():
+                        os.mkdir(csv_file.parent)
                     info_list = []
 
                     for star in star_list:
