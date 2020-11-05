@@ -11,7 +11,7 @@ in pursuit of my PhD.
 
 Within the ``varconlib`` folder, there are:
 
-* ``config``: contains a config file for laying out the paths of various
+* ``config``: contains a config file for defining the paths of various
    frequently-used directories.
 
 * ``conversion``: library model containing functions for converting between air
@@ -43,8 +43,9 @@ Within the ``varconlib`` folder, there are:
 * ``transition_line``: library module containing the ``Transition`` class which
   holds code relating to a single atomic transition.
 
-* ``transition_pair``: library module containing the ``TranisionPair`` class
-  which holds two ``Transition``s as well as additional meta-data about them.
+* ``transition_pair``: library module containing the ``TransitionPair`` class
+  which holds two ``Transition`` objects as well as additional meta-data about
+  them.
 
 
 
