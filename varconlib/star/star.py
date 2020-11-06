@@ -853,29 +853,28 @@ class Star(object):
 
         order_num = str(order_num)
 
+        pair_col = self.p_index(f'{pair.label}_{order_num}')
+
         label1 = '_'.join([pair._higherEnergyTransition.label, order_num])
         label2 = '_'.join([pair._lowerEnergyTransition.label, order_num])
 
         col1 = self.t_index(label1)
         col2 = self.t_index(label2)
 
-        sigma_sys1 = float(self.paramsSysErrorsArray[era_index, col1])
-        sigma_sys2 = float(self.paramsSysErrorsArray[era_index, col2])
+        sigma_sys1 = float(self.transitionSysErrorsArray[era_index, col1])
+        sigma_sys2 = float(self.transitionSysErrorsArray[era_index, col2])
 
-        # If no obervations for this era, trying to calculate results from them
-        # will fail, so just fill out the results with NaNs.
-        if getattr(self, f'numObs{era.capitalize()}') == 0:
-            info_list = [self.name,
-                         np.nan,
-                         np.nan,
-                         np.sqrt(sigma_sys1**2 + sigma_sys2**2),
-                         np.nan, np.nan, sigma_sys1,
-                         np.nan, 0,
-                         np.nan, np.nan, sigma_sys2,
-                         np.nan, 0]
+        p_sigma_sys = float(self.pairSysErrorsArray[era_index, pair_col])
 
+        # If no non-NaN pair separation measurements for this era, trying to
+        # calculate results from them will fail, so just fill out the results
+        # with NaNs.
+        if np.isnan(self.pairModelOffsetsArray[time_slice, pair_col]).all():
+            info_list = [self.name, 0,
+                         np.nan, np.nan, np.nan, np.nan,
+                         np.nan, np.nan, np.nan, np.nan,
+                         np.nan, np.nan, np.nan, np.nan]
         else:
-
             offsets1 = ma.masked_invalid(
                 self.transitionModelOffsetsArray[time_slice,
                                                  col1].value)
@@ -888,10 +887,10 @@ class Star(object):
                     offsets1.mask[i] = True
                     offsets2.mask[i] = True
 
-            errs1 = ma.masked_invalid(
+            errs1 = ma.array(
                 self.transitionModelErrorsArray[time_slice,
                                                 col1].value)
-            errs2 = ma.masked_invalid(
+            errs2 = ma.array(
                 self.transitionModelErrorsArray[time_slice,
                                                 col2].value)
             errs1.mask = offsets1.mask
@@ -915,14 +914,26 @@ class Star(object):
             eotwm1 = 1 / np.sqrt(sum1)
             eotwm2 = 1 / np.sqrt(sum2)
 
-            info_list = [self.name,
-                         weighted_mean2 - weighted_mean1,
-                         np.sqrt(eotwm1**2 + eotwm2**2),
-                         np.sqrt(sigma_sys1**2 + sigma_sys2**2),
-                         weighted_mean1, eotwm1, sigma_sys1,
-                         chi_squared1, offsets1.count(),
-                         weighted_mean2, eotwm2, sigma_sys2,
-                         chi_squared2, offsets2.count()]
+            pair_offsets = ma.masked_invalid(
+                self.pairModelOffsetsArray[time_slice,
+                                           pair_col].to(u.m/u.s).value)
+            pair_errs = ma.masked_invalid(
+                self.pairModelErrorsArray[time_slice,
+                                          pair_col].to(u.m/u.s).value)
+
+            pair_weighted_mean, p_sum = ma.average(pair_offsets,
+                                                   weights=pair_errs**-2,
+                                                   returned=True)
+            p_chi_squared = calc_chi_squared_nu(pair_offsets -
+                                                pair_weighted_mean,
+                                                pair_errs, 1)
+            p_eotwm = 1 / np.sqrt(p_sum)
+
+            info_list = [self.name, pair_offsets.count(),
+                         pair_weighted_mean, p_eotwm,
+                         p_sigma_sys, p_chi_squared,
+                         weighted_mean1, eotwm1, sigma_sys1, chi_squared1,
+                         weighted_mean2, eotwm2, sigma_sys2, chi_squared2]
 
         for i, item in enumerate(info_list):
             if item == 0:
@@ -930,12 +941,13 @@ class Star(object):
             elif not item:
                 info_list[i] = 'nan'
 
-        self._formatHeader = ['#star_name', 'delta(v)_pair (m/s)',
-                              'err_stat_pair (m/s)', 'err_sys_pair (m/s)',
-                              'transition1 (m/s)', 't_stat_err1 (m/s)',
-                              't_sys_err1 (m/s)', 'chi^2_nu1', '#obs1',
-                              'transition2 (m/s)', 't_stat_err2 (m/s)',
-                              't_sys_err2 (m/s)', 'chi^2_nu2', '#obs2']
+        self._formatHeader = ['#star_name', '#obs',
+                              'model_offset_pair(m/s)', 'err_stat_pair(m/s)',
+                              'err_sys_pair(m/s)', 'chisq_nu_pair',
+                              'offset_transition1(m/s)', 't_stat_err1(m/s)',
+                              't_sys_err1(m/s)', 'chisq_nu1',
+                              'offset_transition2(m/s)', 't_stat_err2(m/s)',
+                              't_sys_err2(m/s)', 'chisq_nu2']
 
         return info_list
 
