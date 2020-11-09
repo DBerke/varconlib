@@ -13,6 +13,7 @@ tansitions by various parameters.
 import argparse
 import csv
 from inspect import signature
+from itertools import tee
 import os
 from pathlib import Path
 import pickle
@@ -29,13 +30,15 @@ import numpy as np
 import numpy.ma as ma
 from numpy import cos, sin
 import pandas as pd
+from scipy.stats import norm
 from tqdm import tqdm
 import unyt as u
 
 import varconlib as vcl
 from varconlib.fitting import (calc_chi_squared_nu, constant_model,
                                find_sys_scatter)
-from varconlib.miscellaneous import remove_nans, get_params_file
+from varconlib.miscellaneous import (remove_nans, get_params_file,
+                                     weighted_mean_and_error)
 from varconlib.star import Star
 from varconlib.transition_line import roman_numerals
 
@@ -63,6 +66,17 @@ types_dict = {'#star_name': str,
 plot_axis_labels = {'temperature': r'$\mathrm{T}_\mathrm{eff}\,$(K)',
                     'metallicity': r'$\mathrm{[Fe/H]}$',
                     'logg': r'$\log(g),\mathrm{cm\,s}^{-2}$'}
+
+
+def pairwise(iterable):
+    """Return pairs of results from iterable:
+
+    s -> (s0,s1), (s1,s2), (s2, s3), ...
+
+    """
+    a, b = tee(iterable)
+    next(b, None)
+    return zip(a, b)
 
 
 def read_csv_file(pair_label, csv_dir, era):
@@ -465,6 +479,10 @@ def plot_sigma_sys_vs_pair_separation(star):
     average_seps_post = []
     sigma_sys_list_pre = []
     sigma_sys_list_post = []
+
+    model_seps = []
+    model_sigma_sys = []
+
     for pair, col_num in tqdm(star._pair_bidict.items()):
 
         x = ma.array([i for i in range(star.numObs)])
@@ -489,12 +507,28 @@ def plot_sigma_sys_vs_pair_separation(star):
         average_seps_pre.append((weighted_mean * u.m/u.s).to(u.km/u.s))
         sigma_sys_list_pre.append(sys_err)
 
+        model_values = star.pairModelArray[:, col_num]
+        model_errs = star.pairModelErrorsArray[:, col_num]
+        print(model_values.shape)
+        print(model_errs.shape)
+        weighted_mean2 = np.average(model_values, weights=model_errs**-2)
+
+        model_results = find_sys_scatter(constant_model, x,
+                                         model_values,
+                                         model_errs, (weighted_mean2,),
+                                         n_sigma=n_sigma, tolerance=0.001,
+                                         verbose=False)
+        model_seps.append((weighted_mean2 * u.m/u.s).to(u.km/u.s))
+        model_sigma_sys.append(model_results['sys_err_list'[-1]] * u.m / u.s)
+
     fig = plt.figure(figsize=(10, 7), tight_layout=True)
     ax = fig.add_subplot(1, 1, 1)
     ax.set_xlabel('Weighted mean pair separation (km/s)')
     ax.set_ylabel(r'$\sigma_\mathrm{sys}$ (m/s)')
     ax.plot(average_seps_pre, sigma_sys_list_pre,
-            linestyle='', marker='o')
+            linestyle='', marker='o', color='DarkOrange')
+    ax.plot(model_seps, model_sigma_sys,
+            linestyle='', marker='x', color='MediumAquaMarine')
 
     filepath = plots_dir / f'{star.name}_{star.numObs}_obs_{n_sigma}sigma.png'
     fig.savefig(str(filepath))
@@ -518,14 +552,15 @@ def plot_model_diff_vs_pair_separation(star, model):
 
     """
 
-    print(f'{star.name} has {star.numObs} observations.')
+    print(f'{star.name} has {star.numObs} observations'
+          f' ({star.numObsPre} pre, {star.numObsPost} post)')
     n_sigma = 5
 
     plots_dir = Path('/Users/dberke/Pictures/'
                      'pair_separation_investigation')
 
     # Get the star pair corrections arrays for the given model.
-    star.createPairsModelCorrectedArrays(model, n_sigma=5)
+    # star.createPairsModelCorrectedArrays(model, n_sigma=5)
 
     # model_func = getattr(varconlib.fitting, f'{model}_model')
     # num_params = len(signature(model_func).parameters) - 1
@@ -562,19 +597,18 @@ def plot_model_diff_vs_pair_separation(star, model):
             m_seps = ma.array(seps_no_nans.to(u.m/u.s).value)
             m_errs = ma.array(errs_stat[mask].value)
 
-            weighted_mean, weight_sum = np.average(m_seps, weights=m_errs**-2,
-                                                   returned=True)
-            error_on_weighted_mean = (1 / np.sqrt(weight_sum))
+            weighted_mean, error_on_weighted_mean = weighted_mean_and_error(
+                m_seps, m_errs)
 
             average_separations_pre.append((weighted_mean
                                             * u.m/u.s).to(u.km/u.s))
             pair_sep_errs_pre.append(error_on_weighted_mean * u.m/u.s)
 
             # Now get the weighted mean of the remaining offset from the model.
-            corrected_separations = star.pairParamsOffsetsArray[pre_slice,
-                                                                col_num]
-            corrected_errs_stat = star.pairParamsErrorsArray[pre_slice,
-                                                             col_num]
+            corrected_separations = star.pairModelOffsetsArray[pre_slice,
+                                                               col_num]
+            corrected_errs_stat = star.pairModelErrorsArray[pre_slice,
+                                                            col_num]
 
             seps_no_nans, mask = remove_nans(corrected_separations,
                                              return_mask=True)
@@ -595,19 +629,18 @@ def plot_model_diff_vs_pair_separation(star, model):
             m_seps = ma.array(seps_no_nans.to(u.m/u.s).value)
             m_errs = ma.array(errs_stat[mask].value)
 
-            weighted_mean, weight_sum = np.average(m_seps, weights=m_errs**-2,
-                                                   returned=True)
-            error_on_weighted_mean = (1 / np.sqrt(weight_sum))
+            weighted_mean, error_on_weighted_mean = weighted_mean_and_error(
+                m_seps, m_errs)
 
             average_separations_post.append((weighted_mean
                                             * u.m/u.s).to(u.km/u.s))
             pair_sep_errs_post.append(error_on_weighted_mean * u.m/u.s)
 
             # Now get the weighted mean of the remaining offset from the model.
-            corrected_separations = star.pairParamsOffsetsArray[post_slice,
-                                                                col_num]
-            corrected_errs_stat = star.pairParamsErrorsArray[post_slice,
-                                                             col_num]
+            corrected_separations = star.pairModelOffsetsArray[post_slice,
+                                                               col_num]
+            corrected_errs_stat = star.pairModelErrorsArray[post_slice,
+                                                            col_num]
 
             seps_no_nans, mask = remove_nans(corrected_separations,
                                              return_mask=True)
@@ -621,59 +654,198 @@ def plot_model_diff_vs_pair_separation(star, model):
             model_offsets_post.append(weighted_c_mean * u.m/u.s)
 
     # Plot the results.
-    fig = plt.figure(figsize=(11, 7), tight_layout=True)
-    gs = GridSpec(ncols=2, nrows=2, figure=fig,
-                  width_ratios=(6, 1))
+    fig = plt.figure(figsize=(14, 10), tight_layout=True)
+    gs = GridSpec(ncols=2, nrows=5, figure=fig,
+                  width_ratios=(9, 1),
+                  height_ratios=(2.1, 1, 0.2, 2.1, 1), hspace=0)
     ax_pre = fig.add_subplot(gs[0, 0])
-    ax_hist_pre = fig.add_subplot(gs[0, 1], sharey=ax_pre)
-    ax_post = fig.add_subplot(gs[1, 0], sharex=ax_pre, sharey=ax_pre)
-    ax_hist_post = fig.add_subplot(gs[1, 1], sharex=ax_hist_pre, sharey=ax_pre)
+    ax_hist_pre = fig.add_subplot(gs[0, -1], sharey=ax_pre)
+    ax_post = fig.add_subplot(gs[3, 0], sharex=ax_pre, sharey=ax_pre)
+    ax_hist_post = fig.add_subplot(gs[3, -1], sharex=ax_hist_pre, sharey=ax_pre)
+    ax_sigma_pre = fig.add_subplot(gs[1, 0], sharex=ax_pre)
+    ax_sigma_post = fig.add_subplot(gs[4, 0], sharex=ax_pre,
+                                    sharey=ax_sigma_pre)
+    ax_sigma_hist_pre = fig.add_subplot(gs[1, 1], sharex=ax_hist_pre)
+    ax_sigma_hist_post = fig.add_subplot(gs[4, 1], sharex=ax_hist_post,
+                                         sharey=ax_sigma_hist_pre)
 
-    ax_pre.set_xlim(left=0, right=805)
-    ax_pre.set_ylim(bottom=-100, top=100)
-    ax_post.set_xlabel('Weighted mean pair separation (km/s)')
-    ax_pre.set_ylabel('Offset from model value (pre) (m/s)')
-    ax_post.set_ylabel('Offset from model value (post) (m/s)')
+    ax_pre.set_xlim(left=0, right=800)
+    ax_pre.set_ylim(bottom=-60, top=60)
+    ax_sigma_hist_pre.set_ylim(bottom=-3, top=3)
+    for ax in (ax_sigma_pre, ax_sigma_post,
+               ax_sigma_hist_pre, ax_sigma_hist_post):
+        ax.yaxis.grid(which='major', color='Gray', alpha=0.7,
+                      linestyle='-')
+        ax.yaxis.grid(which='minor', color='Gray', alpha=0.6,
+                      linestyle='--')
+        ax.yaxis.set_major_locator(ticker.MultipleLocator(base=2))
+        ax.yaxis.set_minor_locator(ticker.MultipleLocator(base=1))
     for ax in (ax_pre, ax_post, ax_hist_pre, ax_hist_post):
+        plt.setp(ax.get_xticklabels(), visible=False)
+    ax_post.set_xlabel('Weighted mean pair separation (km/s)')
+    ax_pre.set_ylabel('Offset from model\nvalue (pre) (m/s)')
+    ax_post.set_ylabel('Offset from model\nvalue (post) (m/s)')
+    ax_sigma_pre.set_ylabel('Binned weighted means/\n'
+                            r'$\sigma$-offsets (m/s)/$\sigma$')
+    ax_sigma_post.set_ylabel('Binned weighted means/\n'
+                             r'$\sigma$-offsets (m/s)/$\sigma$')
+    for ax in (ax_pre, ax_post, ax_hist_pre, ax_hist_post,
+               ax_sigma_pre, ax_sigma_post,
+               ax_sigma_hist_pre, ax_sigma_hist_post):
         ax.axhline(y=0, linestyle='--', color='Gray')
 
-    full_errs_pre = np.sqrt(u.unyt_array(pair_sep_errs_pre, units='m/s') ** 2 +
-                            u.unyt_array(sigmas_sys_pre, units='m/s') ** 2)
-    full_errs_post = np.sqrt(u.unyt_array(pair_sep_errs_post, units='m/s') ** 2
-                             + u.unyt_array(sigmas_sys_post, units='m/s') ** 2)
-    # vprint(f'{np.median(pair_sep_errs_pre)},   {sigma_sys_pre}')
-    # vprint(f'{np.median(pair_sep_errs_post)},   {sigma_sys_post}')
+    if star.hasObsPre:
+        full_errs_pre = np.sqrt(u.unyt_array(pair_sep_errs_pre,
+                                             units='m/s') ** 2 +
+                                u.unyt_array(sigmas_sys_pre,
+                                             units='m/s') ** 2)
+        chi_squared_nu_pre = calc_chi_squared_nu(model_offsets_pre,
+                                                 full_errs_pre,
+                                                 num_params).value
 
-    # Calculate the chi^2 value for the residuals.
-    chi_squared_nu_pre = calc_chi_squared_nu(model_offsets_pre,
-                                             full_errs_pre,
-                                             num_params).value
-    chi_squared_nu_post = calc_chi_squared_nu(model_offsets_post,
-                                              full_errs_post,
-                                              num_params).value
-    ax_pre.errorbar(average_separations_pre, model_offsets_pre,
-                    yerr=full_errs_pre,
-                    linestyle='', marker='o',
-                    color='Chocolate',
-                    markeredgecolor='Black',
-                    label=r'$\chi^2_\nu$:'
-                    f' {chi_squared_nu_pre:.2f}, {star.numObsPre} obs')
-    ax_post.errorbar(average_separations_post, model_offsets_post,
-                     yerr=full_errs_post,
-                     linestyle='', marker='o',
-                     color='DodgerBlue',
-                     markeredgecolor='Black',
-                     label=r'$\chi^2_\nu$:'
-                     f' { chi_squared_nu_post:.2f}, {star.numObsPost} obs')
+        ax_pre.errorbar(average_separations_pre, model_offsets_pre,
+                        yerr=full_errs_pre,
+                        linestyle='', marker='o',
+                        color='Chocolate',
+                        markeredgecolor='Black',
+                        label=r'$\chi^2_\nu$:'
+                        f' {chi_squared_nu_pre:.2f}, {star.numObsPre} obs')
+    if star.hasObsPost:
+        full_errs_post = np.sqrt(u.unyt_array(pair_sep_errs_post,
+                                              units='m/s') ** 2 +
+                                 u.unyt_array(sigmas_sys_post,
+                                              units='m/s') ** 2)
+        chi_squared_nu_post = calc_chi_squared_nu(model_offsets_post,
+                                                  full_errs_post,
+                                                  num_params).value
+
+        ax_post.errorbar(average_separations_post, model_offsets_post,
+                         yerr=full_errs_post,
+                         linestyle='', marker='o',
+                         color='DodgerBlue',
+                         markeredgecolor='Black',
+                         label=r'$\chi^2_\nu$:'
+                         f' { chi_squared_nu_post:.2f}, {star.numObsPost} obs')
+
+    # Plot on the separation histogram axes.
+    gaussians_pre = []
+    gaussians_post = []
+    if star.hasObsPre:
+        for offset, err in zip(model_offsets_pre, full_errs_pre):
+            gaussians_pre.append(norm(loc=offset, scale=err))
+    if star.hasObsPost:
+        for offset, err in zip(model_offsets_post, full_errs_post):
+            gaussians_post.append(norm(loc=offset, scale=err))
+
     bottom, top = ax_pre.get_ylim()
     bins = [x for x in range(int(bottom), int(top), 1)]
-    ax_hist_pre.hist(model_offsets_pre, bins=bins, color='Black',
-                     histtype='step', orientation='horizontal')
-    ax_hist_post.hist(model_offsets_post, bins=bins, color='Black',
-                      histtype='step', orientation='horizontal')
 
-    ax_pre.legend()
-    ax_post.legend()
+    pdf_pre = []
+    pdf_post = []
+    for x in tqdm(bins):
+        if star.hasObsPre:
+            pdf_pre.append(np.sum([y.pdf(x) for y in gaussians_pre]))
+        if star.hasObsPost:
+            pdf_post.append(np.sum([y.pdf(x) for y in gaussians_post]))
+
+    if star.hasObsPre:
+        ax_hist_pre.hist(model_offsets_pre, bins=bins, color='Black',
+                         histtype='step', orientation='horizontal')
+        ax_hist_pre.step(pdf_pre, bins, color='Green',
+                         where='mid', linestyle='-')
+        ax_hist_pre.annotate(f'{np.median(model_offsets_pre):.2f} m/s',
+                             (0.04, 0.99),
+                             xycoords='axes fraction',
+                             verticalalignment='top')
+    if star.hasObsPost:
+        ax_hist_post.hist(model_offsets_post, bins=bins, color='Black',
+                          histtype='step', orientation='horizontal')
+        ax_hist_post.step(pdf_post, bins, color='Green',
+                          where='mid', linestyle='-')
+        ax_hist_post.annotate(f'{np.median(model_offsets_post):.2f} m/s',
+                              (0.04, 0.99),
+                              xycoords='axes fraction',
+                              verticalalignment='top')
+
+    separation_limits = [i for i in range(0, 900, 100)]
+    if star.hasObsPre:
+        average_separations_pre = np.array(average_separations_pre)
+        model_offsets_pre = np.array(model_offsets_pre)
+    if star.hasObsPost:
+        average_separations_post = np.array(average_separations_post)
+        model_offsets_post = np.array(model_offsets_post)
+
+    if star.hasObsPre:
+        midpoints, w_means, eotwms = [], [], []
+        for i, lims in zip(range(8), pairwise(separation_limits)):
+            midpoints.append((lims[1] + lims[0]) / 2)
+            mask = np.where((average_separations_pre > lims[0]) &
+                            (average_separations_pre < lims[1]))
+            w_mean, eotwm = weighted_mean_and_error(model_offsets_pre[mask],
+                                                    full_errs_pre[mask])
+            w_means.append(w_mean)
+            eotwms.append(eotwm)
+
+        midpoints = np.array(midpoints)
+        w_means = np.array(w_means)
+        eotwms = np.array(eotwms)
+
+        sigma_values = model_offsets_pre / full_errs_pre
+
+        ax_sigma_pre.errorbar(average_separations_pre,
+                              sigma_values,
+                              color='Chocolate', linestyle='',
+                              marker='.')
+        ax_sigma_pre.errorbar(midpoints, w_means, yerr=eotwms,
+                              linestyle='-', color='Black',
+                              marker='o')
+        ax_sigma_pre.errorbar(midpoints, w_means / eotwms,
+                              linestyle=':', marker='o',
+                              color='ForestGreen',
+                              label=r'$\sigma$-value')
+        ax_sigma_pre.legend()
+        ax_sigma_hist_pre.hist(sigma_values,
+                               bins=[x for x in np.linspace(-5, 5, num=50)],
+                               color='Black', histtype='step',
+                               orientation='horizontal')
+        ax_pre.legend()
+
+    if star.hasObsPost:
+        midpoints, w_means, eotwms = [], [], []
+        for i, lims in zip(range(8), pairwise(separation_limits)):
+            midpoints.append((lims[1] + lims[0]) / 2)
+            mask = np.where((average_separations_post > lims[0]) &
+                            (average_separations_post < lims[1]))
+            w_mean, eotwm = weighted_mean_and_error(model_offsets_post[mask],
+                                                    full_errs_post[mask])
+            w_means.append(w_mean)
+            eotwms.append(eotwm)
+
+        midpoints = np.array(midpoints)
+        w_means = np.array(w_means)
+        eotwms = np.array(eotwms)
+
+        sigma_values = model_offsets_post / full_errs_post
+
+        ax_sigma_post.errorbar(average_separations_post,
+                               sigma_values,
+                               color='DodgerBlue', linestyle='',
+                               marker='.')
+        ax_sigma_post.errorbar(midpoints, w_means, yerr=eotwms,
+                               linestyle='-', color='Black',
+                               marker='o')
+        ax_sigma_post.errorbar(midpoints, w_means / eotwms,
+                               linestyle=':', marker='o',
+                               color='ForestGreen',
+                               label=r'$\sigma$-value')
+        ax_sigma_post.legend()
+        ax_sigma_hist_post.hist(sigma_values,
+                                bins=[x for x in np.linspace(-5, 5, num=50)],
+                                color='Black', histtype='step',
+                                orientation='horizontal')
+        ax_post.legend(
+            )
+    # Save out the plot.
     filepath = plots_dir /\
         f'{star.name}_{star.numObs}_obs_{n_sigma}sigma_{model}_offsets.png'
     fig.savefig(str(filepath))
