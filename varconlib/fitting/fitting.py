@@ -18,8 +18,6 @@ import numpy as np
 import numpy.ma as ma
 from scipy.optimize import curve_fit
 from scipy.special import erf
-import tqdm as tqdm
-import unyt as u
 
 import varconlib as vcl
 
