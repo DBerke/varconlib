@@ -17,7 +17,7 @@ from pathlib import Path
 from bidict import bidict
 import h5py
 import hickle
-from numpy import logical_not, isnan
+from numpy import logical_not, isnan, average, sqrt
 import unyt as u
 from unyt import accepts, returns
 from unyt.dimensions import length, time
@@ -364,8 +364,10 @@ def remove_nans(input_array, return_mask=False):
 
     Returns
     -------
-    np.array
-        An array formed of the non-NaN entries of the input array.
+    tuple or np.array
+        An array formed of the non-NaN entries of the input array if
+        `return_mask` is *False*, or a tuple of two arrays of the same size as
+        the input array if it is *True*.
 
     """
 
@@ -375,6 +377,33 @@ def remove_nans(input_array, return_mask=False):
         return (input_array[mask], mask)
     else:
         return input_array[mask]
+
+
+def weighted_mean_and_error(values, errors):
+    """
+    Return the weighted mean and error on the weighted mean of a distribution.
+
+    Parameters
+    ----------
+    values : array-like
+        An array of values to get the weighted mean and error on the weighted
+        mean of.
+    errors : array-like
+        An array of uncertainties (of the same shape as `values`) to go along
+        with the values of interest.
+
+    Returns
+    -------
+    tuple
+        A tuple of (weighted mean, error on the weighted mean) for the given
+        arrays.
+
+    """
+
+    weighted_mean, weights_sum = average(values, weights=errors**-2,
+                                         returned=True)
+    error_on_weighted_mean = sqrt(weights_sum)**-1
+    return weighted_mean, error_on_weighted_mean
 
 
 def get_params_file(filename):
