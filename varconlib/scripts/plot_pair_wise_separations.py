@@ -659,14 +659,14 @@ def plot_model_diff_vs_pair_separation(star, model):
                   width_ratios=(9, 1),
                   height_ratios=(2.1, 1, 0.2, 2.1, 1), hspace=0)
     ax_pre = fig.add_subplot(gs[0, 0])
-    ax_hist_pre = fig.add_subplot(gs[0, -1], sharey=ax_pre)
     ax_post = fig.add_subplot(gs[3, 0], sharex=ax_pre, sharey=ax_pre)
-    ax_hist_post = fig.add_subplot(gs[3, -1], sharex=ax_hist_pre, sharey=ax_pre)
+    ax_hist_pre = fig.add_subplot(gs[0, -1], sharey=ax_pre)
+    ax_hist_post = fig.add_subplot(gs[3, -1], sharey=ax_post)
     ax_sigma_pre = fig.add_subplot(gs[1, 0], sharex=ax_pre)
     ax_sigma_post = fig.add_subplot(gs[4, 0], sharex=ax_pre,
                                     sharey=ax_sigma_pre)
-    ax_sigma_hist_pre = fig.add_subplot(gs[1, 1], sharex=ax_hist_pre)
-    ax_sigma_hist_post = fig.add_subplot(gs[4, 1], sharex=ax_hist_post,
+    ax_sigma_hist_pre = fig.add_subplot(gs[1, 1])
+    ax_sigma_hist_post = fig.add_subplot(gs[4, 1],
                                          sharey=ax_sigma_hist_pre)
 
     ax_pre.set_xlim(left=0, right=800)
@@ -732,16 +732,17 @@ def plot_model_diff_vs_pair_separation(star, model):
     gaussians_post = []
     if star.hasObsPre:
         for offset, err in zip(model_offsets_pre, full_errs_pre):
-            gaussians_pre.append(norm(loc=offset, scale=err))
+            gaussians_pre.append(norm(loc=0, scale=err))
     if star.hasObsPost:
         for offset, err in zip(model_offsets_post, full_errs_post):
-            gaussians_post.append(norm(loc=offset, scale=err))
+            gaussians_post.append(norm(loc=0, scale=err))
 
     bottom, top = ax_pre.get_ylim()
     bins = [x for x in range(int(bottom), int(top), 1)]
 
     pdf_pre = []
     pdf_post = []
+    # Add up the PDFs for each point.
     for x in tqdm(bins):
         if star.hasObsPre:
             pdf_pre.append(np.sum([y.pdf(x) for y in gaussians_pre]))
@@ -767,6 +768,7 @@ def plot_model_diff_vs_pair_separation(star, model):
                               xycoords='axes fraction',
                               verticalalignment='top')
 
+    # Do the binned checks.
     separation_limits = [i for i in range(0, 900, 100)]
     if star.hasObsPre:
         average_separations_pre = np.array(average_separations_pre)
@@ -843,8 +845,8 @@ def plot_model_diff_vs_pair_separation(star, model):
                                 bins=[x for x in np.linspace(-5, 5, num=50)],
                                 color='Black', histtype='step',
                                 orientation='horizontal')
-        ax_post.legend(
-            )
+        ax_post.legend()
+
     # Save out the plot.
     filepath = plots_dir /\
         f'{star.name}_{star.numObs}_obs_{n_sigma}sigma_{model}_offsets.png'
