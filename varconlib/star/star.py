@@ -309,6 +309,7 @@ class Star(object):
 
         self.name = str(name)
         self.version = CURRENT_VERSION
+        self.base_dir = None
 
         # Initialize some attributes to be filled later.
         self._obs_date_bidict = self.DateMap()
@@ -345,7 +346,8 @@ class Star(object):
             self.getStellarParameters(init_params)
 
             star_dir = Path(star_dir)
-            self.hdf5file = star_dir / f'{name}_data.hdf5'
+            self.base_dir = star_dir
+            self.hdf5file = self.base_dir / f'{name}_data.hdf5'
             if load_data is False or\
                     (load_data is None and not self.hdf5file.exists()):
                 self.constructFromDir(star_dir,
@@ -364,12 +366,14 @@ class Star(object):
                             filename=p_filename)
 
                 self.saveDataToDisk(self.hdf5file)
-                self.specialAttributes.update(self.
-                                              getSpecialAttributes(star_dir))
+                self.specialAttributes.update(
+                    self.getSpecialAttributes(self.base_dir))
 
             elif (load_data is True or load_data is None)\
                     and self.hdf5file.exists():
                 self.constructFromHDF5(self.hdf5file)
+                self.specialAttributes.update(
+                    self.getSpecialAttributes(self.base_dir))
             else:
                 raise HDF5FileNotFoundError('No HDF5 file found for'
                                             f' {self.hdf5file}.')
