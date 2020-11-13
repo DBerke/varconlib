@@ -1373,7 +1373,7 @@ class Star(object):
 
         return max(obs_dates) - min(obs_dates)
 
-    def getSpecialAttributes(self, star_dir):
+    def getSpecialAttributes(self, star_dir=None):
         """
         Read and save any special attributes for the star from an external file.
 
@@ -1385,7 +1385,8 @@ class Star(object):
         ----------
         star_dir : `pathlib.Path`
             The path to the directory where the star is being constructed/read
-            from.
+            from. By default will use the directory used when instantiatiing the
+            star if given (wll be *None* otherwise).
 
         Returns
         -------
@@ -1394,6 +1395,9 @@ class Star(object):
             JSON file in `star_dir. May be empty if no such file exists.
 
         """
+
+        if star_dir is None:
+            star_dir = self.base_dir
 
         json_file = star_dir / f'{self.name}_special_attributes.json'
 
