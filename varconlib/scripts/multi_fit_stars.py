@@ -806,7 +806,9 @@ def main():
 
     # Save the function used and the parameters found for each transition/pair
     # to an HDF5 file for use in other scripts.
-    hdf5_file = output_dir / f'fit_params/{model_name}{fit_target}_params.hdf5'
+    output_dir = output_dir / 'fit_params'
+    hdf5_file = output_dir /\
+        f'{model_name}_{fit_target}_{args.sigma:.1f}sigma_params.hdf5'
     if not hdf5_file.parent.exists():
         os.mkdir(hdf5_file.parent)
 
