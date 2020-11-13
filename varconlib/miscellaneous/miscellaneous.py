@@ -220,7 +220,7 @@ def shift_wavelength(wavelength, shift_velocity):
 
     Returns
     -------
-        float
+    float
         The new wavelength, in the original units, shifted according to the
         given radial velocity.
 
