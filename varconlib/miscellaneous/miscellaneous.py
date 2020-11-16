@@ -402,7 +402,7 @@ def weighted_mean_and_error(values, errors):
 
     weighted_mean, weights_sum = average(values, weights=errors**-2,
                                          returned=True)
-    error_on_weighted_mean = sqrt(weights_sum)**-1
+    error_on_weighted_mean = sqrt(weights_sum**-1)
     return weighted_mean, error_on_weighted_mean
 
 
