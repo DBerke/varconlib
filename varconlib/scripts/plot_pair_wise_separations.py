@@ -387,7 +387,7 @@ def plot_galactic_distance():
         plt.close('all')
 
 
-def plot_pair_stability(star):
+def plot_pair_stability(star, pair_label):
     """
     Plot the stability of a single pair for a single star over time.
 
@@ -395,6 +395,8 @@ def plot_pair_stability(star):
     ----------
     star : `varconlib.star.Star`
         A Star object.
+    pair_label : str
+        The pair label for the pair to use.
 
     Returns
     -------
@@ -403,14 +405,14 @@ def plot_pair_stability(star):
     """
 
     try:
-        col_num = star.p_index(args.pair_label)
+        col_num = star.p_index(pair_label)
     except KeyError:
         raise
 
     x = [i for i in range(star.numObs)]
     bervs = star.bervArray
-    diffs = star.pairSeparationsArray[:, col_num]
-    errs_stat = star.pairSepErrorsArray[:, col_num]
+    diffs = star.pairModelOffsetsArray[:, col_num]
+    errs_stat = star.pairModelErrorsArray[:, col_num]
     # print(diffs)
 
     diffs_no_nans, mask = remove_nans(diffs, return_mask=True)
@@ -429,7 +431,7 @@ def plot_pair_stability(star):
                                m_diffs,
                                m_errs, (weighted_mean,),
                                n_sigma=3, tolerance=0.001,
-                               verbose=True)
+                               verbose=False)
 
     sys_err = results['sys_err_list'][-1] * u.m / u.s
     print(results['chi_squared_list'][-1])
@@ -442,7 +444,9 @@ def plot_pair_stability(star):
     ax.set_ylabel('Pair difference (m/s)')
 
     # ax.axvline(x=star.fiberSplitIndex, linestyle='--', color='Black')
-    ax.errorbar(bervs_masked, m_diffs, yerr=m_errs, linestyle='',
+    ax.errorbar(bervs_masked, m_diffs,
+                yerr=m_errs,
+                linestyle='',
                 marker='o',
                 color='DarkSalmon', ecolor='Black', markeredgecolor='Black',
                 label=r'$\sigma:$'
@@ -535,7 +539,7 @@ def plot_sigma_sys_vs_pair_separation(star):
     # plt.show()
 
 
-def plot_model_diff_vs_pair_separation(star, model):
+def plot_model_diff_vs_pair_separation(star, model, n_sigma=5.0):
     """
     Create a plot showing the difference from a model vs. the pair separation.
 
@@ -545,29 +549,36 @@ def plot_model_diff_vs_pair_separation(star, model):
         The star to analyze.
     model : str
         The name of the model to test against.
+    n_sigma : float
+        The number of sigma to use for culling outliers in the pair model
+        fitting.
 
     Returns
     -------
-    None.
+    tuple
+        A tuple containing the star name, then the number of observations, the
+        reduced chi-squared, and the weighted mean and error on the weighted
+        mean for both the pre- and post- fiber change eras, with NaNs instead
+        if there were no relevant values for an era.
 
     """
 
-    print(f'{star.name} has {star.numObs} observations'
-          f' ({star.numObsPre} pre, {star.numObsPost} post)')
-    n_sigma = 5
+    tqdm.write(f'{star.name} has {star.numObs} observations'
+               f' ({star.numObsPre} pre, {star.numObsPost} post)')
 
     plots_dir = Path('/Users/dberke/Pictures/'
                      'pair_separation_investigation')
 
     # Get the star pair corrections arrays for the given model.
-    # star.createPairsModelCorrectedArrays(model, n_sigma=5)
+    if n_sigma != 5.0:
+        star.createPairModelCorrectedArrays(model_func=model, n_sigma=n_sigma)
 
     # model_func = getattr(varconlib.fitting, f'{model}_model')
     # num_params = len(signature(model_func).parameters) - 1
     num_params = 1
 
     filename = vcl.output_dir /\
-        f'fit_params/{model}_pairs_params.hdf5'
+        f'fit_params/{model}_pairs_{n_sigma:.1f}sigma_params.hdf5'
     fit_results_dict = get_params_file(filename)
     sigma_sys_dict = fit_results_dict['sigmas_sys']
 
@@ -584,25 +595,20 @@ def plot_model_diff_vs_pair_separation(star, model):
     sigmas_sys_pre = []
     sigmas_sys_post = []
 
-    for pair_label, col_num in tqdm(star._pair_bidict.items()):
+    # Initialize these variables as NaN so as not to break the code returning
+    # them if the star only has observations from one era:
+    chi_squared_nu_pre, w_mean_pre, eotwm_pre = np.nan, np.nan, np.nan
+    chi_squared_nu_post, w_mean_post, eotwm_post = np.nan, np.nan, np.nan
 
-        sigmas_sys_pre.append(sigma_sys_dict[pair_label + '_pre'])
-        sigmas_sys_post.append(sigma_sys_dict[pair_label + '_post'])
+    for pair_label, col_num in tqdm(star._pair_bidict.items()):
 
         if star.hasObsPre:
             separations = star.pairSeparationsArray[pre_slice, col_num]
             errs_stat = star.pairSepErrorsArray[pre_slice, col_num]
 
-            seps_no_nans, mask = remove_nans(separations, return_mask=True)
-            m_seps = ma.array(seps_no_nans.to(u.m/u.s).value)
-            m_errs = ma.array(errs_stat[mask].value)
-
-            weighted_mean, error_on_weighted_mean = weighted_mean_and_error(
-                m_seps, m_errs)
-
-            average_separations_pre.append((weighted_mean
-                                            * u.m/u.s).to(u.km/u.s))
-            pair_sep_errs_pre.append(error_on_weighted_mean * u.m/u.s)
+            # If all separations are non-existent for this pair, continue.
+            if np.isnan(separations).all():
+                continue
 
             # Now get the weighted mean of the remaining offset from the model.
             corrected_separations = star.pairModelOffsetsArray[pre_slice,
@@ -610,14 +616,40 @@ def plot_model_diff_vs_pair_separation(star, model):
             corrected_errs_stat = star.pairModelErrorsArray[pre_slice,
                                                             col_num]
 
+            if np.isnan(corrected_separations).all():
+                continue
+
+            sigmas_sys_pre.append(sigma_sys_dict[pair_label + '_pre'])
+            seps_no_nans, mask = remove_nans(separations, return_mask=True)
+            m_seps = ma.array(seps_no_nans.to(u.m/u.s).value)
+            m_errs = ma.array(errs_stat[mask].value)
+
+            try:
+                weighted_mean, error_on_weighted_mean = weighted_mean_and_error(
+                    m_seps, m_errs)
+            except ZeroDivisionError:
+                print(separations)
+                print(errs_stat)
+                raise
+
+            average_separations_pre.append((weighted_mean
+                                            * u.m/u.s).to(u.km/u.s))
+            pair_sep_errs_pre.append(error_on_weighted_mean * u.m/u.s)
+
             seps_no_nans, mask = remove_nans(corrected_separations,
                                              return_mask=True)
             m_c_seps = ma.array(seps_no_nans.to(u.m/u.s).value)
             m_c_errs = ma.array(errs_stat[mask].value)
 
-            weighted_c_mean, weight_c_sum = np.average(m_c_seps,
-                                                       weights=m_c_errs**-2,
-                                                       returned=True)
+            try:
+                weighted_c_mean, weight_c_sum = np.average(m_c_seps,
+                                                           weights=m_c_errs**-2,
+                                                           returned=True)
+            except ZeroDivisionError:
+                print(separations, errs_stat)
+                print(corrected_separations, corrected_errs_stat)
+                print(m_c_seps, m_c_errs)
+                raise
 
             model_offsets_pre.append(weighted_c_mean * u.m/u.s)
 
@@ -625,6 +657,19 @@ def plot_model_diff_vs_pair_separation(star, model):
             separations = star.pairSeparationsArray[post_slice, col_num]
             errs_stat = star.pairSepErrorsArray[post_slice, col_num]
 
+            if np.isnan(separations).all():
+                continue
+
+            # Now get the weighted mean of the remaining offset from the model.
+            corrected_separations = star.pairModelOffsetsArray[post_slice,
+                                                               col_num]
+            corrected_errs_stat = star.pairModelErrorsArray[post_slice,
+                                                            col_num]
+
+            if np.isnan(corrected_separations).all():
+                continue
+
+            sigmas_sys_post.append(sigma_sys_dict[pair_label + '_post'])
             seps_no_nans, mask = remove_nans(separations, return_mask=True)
             m_seps = ma.array(seps_no_nans.to(u.m/u.s).value)
             m_errs = ma.array(errs_stat[mask].value)
@@ -635,12 +680,6 @@ def plot_model_diff_vs_pair_separation(star, model):
             average_separations_post.append((weighted_mean
                                             * u.m/u.s).to(u.km/u.s))
             pair_sep_errs_post.append(error_on_weighted_mean * u.m/u.s)
-
-            # Now get the weighted mean of the remaining offset from the model.
-            corrected_separations = star.pairModelOffsetsArray[post_slice,
-                                                               col_num]
-            corrected_errs_stat = star.pairModelErrorsArray[post_slice,
-                                                            col_num]
 
             seps_no_nans, mask = remove_nans(corrected_separations,
                                              return_mask=True)
@@ -656,8 +695,8 @@ def plot_model_diff_vs_pair_separation(star, model):
     # Plot the results.
     fig = plt.figure(figsize=(14, 10), tight_layout=True)
     gs = GridSpec(ncols=2, nrows=5, figure=fig,
-                  width_ratios=(9, 1),
-                  height_ratios=(2.1, 1, 0.2, 2.1, 1), hspace=0)
+                  width_ratios=(8.5, 1),
+                  height_ratios=(2.1, 1, 0.4, 2.1, 1), hspace=0)
     ax_pre = fig.add_subplot(gs[0, 0])
     ax_post = fig.add_subplot(gs[3, 0], sharex=ax_pre, sharey=ax_pre)
     ax_hist_pre = fig.add_subplot(gs[0, -1], sharey=ax_pre)
@@ -678,8 +717,8 @@ def plot_model_diff_vs_pair_separation(star, model):
                       linestyle='-')
         ax.yaxis.grid(which='minor', color='Gray', alpha=0.6,
                       linestyle='--')
-        ax.yaxis.set_major_locator(ticker.MultipleLocator(base=2))
-        ax.yaxis.set_minor_locator(ticker.MultipleLocator(base=1))
+        ax.yaxis.set_major_locator(ticker.AutoLocator())
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
     for ax in (ax_pre, ax_post, ax_hist_pre, ax_hist_post):
         plt.setp(ax.get_xticklabels(), visible=False)
     ax_post.set_xlabel('Weighted mean pair separation (km/s)')
@@ -694,6 +733,17 @@ def plot_model_diff_vs_pair_separation(star, model):
                ax_sigma_hist_pre, ax_sigma_hist_post):
         ax.axhline(y=0, linestyle='--', color='Gray')
 
+    # Add some information about the star to the figure:
+    information = [r'T$_\mathrm{eff}$:' + f' {star.temperature}',
+                   f'[Fe/H]: {star.metallicity}',
+                   r'$\log{g}$:' + f' {star.logg}']
+    for key, value in star.specialAttributes.items():
+        information.append(f'{key}: {value}')
+
+    info = '      '.join(information)
+    ax_pre.annotate(info, (0.07, 0.5),
+                    xycoords='figure fraction')
+
     if star.hasObsPre:
         full_errs_pre = np.sqrt(u.unyt_array(pair_sep_errs_pre,
                                              units='m/s') ** 2 +
@@ -703,13 +753,16 @@ def plot_model_diff_vs_pair_separation(star, model):
                                                  full_errs_pre,
                                                  num_params).value
 
+        label = r'$\chi^2_\nu$:' +\
+            f' {chi_squared_nu_pre:.2f}, {star.numObsPre} obs'
+
         ax_pre.errorbar(average_separations_pre, model_offsets_pre,
                         yerr=full_errs_pre,
                         linestyle='', marker='o',
                         color='Chocolate',
                         markeredgecolor='Black',
-                        label=r'$\chi^2_\nu$:'
-                        f' {chi_squared_nu_pre:.2f}, {star.numObsPre} obs')
+                        label=label)
+        ax_pre.legend(loc='upper right')
     if star.hasObsPost:
         full_errs_post = np.sqrt(u.unyt_array(pair_sep_errs_post,
                                               units='m/s') ** 2 +
@@ -719,13 +772,16 @@ def plot_model_diff_vs_pair_separation(star, model):
                                                   full_errs_post,
                                                   num_params).value
 
+        label = r'$\chi^2_\nu$:' +\
+            f' {chi_squared_nu_post:.2f}, {star.numObsPost} obs'
+
         ax_post.errorbar(average_separations_post, model_offsets_post,
                          yerr=full_errs_post,
                          linestyle='', marker='o',
                          color='DodgerBlue',
                          markeredgecolor='Black',
-                         label=r'$\chi^2_\nu$:'
-                         f' { chi_squared_nu_post:.2f}, {star.numObsPost} obs')
+                         label=label)
+        ax_post.legend(loc='upper right')
 
     # Plot on the separation histogram axes.
     gaussians_pre = []
@@ -754,19 +810,31 @@ def plot_model_diff_vs_pair_separation(star, model):
                          histtype='step', orientation='horizontal')
         ax_hist_pre.step(pdf_pre, bins, color='Green',
                          where='mid', linestyle='-')
-        ax_hist_pre.annotate(f'{np.median(model_offsets_pre):.2f} m/s',
-                             (0.04, 0.99),
+        w_mean_pre, eotwm_pre = weighted_mean_and_error(model_offsets_pre,
+                                                        full_errs_pre)
+        w_mean_pre = w_mean_pre.value
+        eotwm_pre = eotwm_pre.value
+        ax_hist_pre.annotate(f'{w_mean_pre:.2f}±\n'
+                             f'{eotwm_pre:.2f} m/s',
+                             (0.99, 0.99),
                              xycoords='axes fraction',
-                             verticalalignment='top')
+                             verticalalignment='top',
+                             horizontalalignment='right')
     if star.hasObsPost:
         ax_hist_post.hist(model_offsets_post, bins=bins, color='Black',
                           histtype='step', orientation='horizontal')
         ax_hist_post.step(pdf_post, bins, color='Green',
                           where='mid', linestyle='-')
-        ax_hist_post.annotate(f'{np.median(model_offsets_post):.2f} m/s',
-                              (0.04, 0.99),
+        w_mean_post, eotwm_post = weighted_mean_and_error(model_offsets_post,
+                                                          full_errs_post)
+        w_mean_post = w_mean_post.value
+        eotwm_post = eotwm_post.value
+        ax_hist_post.annotate(f'{w_mean_post:.2f}±\n'
+                              f'{eotwm_post:.2f} m/s',
+                              (0.99, 0.99),
                               xycoords='axes fraction',
-                              verticalalignment='top')
+                              verticalalignment='top',
+                              horizontalalignment='right')
 
     # Do the binned checks.
     separation_limits = [i for i in range(0, 900, 100)]
@@ -778,15 +846,23 @@ def plot_model_diff_vs_pair_separation(star, model):
         model_offsets_post = np.array(model_offsets_post)
 
     if star.hasObsPre:
-        midpoints, w_means, eotwms = [], [], []
+        midpoints, w_means, eotwms, chisq = [], [], [], []
         for i, lims in zip(range(8), pairwise(separation_limits)):
             midpoints.append((lims[1] + lims[0]) / 2)
             mask = np.where((average_separations_pre > lims[0]) &
                             (average_separations_pre < lims[1]))
             w_mean, eotwm = weighted_mean_and_error(model_offsets_pre[mask],
                                                     full_errs_pre[mask])
+            chisq = calc_chi_squared_nu(model_offsets_pre[mask],
+                                        full_errs_pre[mask], 1).value
             w_means.append(w_mean)
             eotwms.append(eotwm)
+            ax_sigma_pre.annotate(f'{chisq:.2f}', (midpoints[i], w_means[i]),
+                                  xytext=(i * 0.125 + 0.0625, -0.02),
+                                  color='SaddleBrown',
+                                  textcoords='axes fraction',
+                                  horizontalalignment='center',
+                                  verticalalignment='top')
 
         midpoints = np.array(midpoints)
         w_means = np.array(w_means)
@@ -803,25 +879,30 @@ def plot_model_diff_vs_pair_separation(star, model):
                               marker='o')
         ax_sigma_pre.errorbar(midpoints, w_means / eotwms,
                               linestyle=':', marker='o',
-                              color='ForestGreen',
-                              label=r'$\sigma$-value')
-        ax_sigma_pre.legend()
+                              color='ForestGreen')
         ax_sigma_hist_pre.hist(sigma_values,
                                bins=[x for x in np.linspace(-5, 5, num=50)],
                                color='Black', histtype='step',
                                orientation='horizontal')
-        ax_pre.legend()
 
     if star.hasObsPost:
-        midpoints, w_means, eotwms = [], [], []
+        midpoints, w_means, eotwms, chiqs = [], [], [], []
         for i, lims in zip(range(8), pairwise(separation_limits)):
             midpoints.append((lims[1] + lims[0]) / 2)
             mask = np.where((average_separations_post > lims[0]) &
                             (average_separations_post < lims[1]))
             w_mean, eotwm = weighted_mean_and_error(model_offsets_post[mask],
                                                     full_errs_post[mask])
+            chisq = calc_chi_squared_nu(model_offsets_post[mask],
+                                        full_errs_post[mask], 1).value
             w_means.append(w_mean)
             eotwms.append(eotwm)
+            ax_sigma_post.annotate(f'{chisq:.2f}', (midpoints[i], w_means[i]),
+                                   xytext=(i * 0.125 + 0.0625, -0.02),
+                                   color='RoyalBlue',
+                                   textcoords='axes fraction',
+                                   horizontalalignment='center',
+                                   verticalalignment='top')
 
         midpoints = np.array(midpoints)
         w_means = np.array(w_means)
@@ -838,19 +919,25 @@ def plot_model_diff_vs_pair_separation(star, model):
                                marker='o')
         ax_sigma_post.errorbar(midpoints, w_means / eotwms,
                                linestyle=':', marker='o',
-                               color='ForestGreen',
-                               label=r'$\sigma$-value')
-        ax_sigma_post.legend()
+                               color='ForestGreen')
         ax_sigma_hist_post.hist(sigma_values,
                                 bins=[x for x in np.linspace(-5, 5, num=50)],
                                 color='Black', histtype='step',
                                 orientation='horizontal')
-        ax_post.legend()
 
     # Save out the plot.
+    plots_dir = plots_dir / f'{n_sigma}-sigma'
+    if not plots_dir.exists():
+        os.mkdir(plots_dir)
     filepath = plots_dir /\
         f'{star.name}_{star.numObs}_obs_{n_sigma}sigma_{model}_offsets.png'
     fig.savefig(str(filepath))
+    plt.close('all')
+    return (star.name,
+            star.numObsPre, chi_squared_nu_pre,
+            w_mean_pre, eotwm_pre,
+            star.numObsPost, chi_squared_nu_post,
+            w_mean_post, eotwm_post)
 
 
 def create_example_plots():
@@ -1110,12 +1197,15 @@ parameter_options = parser.add_argument_group(
     description="Select what parameters to plot the pairs-wise velocity"
     " separations by.")
 
-parser.add_argument('star', nargs='?', default=None, const=None, type=str,
+parser.add_argument('star', nargs='*', default=None, const=None, type=str,
                     help='The name of a single, specific star to make a plot'
                     ' from. If not given will default to using all stars.')
 
 parser.add_argument('-m', '--model', type=str, action='store',
                     help='The name of a model to test against.')
+parser.add_argument('--sigma', type=float, action='store',
+                    help='The number of sigma at which to trim outliers.')
+
 parser.add_argument('--heliocentric-distance', action='store_true',
                     help='Plot as a function of distance from the Sun.')
 parser.add_argument('--galactocentric-distance', action='store_true',
@@ -1161,7 +1251,8 @@ args = parser.parse_args()
 vprint = vcl.verbose_print(args.verbose)
 
 # Get the star from the name.
-star = get_star(args.star)
+if len(args.star) == 1:
+    star = get_star(args.star[0])
 
 csv_dir = vcl.output_dir / 'pair_separation_files'
 
@@ -1194,11 +1285,32 @@ if args.example_plot:
     create_example_plots()
 
 if args.star is not None and args.pair_label:
-    plot_pair_stability(star)
+    plot_pair_stability(star, args.pair_label)
 
 if args.star is not None and args.sigma_sys_vs_pair_separations:
     plot_sigma_sys_vs_pair_separation(star)
 
-if args.star is not None and args.model is not None\
+# Create plots as a function of pair separation distance.
+if args.star is not None and args.model is not None and args.sigma is not None\
         and args.model_diff_vs_pair_separations:
-    plot_model_diff_vs_pair_separation(star, args.model.replace('-', '_'))
+    if len(args.star) == 1:
+        plot_model_diff_vs_pair_separation(star, args.model.replace('-', '_'),
+                                           n_sigma=args.sigma)
+    elif len(args.star) > 1:
+        results_file = vcl.output_dir /\
+            f'pair_separation_files/star_pair_separation_{args.sigma}sigma.csv'
+        results = []
+        for star in tqdm(args.star):
+            results.append(plot_model_diff_vs_pair_separation(
+                get_star(star), args.model.replace('-', '_'),
+                n_sigma=args.sigma))
+        with open(results_file, 'w', newline='') as f:
+            datawriter = csv.writer(f)
+            header = ('#star_name',
+                      '#obs_pre', 'chisq_pre',
+                      'w_mean_pre', 'eotwm_pre',
+                      '#obs_post', 'chisq_post',
+                      'w_mean_post', 'eotwm_post')
+            datawriter.writerow(header)
+            for row in results:
+                datawriter.writerow(row)
