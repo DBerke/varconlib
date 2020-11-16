@@ -27,7 +27,8 @@ import numpy as np
 import numpy.ma as ma
 from tqdm import tqdm, trange
 import unyt as u
-import unyt.dimensions as udim
+from unyt import accepts, returns
+from unyt.dimensions import length, time, temperature
 
 import varconlib as vcl
 from varconlib.exceptions import (HDF5FileNotFoundError,
@@ -76,10 +77,14 @@ class Star(object):
         the star, with each row (corresponding to an observation) having been
         corrected by the measured radial velocity offset for that observation,
         determined as the mean value of the offsets of all transitions for that
-        observation from fitOffsetsCorrectedArray.
+        observation from `fitOffsetsCorrectedArray`.
     fitOffsetsCorrectedArray : `unyt.unyt_array`
         A 2D array holding the measured offsets from `fitOffsetsArray`
         corrected for the systematic calibration errors in HARPS.
+    fitMeansCCDCorrectedArray : `unyt.unyt_array`
+        A two-dimensional array created by subtracting `ccdCorrectionArray`
+        from `fitMeansArray`, to get an array of wavelengths with calibration
+        corrections but no fitting-model-derived corrections applied.
     ccdCorrectionArray : `unyt.unyt_array`
         A 2D array holding the corrections computed for each transition at its
         location on the CCD, applied to `fitOffsetsArray` to create
@@ -209,6 +214,8 @@ class Star(object):
                        'fitOffsetsCorrectedArray',
                    '/arrays/systematic_corrections':
                        'ccdCorrectionArray',
+                   '/arrays/transition_ccd_corrected_array':
+                       'fitMeansCCDCorrectedArray',
                    # Transition values corrected by a model:
                    '/arrays/model_corrected_masked_transitions':
                        'transitionModelOffsetsArray',
@@ -652,7 +659,7 @@ class Star(object):
         self.transitionSysErrorsArray = u.unyt_array(sigma_sys_array,
                                                      units='m/s')
 
-    def createPairSeparationArrays(self):
+    def createPairSeparationArrays(self, flip=True):
         """Create attributes containing pair separations and associated errors.
 
         This method creates attributes called pairSeparationsArray and
@@ -678,10 +685,16 @@ class Star(object):
         self.pairSepErrorsArray = np.full_like(self.pairSeparationsArray,
                                                np.nan, dtype=float)
 
-        self.fitMeansCorrectedArray = shift_wavelength(self.fitMeansArray,
-                                                       self.ccdCorrectionArray)
+        # Invert the CCD corrections, as they represent the measured offsets
+        # from the correct value, and thus need to be shifted oppositely.
+        if flip:
+            self.fitMeansCCDCorrectedArray = shift_wavelength(
+                self.fitMeansArray, -1 * self.ccdCorrectionArray)
+        else:
+            self.fitMeansCCDCorrectedArray = shift_wavelength(
+                self.fitMeansArray, self.ccdCorrectionArray)
         # Set all values where the mask is True (=bad) to NaN.
-        self.fitMeansCorrectedArray[self.transitionOutliersMask] = np.nan
+        self.fitMeansCCDCorrectedArray[self.transitionOutliersMask] = np.nan
 
         for pair in tqdm(self.pairsList):
             for order_num in pair.ordersToMeasureIn:
@@ -692,10 +705,10 @@ class Star(object):
                                    str(order_num)))
 
                 self.pairSeparationsArray[:, self.p_index(pair_label)] =\
-                    wave2vel(self.fitMeansCorrectedArray[:,
-                                                         self.t_index(label1)],
-                             self.fitMeansCorrectedArray[:,
-                                                         self.t_index(label2)])
+                    wave2vel(self.fitMeansCCDCorrectedArray[
+                                 :, self.t_index(label1)],
+                             self.fitMeansCCDCorrectedArray[
+                                 :, self.t_index(label2)])
 
                 self.pairSepErrorsArray[:, self.p_index(pair_label)] =\
                     np.sqrt(self.fitErrorsArray[:, self.t_index(label1)]**2 +
@@ -742,7 +755,7 @@ class Star(object):
         # Use the parameters derived from results with outliers removed.
         if filename is None:
             filename = vcl.output_dir /\
-                f'fit_params/{model_func}_pairs_params.hdf5'
+                f'fit_params/{model_func}_pairs_{n_sigma:.1f}sigma_params.hdf5'
         fit_results_dict = get_params_file(filename)
         function = fit_results_dict['model_func']
         coeffs_dict = fit_results_dict['coeffs']
@@ -1186,6 +1199,7 @@ class Star(object):
                     self._pairs_list = pairs_list
 
     @property
+    @returns(length/time)
     def radialVelocity(self):
         """Return the radial velocity of this star."""
         if self._radialVelocity is None:
@@ -1204,12 +1218,12 @@ class Star(object):
         return self._radialVelocity
 
     @radialVelocity.setter
+    @accepts(new_RV=length/time)
     def radialVelocity(self, new_RV):
-        assert new_RV.units.dimensions == udim.length / udim.time,\
-            f'New radial velocity has units {new_RV.units.dimensions}!'
         self._radialVelocity = new_RV
 
     @property
+    @returns(temperature)
     def temperature(self):
         """Return the temperature of this star."""
         if self._temperature is None:
@@ -1218,8 +1232,8 @@ class Star(object):
 
     @temperature.setter
     def temperature(self, new_T):
-        assert new_T.units.dimensions == udim.temperature,\
-            f'New temperature has units {new_T.units}!'
+        assert new_T.units.dimensions == temperature,\
+              f'New temperature has units {new_T.units}!'
         self._temperature = new_T
 
     @property
