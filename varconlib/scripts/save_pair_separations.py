@@ -220,7 +220,7 @@ if __name__ == '__main__':
 
     parser.add_argument('star_names', action='store', type=str, nargs='+',
                         help='The names of stars (directories) containing the'
-                        ' stars to be used in the plot.')
+                        ' stars to be used.')
 
     parser.add_argument('-S', '--stars', action='store_true',
                         help="Create a file containing static information for"
