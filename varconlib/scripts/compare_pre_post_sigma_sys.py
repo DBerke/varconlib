@@ -42,6 +42,7 @@ ks_stats = []
 tt_p_values = []
 tt_stats = []
 
+# !!! Need to check if star hasObsPost before making post_slice.
 pre_slice = slice(None, star.fiberSplitIndex)
 post_slice = slice(star.fiberSplitIndex, None)
 
