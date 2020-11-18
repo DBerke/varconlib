@@ -607,17 +607,19 @@ class Star(object):
 
         for key, col_num in tqdm(self._transition_bidict.items()):
 
+            label_pre = key + '_pre'
+            # Get the systematic error for this transition:
+            sigma_sys_array[0, col_num] = sigma_sys_dict[label_pre].value
+
+            label_post = key + '_post'
+            sigma_sys_array[1, col_num] = sigma_sys_dict[label_post].value
+
             if self.hasObsPre:
-                label = key + '_pre'
+
                 pre_slice = slice(None, self.fiberSplitIndex)
-
-                # Get the systematic error for this transition:
-                sigma_sys = sigma_sys_dict[label]
-                sigma_sys_array[0, col_num] = sigma_sys.value
-
                 # Compute the model value for this transition and star.
                 model_value = u.unyt_quantity(function(stellar_params,
-                                                       *coeffs_dict[label]),
+                                                       *coeffs_dict[label_pre]),
                                               units=u.m/u.s)
                 # Store the model value for the pre-change era.
                 model_values_array[0, col_num] = model_value.value
@@ -627,14 +629,10 @@ class Star(object):
                     model_value
 
             if self.hasObsPost:
-                label = key + '_post'
+
                 post_slice = slice(self.fiberSplitIndex, None)
-
-                sigma_sys = sigma_sys_dict[label]
-                sigma_sys_array[1, col_num] = sigma_sys.value
-
                 model_value = u.unyt_array(function(stellar_params,
-                                                    *coeffs_dict[label]),
+                                                    *coeffs_dict[label_post]),
                                            units=u.m/u.s)
                 model_values_array[1, col_num] = model_value.value
                 corrected_array[post_slice, col_num] =\
@@ -719,7 +717,7 @@ class Star(object):
         self.pairSepErrorsArray *= u.m/u.s
 
     def createPairModelCorrectedArrays(self, model_func='quadratic',
-                                       filename=None, n_sigma=5.0):
+                                       filename=None, n_sigma=4.0):
         """Return an array corrected by a function and a mask of outliers.
 
         This method takes a function of three stellar parameters (temperature,
@@ -784,17 +782,19 @@ class Star(object):
 
         for key, col_num in tqdm(self._pair_bidict.items()):
 
+            label_pre = key + '_pre'
+            # Get the systematic error for this transition:
+            sigma_sys_array[0, col_num] = sigma_sys_dict[label_pre].value
+
+            label_post = key + '_post'
+            sigma_sys_array[1, col_num] = sigma_sys_dict[label_post].value
+
             if self.hasObsPre:
-                label = key + '_pre'
+
                 pre_slice = slice(None, self.fiberSplitIndex)
-
-                # Get the systematic error for this transition:
-                sigma_sys = sigma_sys_dict[label]
-                sigma_sys_array[0, col_num] = sigma_sys.value
-
                 # Compute the model_value for this transition.
-                model_value = u.unyt_quantity(function(stellar_params,
-                                                       *coeffs_dict[label]),
+                model_value = u.unyt_quantity(function(
+                    stellar_params, *coeffs_dict[label_pre]),
                                               units=u.m/u.s)
                 # Store the model value for the pre-change era.
                 model_values_array[0, col_num] = model_value.value
@@ -804,14 +804,13 @@ class Star(object):
                     model_value
 
             if self.hasObsPost:
-                label = key + '_post'
+
+                # Note: only define post_slice if the star has post-change
+                # observations, otherwise it grabs all pre-change observations
+                # as self.fiberSplitIndex is None.
                 post_slice = slice(self.fiberSplitIndex, None)
-
-                sigma_sys = sigma_sys_dict[label]
-                sigma_sys_array[1, col_num] = sigma_sys.value
-
-                model_value = u.unyt_array(function(stellar_params,
-                                                    *coeffs_dict[label]),
+                model_value = u.unyt_quantity(function(
+                    stellar_params, *coeffs_dict[label_post]),
                                            units=u.m/u.s)
                 model_values_array[1, col_num] = model_value.value
                 corrected_array[post_slice, col_num] =\
@@ -859,12 +858,25 @@ class Star(object):
 
         """
 
+        # Define a default list to return if there are no observations for this
+        # star for this era.
+        info_list = [self.name, 0,
+                     np.nan, np.nan, np.nan, np.nan,
+                     np.nan, np.nan, np.nan, np.nan,
+                     np.nan, np.nan, np.nan, np.nan]
+
         if era == 'pre':
-            time_slice = slice(None, self.fiberSplitIndex)
-            era_index = 0
+            if self.hasObsPre:
+                time_slice = slice(None, self.fiberSplitIndex)
+                era_index = 0
+            else:
+                return info_list
         elif era == 'post':
-            time_slice = slice(self.fiberSplitIndex, None)
-            era_index = 1
+            if self.hasObsPost:
+                time_slice = slice(self.fiberSplitIndex, None)
+                era_index = 1
+            else:
+                return info_list
         else:
             raise RuntimeError(f'Incorrect value for era: {era}')
 
@@ -883,74 +895,74 @@ class Star(object):
 
         p_sigma_sys = float(self.pairSysErrorsArray[era_index, pair_col])
 
-        # If no non-NaN pair separation measurements for this era, trying to
-        # calculate results from them will fail, so just fill out the results
-        # with NaNs.
+        # Careful about the bare time_slice here; but it should be fine because
+        # of the checks earlier that the star actually has observations for the
+        # specified era.
         if np.isnan(self.pairModelOffsetsArray[time_slice, pair_col]).all():
-            info_list = [self.name, 0,
-                         np.nan, np.nan, np.nan, np.nan,
-                         np.nan, np.nan, np.nan, np.nan,
-                         np.nan, np.nan, np.nan, np.nan]
-        else:
-            offsets1 = ma.masked_invalid(
-                self.transitionModelOffsetsArray[time_slice,
-                                                 col1].value)
-            offsets2 = ma.masked_invalid(
-                self.transitionModelOffsetsArray[time_slice,
-                                                 col2].value)
+            info_list[4] = p_sigma_sys
+            info_list[8] = sigma_sys1
+            info_list[12] = sigma_sys2
+            return info_list
 
-            for i in range(len(offsets1)):
-                if not (offsets1[i] and offsets2[i]):
-                    offsets1.mask[i] = True
-                    offsets2.mask[i] = True
+        offsets1 = ma.masked_invalid(
+            self.transitionModelOffsetsArray[time_slice,
+                                             col1].value)
+        offsets2 = ma.masked_invalid(
+            self.transitionModelOffsetsArray[time_slice,
+                                             col2].value)
 
-            errs1 = ma.array(
-                self.transitionModelErrorsArray[time_slice,
-                                                col1].value)
-            errs2 = ma.array(
-                self.transitionModelErrorsArray[time_slice,
-                                                col2].value)
-            errs1.mask = offsets1.mask
-            errs2.mask = offsets2.mask
-            assert offsets1.count() == offsets2.count()
-            assert offsets1.count() == errs1.count()
-            assert offsets2.count() == errs2.count()
+        for i in range(len(offsets1)):
+            if not (offsets1[i] and offsets2[i]):
+                offsets1.mask[i] = True
+                offsets2.mask[i] = True
 
-            weighted_mean1, sum1 = ma.average(offsets1,
-                                              weights=errs1**-2,
-                                              returned=True)
-            weighted_mean2, sum2 = np.average(offsets2,
-                                              weights=errs2**-2,
-                                              returned=True)
+        errs1 = ma.array(
+            self.transitionModelErrorsArray[time_slice,
+                                            col1].value)
+        errs2 = ma.array(
+            self.transitionModelErrorsArray[time_slice,
+                                            col2].value)
+        errs1.mask = offsets1.mask
+        errs2.mask = offsets2.mask
+        assert offsets1.count() == offsets2.count()
+        assert offsets1.count() == errs1.count()
+        assert offsets2.count() == errs2.count()
 
-            chi_squared1 = calc_chi_squared_nu(offsets1 - weighted_mean1,
-                                               errs1, 1)
-            chi_squared2 = calc_chi_squared_nu(offsets2 - weighted_mean2,
-                                               errs2, 1)
+        weighted_mean1, sum1 = ma.average(offsets1,
+                                          weights=errs1**-2,
+                                          returned=True)
+        weighted_mean2, sum2 = np.average(offsets2,
+                                          weights=errs2**-2,
+                                          returned=True)
 
-            eotwm1 = 1 / np.sqrt(sum1)
-            eotwm2 = 1 / np.sqrt(sum2)
+        chi_squared1 = calc_chi_squared_nu(offsets1 - weighted_mean1,
+                                           errs1, 1)
+        chi_squared2 = calc_chi_squared_nu(offsets2 - weighted_mean2,
+                                           errs2, 1)
 
-            pair_offsets = ma.masked_invalid(
-                self.pairModelOffsetsArray[time_slice,
-                                           pair_col].to(u.m/u.s).value)
-            pair_errs = ma.masked_invalid(
-                self.pairModelErrorsArray[time_slice,
-                                          pair_col].to(u.m/u.s).value)
+        eotwm1 = 1 / np.sqrt(sum1)
+        eotwm2 = 1 / np.sqrt(sum2)
 
-            pair_weighted_mean, p_sum = ma.average(pair_offsets,
-                                                   weights=pair_errs**-2,
-                                                   returned=True)
-            p_chi_squared = calc_chi_squared_nu(pair_offsets -
-                                                pair_weighted_mean,
-                                                pair_errs, 1)
-            p_eotwm = 1 / np.sqrt(p_sum)
+        pair_offsets = ma.masked_invalid(
+            self.pairModelOffsetsArray[time_slice,
+                                       pair_col].to(u.m/u.s).value)
+        pair_errs = ma.masked_invalid(
+            self.pairModelErrorsArray[time_slice,
+                                      pair_col].to(u.m/u.s).value)
 
-            info_list = [self.name, pair_offsets.count(),
-                         pair_weighted_mean, p_eotwm,
-                         p_sigma_sys, p_chi_squared,
-                         weighted_mean1, eotwm1, sigma_sys1, chi_squared1,
-                         weighted_mean2, eotwm2, sigma_sys2, chi_squared2]
+        pair_weighted_mean, p_sum = ma.average(pair_offsets,
+                                               weights=pair_errs**-2,
+                                               returned=True)
+        p_chi_squared = calc_chi_squared_nu(pair_offsets -
+                                            pair_weighted_mean,
+                                            pair_errs, 1)
+        p_eotwm = 1 / np.sqrt(p_sum)
+
+        info_list = [self.name, pair_offsets.count(),
+                     pair_weighted_mean, p_eotwm,
+                     p_sigma_sys, p_chi_squared,
+                     weighted_mean1, eotwm1, sigma_sys1, chi_squared1,
+                     weighted_mean2, eotwm2, sigma_sys2, chi_squared2]
 
         for i, item in enumerate(info_list):
             if item == 0:

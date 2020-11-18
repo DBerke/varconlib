@@ -409,52 +409,191 @@ def plot_pair_stability(star, pair_label):
     except KeyError:
         raise
 
-    x = [i for i in range(star.numObs)]
-    bervs = star.bervArray
-    diffs = star.pairModelOffsetsArray[:, col_num]
-    errs_stat = star.pairModelErrorsArray[:, col_num]
-    # print(diffs)
-
-    diffs_no_nans, mask = remove_nans(diffs, return_mask=True)
-    # print(diffs_no_nans)
-    m_diffs = ma.array(diffs_no_nans.to(u.m/u.s).value)
-    # print(m_diffs)
-    m_errs = ma.array(errs_stat[mask].value)
-    bervs_masked = bervs[mask]
-
-    weighted_mean = np.average(m_diffs, weights=m_errs**-2)
-    print(weighted_mean)
-
-    sigma = np.std(diffs_no_nans).to(u.m/u.s)
-
-    results = find_sys_scatter(constant_model, bervs_masked,
-                               m_diffs,
-                               m_errs, (weighted_mean,),
-                               n_sigma=3, tolerance=0.001,
-                               verbose=False)
-
-    sys_err = results['sys_err_list'][-1] * u.m / u.s
-    print(results['chi_squared_list'][-1])
-
-    # vprint(np.std(diffs))
+    pre_slice = slice(None, star.fiberSplitIndex)
+    post_slice = slice(star.fiberSplitIndex, None)
 
     fig = plt.figure(figsize=(10, 7), tight_layout=True)
-    ax = fig.add_subplot(1, 1, 1)
-    ax.set_xlabel('BERV (km/s)')
-    ax.set_ylabel('Pair difference (m/s)')
+    gs = GridSpec(2, 1, figure=fig)
+    ax_pre = fig.add_subplot(gs[0, 0])
+    ax_post = fig.add_subplot(gs[1, 0])
+    for ax in (ax_pre, ax_post):
+        ax.set_xlabel('BERV (km/s)')
+    ax_pre.set_ylabel('Pair difference (m/s) (pre)')
+    ax_post.set_ylabel('Pair difference (m/s) (post)')
 
-    # ax.axvline(x=star.fiberSplitIndex, linestyle='--', color='Black')
-    ax.errorbar(bervs_masked, m_diffs,
-                yerr=m_errs,
-                linestyle='',
-                marker='o',
-                color='DarkSalmon', ecolor='Black', markeredgecolor='Black',
-                label=r'$\sigma:$'
-                f' {sigma:.3f},'
-                r' $\sigma_\mathrm{sys}:$'
-                f' {sys_err:.3f}')
+    separation_limits = [i for i in range(-25, 30, 5)]
 
-    ax.legend()
+    if star.hasObsPre:
+        bervs = star.bervArray[pre_slice]
+        diffs = star.pairModelOffsetsArray[pre_slice, col_num]
+        errs_stat = star.pairModelErrorsArray[pre_slice, col_num]
+
+        diffs_no_nans, nan_mask = remove_nans(diffs, return_mask=True)
+        # print(diffs_no_nans)
+        m_diffs = ma.array(diffs_no_nans.to(u.m/u.s).value)
+        # print(m_diffs)
+        m_errs = ma.array(errs_stat[nan_mask].value)
+        bervs_masked = bervs[nan_mask]
+
+        weighted_mean = np.average(m_diffs, weights=m_errs**-2)
+        # print(weighted_mean)
+
+        sigma = np.std(diffs_no_nans).to(u.m/u.s)
+
+        results = find_sys_scatter(constant_model, bervs_masked,
+                                   m_diffs,
+                                   m_errs, (weighted_mean,),
+                                   n_sigma=3, tolerance=0.001,
+                                   verbose=False)
+
+        sys_err = results['sys_err_list'][-1] * u.m / u.s
+        # print(results['chi_squared_list'][-1])
+
+        # vprint(np.std(diffs))
+
+        # ax.axvline(x=star.fiberSplitIndex, linestyle='--', color='Black')
+        ax_pre.errorbar(bervs_masked, m_diffs, yerr=m_errs,
+                        linestyle='', marker='o',
+                        color='Chocolate',
+                        # ecolor='Black',
+                        markeredgecolor='Black',
+                        label=r'$\sigma:$'
+                        f' {sigma:.3f},'
+                        r' $\sigma_\mathrm{sys}:$'
+                        f' {sys_err:.3f}')
+
+        midpoints, w_means, eotwms = [], [], []
+        bin_num = len(separation_limits) - 1
+        for i, lims in zip(range(bin_num),
+                           pairwise(separation_limits)):
+            mask = np.where((bervs_masked > lims[0]) &
+                            (bervs_masked < lims[1]))
+            if len(m_diffs[mask]) == 0:
+                midpoints.append(np.nan)
+                w_means.append(np.nan)
+                eotwms.append(np.nan)
+                continue
+            midpoints.append((lims[1] + lims[0]) / 2)
+            w_mean, eotwm = weighted_mean_and_error(m_diffs[mask],
+                                                    m_errs[mask])
+            chisq = calc_chi_squared_nu(m_diffs[mask],
+                                        m_errs[mask], 1)
+            w_means.append(w_mean)
+            eotwms.append(eotwm)
+            ax_pre.annotate(f'{chisq:.2f}', (midpoints[i], w_means[i]),
+                            xytext=(i * bin_num/100 + bin_num/200, -0.02),
+                            color='SaddleBrown',
+                            textcoords='axes fraction',
+                            horizontalalignment='center',
+                            verticalalignment='top')
+
+        midpoints = np.array(midpoints)
+        w_means = np.array(w_means)
+        eotwms = np.array(eotwms)
+
+        # sigma_values = model_offsets_pre / full_errs_pre
+
+        # ax_sigma_pre.errorbar(average_separations_pre,
+        #                       sigma_values,
+        #                       color='Chocolate', linestyle='',
+        #                       marker='.')
+        ax_pre.errorbar(midpoints, w_means, yerr=eotwms,
+                        linestyle='-', color='Red',
+                        marker='')
+        # ax_sigma_pre.errorbar(midpoints, w_means / eotwms,
+        #                       linestyle=':', marker='o',
+        #                       color='ForestGreen')
+        # ax_sigma_hist_pre.hist(sigma_values,
+        #                        bins=[x for x in np.linspace(-5, 5, num=50)],
+        #                        color='Black', histtype='step',
+        #                        orientation='horizontal')
+
+    if star.hasObsPost:
+        bervs = star.bervArray[post_slice]
+        diffs = star.pairModelOffsetsArray[post_slice, col_num]
+        errs_stat = star.pairModelErrorsArray[post_slice, col_num]
+
+        diffs_no_nans, nan_mask = remove_nans(diffs, return_mask=True)
+        # print(diffs_no_nans)
+        m_diffs = ma.array(diffs_no_nans.to(u.m/u.s).value)
+        # print(m_diffs)
+        m_errs = ma.array(errs_stat[nan_mask].value)
+        bervs_masked = bervs[nan_mask]
+
+        weighted_mean = np.average(m_diffs, weights=m_errs**-2)
+        # print(weighted_mean)
+
+        sigma = np.std(diffs_no_nans).to(u.m/u.s)
+
+        results = find_sys_scatter(constant_model, bervs_masked,
+                                   m_diffs,
+                                   m_errs, (weighted_mean,),
+                                   n_sigma=3, tolerance=0.001,
+                                   verbose=False)
+
+        sys_err = results['sys_err_list'][-1] * u.m / u.s
+        # print(results['chi_squared_list'][-1])
+
+        # vprint(np.std(diffs))
+
+        # ax.axvline(x=star.fiberSplitIndex, linestyle='--', color='Black')
+        ax_post.errorbar(bervs_masked, m_diffs, yerr=m_errs,
+                         linestyle='', marker='o',
+                         color='DodgerBlue',
+                         # ecolor='Black',
+                         markeredgecolor='Black',
+                         label=r'$\sigma:$'
+                         f' {sigma:.3f},'
+                         r' $\sigma_\mathrm{sys}:$'
+                         f' {sys_err:.3f}')
+
+        midpoints, w_means, eotwms = [], [], []
+        bin_num = len(separation_limits) - 1
+        for i, lims in zip(range(bin_num),
+                           pairwise(separation_limits)):
+            mask = np.where((bervs_masked > lims[0]) &
+                            (bervs_masked < lims[1]))
+            if len(m_diffs[mask]) == 0:
+                midpoints.append(np.nan)
+                w_means.append(np.nan)
+                eotwms.append(np.nan)
+                continue
+            midpoints.append((lims[1] + lims[0]) / 2)
+            w_mean, eotwm = weighted_mean_and_error(m_diffs[mask],
+                                                    m_errs[mask])
+            chisq = calc_chi_squared_nu(m_diffs[mask],
+                                        m_errs[mask], 1)
+            w_means.append(w_mean)
+            eotwms.append(eotwm)
+            ax_post.annotate(f'{chisq:.2f}', (midpoints[i], w_means[i]),
+                             xytext=(i * bin_num/100 + bin_num/200, -0.02),
+                             color='RoyalBlue',
+                             textcoords='axes fraction',
+                             horizontalalignment='center',
+                             verticalalignment='top')
+
+        midpoints = np.array(midpoints)
+        w_means = np.array(w_means)
+        eotwms = np.array(eotwms)
+
+        # sigma_values = model_offsets_pre / full_errs_pre
+
+        # ax_sigma_pre.errorbar(average_separations_pre,
+        #                       sigma_values,
+        #                       color='Chocolate', linestyle='',
+        #                       marker='.')
+        ax_post.errorbar(midpoints, w_means, yerr=eotwms,
+                         linestyle='-', color='Red',
+                         marker='')
+        # ax_sigma_pre.errorbar(midpoints, w_means / eotwms,
+        #                       linestyle=':', marker='o',
+        #                       color='ForestGreen')
+        # ax_sigma_hist_pre.hist(sigma_values,
+        #                        bins=[x for x in np.linspace(-5, 5, num=50)],
+        #                        color='Black', histtype='step',
+        #                        orientation='horizontal')
+
+        # ax.legend()
     plt.show()
 
 
@@ -846,7 +985,7 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=5.0):
         model_offsets_post = np.array(model_offsets_post)
 
     if star.hasObsPre:
-        midpoints, w_means, eotwms, chisq = [], [], [], []
+        midpoints, w_means, eotwms = [], [], []
         for i, lims in zip(range(8), pairwise(separation_limits)):
             midpoints.append((lims[1] + lims[0]) / 2)
             mask = np.where((average_separations_pre > lims[0]) &
