@@ -1487,7 +1487,8 @@ class Star(object):
         if value not in row_values.keys():
             raise RuntimeError('Improper value for keyword "value"!')
 
-        stellar_props_file = vcl.data_dir / 'StellarSampleData.csv'
+        stellar_props_file = vcl.data_dir /\
+            'Nordstrom2004_StellarSampleData.csv'
         data = np.loadtxt(stellar_props_file, delimiter=',', dtype=str)
         for row in data:
             if row[8] == self.name:
@@ -1512,7 +1513,8 @@ class Star(object):
 
         """
 
-        stellar_props_file = vcl.data_dir / 'StellarSampleData.csv'
+        stellar_props_file = vcl.data_dir /\
+            'Nordstrom2004_StellarSampleData.csv'
         data = np.loadtxt(stellar_props_file, delimiter=',', dtype=str)
         for row in data:
             if row[8] == star_name:
