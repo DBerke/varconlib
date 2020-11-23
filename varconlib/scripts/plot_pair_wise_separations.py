@@ -17,6 +17,7 @@ from itertools import tee
 import os
 from pathlib import Path
 import pickle
+from pprint import pprint
 import sys
 
 from astropy.coordinates import SkyCoord
@@ -709,7 +710,7 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=5.0):
                      'pair_separation_investigation')
 
     # Get the star pair corrections arrays for the given model.
-    if n_sigma != 5.0:
+    if n_sigma != 4.0:
         star.createPairModelCorrectedArrays(model_func=model, n_sigma=n_sigma)
 
     # model_func = getattr(varconlib.fitting, f'{model}_model')
@@ -1043,6 +1044,17 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=5.0):
                                    horizontalalignment='center',
                                    verticalalignment='top')
 
+            if lims[0] == 500 and lims[1] == 600:
+                print(w_mean)
+                print(eotwm)
+                # outfile = plots_dir /\
+                #     f'{n_sigma}sigma_bin_values_{star.name}.csv'
+                # with open(outfile, 'w', newline='') as f:
+                #     datawriter = csv.writer(f)
+                #     for value, err in zip(model_offsets_post[mask],
+                #                           full_errs_post[mask].value):
+                #         datawriter.writerow((value, err))
+
         midpoints = np.array(midpoints)
         w_means = np.array(w_means)
         eotwms = np.array(eotwms)
@@ -1077,6 +1089,248 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=5.0):
             w_mean_pre, eotwm_pre,
             star.numObsPost, chi_squared_nu_post,
             w_mean_post, eotwm_post)
+
+
+def plot_duplicate_pairs(star):
+    """
+    Create a plot comparing the duplicate pairs for the given star.
+
+    Parameters
+    ----------
+    star : `varconlib.star.Star`
+        The star to use for comparing its duplicate pairs.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    # Define a function to get the weighted mean of a given array, with given
+    # time-slice and column index
+    def get_weighted_mean(values_array, errs_array, time_slice, col_index):
+        values, mask = remove_nans(values_array[time_slice, col_index],
+                                   return_mask=True)
+        errs = errs_array[time_slice, col_index][mask]
+
+        try:
+            return weighted_mean_and_error(values, errs)
+        except ZeroDivisionError:
+            return (np.nan, np.nan)
+
+    pair_sep_pre1, pair_model_pre1 = [], []
+    pair_sep_err_pre1, pair_model_err_pre1 = [], []
+    pair_sep_post1, pair_model_post1 = [], []
+    pair_sep_err_post1, pair_model_err_post1 = [], []
+
+    pair_sep_pre2, pair_model_pre2 = [], []
+    pair_sep_err_pre2, pair_model_err_pre2 = [], []
+    pair_sep_post2, pair_model_post2 = [], []
+    pair_sep_err_post2, pair_model_err_post2 = [], []
+
+    pair_order_numbers = []
+    for pair in tqdm(star.pairsList):
+        if len(pair.ordersToMeasureIn) == 2:
+            pair_order_numbers.append(pair.ordersToMeasureIn[1])
+            p_index1 = star.p_index('_'.join([pair.label,
+                                              str(pair.ordersToMeasureIn[0])]))
+            p_index2 = star.p_index('_'.join([pair.label,
+                                              str(pair.ordersToMeasureIn[1])]))
+
+            if star.hasObsPre:
+                # Get the values for the first duplicate
+                time_slice = slice(None, star.fiberSplitIndex)
+                w_mean, eotwm = get_weighted_mean(
+                    star.pairSeparationsArray,
+                    star.pairSepErrorsArray,
+                    time_slice,
+                    p_index1)
+                pair_sep_pre1.append(w_mean)
+                pair_sep_err_pre1.append(eotwm)
+                w_mean, eotwm = get_weighted_mean(
+                    star.pairModelOffsetsArray,
+                    star.pairModelErrorsArray,
+                    time_slice,
+                    p_index1)
+                pair_model_pre1.append(w_mean)
+                pair_model_err_pre1.append(eotwm)
+
+                # Get the values for the second duplicate
+                time_slice = slice(None, star.fiberSplitIndex)
+                w_mean, eotwm = get_weighted_mean(
+                    star.pairSeparationsArray,
+                    star.pairSepErrorsArray,
+                    time_slice,
+                    p_index2)
+                pair_sep_pre2.append(w_mean)
+                pair_sep_err_pre2.append(eotwm)
+                w_mean, eotwm = get_weighted_mean(
+                    star.pairModelOffsetsArray,
+                    star.pairModelErrorsArray,
+                    time_slice,
+                    p_index2)
+                pair_model_pre2.append(w_mean)
+                pair_model_err_pre2.append(eotwm)
+
+            if star.hasObsPost:
+                # Get the values for the first instance.
+                time_slice = slice(star.fiberSplitIndex, None)
+                w_mean, eotwm = get_weighted_mean(
+                    star.pairSeparationsArray,
+                    star.pairSepErrorsArray,
+                    time_slice,
+                    p_index1)
+                pair_sep_post1.append(w_mean)
+                pair_sep_err_post1.append(eotwm)
+                w_mean, eotwm = get_weighted_mean(
+                    star.pairModelOffsetsArray,
+                    star.pairModelErrorsArray,
+                    time_slice,
+                    p_index1)
+                pair_model_post1.append(w_mean)
+                pair_model_err_post1.append(eotwm)
+
+                # Get the values for the second instance.
+                time_slice = slice(star.fiberSplitIndex, None)
+                w_mean, eotwm = get_weighted_mean(
+                    star.pairSeparationsArray,
+                    star.pairSepErrorsArray,
+                    time_slice,
+                    p_index2)
+                pair_sep_post2.append(w_mean)
+                pair_sep_err_post2.append(eotwm)
+                w_mean, eotwm = get_weighted_mean(
+                    star.pairModelOffsetsArray,
+                    star.pairModelErrorsArray,
+                    time_slice,
+                    p_index2)
+                pair_model_post2.append(w_mean)
+                pair_model_err_post2.append(eotwm)
+
+    # pprint(pair_order_numbers)
+
+    if star.hasObsPre:
+        pair_sep_pre1 = np.array(pair_sep_pre1)
+        pair_model_pre1 = np.array(pair_model_pre1)
+        pair_sep_err_pre1 = np.array(pair_sep_err_pre1)
+        pair_model_err_pre1 = np.array(pair_model_err_pre1)
+        pair_sep_pre2 = np.array(pair_sep_pre2)
+        pair_model_pre2 = np.array(pair_model_pre2)
+        pair_sep_err_pre2 = np.array(pair_sep_err_pre2)
+        pair_model_err_pre2 = np.array(pair_model_err_pre2)
+
+    if star.hasObsPost:
+        pair_sep_post1 = np.array(pair_sep_post1)
+        pair_model_post1 = np.array(pair_model_post1)
+        pair_sep_err_post1 = np.array(pair_sep_err_post1)
+        pair_model_err_post1 = np.array(pair_model_err_post1)
+        pair_sep_post2 = np.array(pair_sep_post2)
+        pair_model_post2 = np.array(pair_model_post2)
+        pair_sep_err_post2 = np.array(pair_sep_err_post2)
+        pair_model_err_post2 = np.array(pair_model_err_post2)
+
+    # Plot the results
+
+    fig = plt.figure(figsize=(12, 9), tight_layout=True)
+    gs = GridSpec(ncols=2, nrows=1, figure=fig,
+                  width_ratios=(1, 1))
+    ax_pre = fig.add_subplot(gs[0, 0])
+    if (star.hasObsPre and star.hasObsPost):
+        ax_post = fig.add_subplot(gs[0, 1],
+                                  sharex=ax_pre)
+    else:
+        ax_post = fig.add_subplot(gs[0, 1])
+
+    ax_pre.set_ylabel('Pair index')
+    # ax_post.set_ylabel(r'$\Delta$(Separation) post')
+    ax_pre.set_xlabel(f'(Instance 2 – Instance 1) {star.numObsPre} obs'
+                      ' (pre, m/s)')
+    ax_post.set_xlabel(f'(Instance 2 – Instance 1) {star.numObsPost} obs'
+                       ' (post, m/s)')
+
+    order_boundaries = []
+    for i in range(len(pair_order_numbers)):
+        if i == 0:
+            continue
+        if pair_order_numbers[i-1] != pair_order_numbers[i]:
+            order_boundaries.append(i - 0.5)
+
+    for ax in (ax_pre, ax_post):
+        # ax.yaxis.grid(which='major', color='Gray', alpha=0.7,
+        #               linestyle='-')
+        # ax.yaxis.grid(which='minor', color='Gray', alpha=0.6,
+        #               linestyle='--')
+        ax.axvline(x=0, linestyle='-', color='Gray')
+        ax.set_ylim(bottom=-1, top=56)
+        for b in order_boundaries:
+            ax.axhline(y=b, linestyle='--', color='DimGray')
+
+    if star.hasObsPre:
+        pair_indices = np.array([x for x in range(len(pair_sep_pre1))])
+    else:
+        pair_indices = np.array([x for x in range(len(pair_sep_post1))])
+    model_pair_indices = pair_indices + 0.2
+
+    if star.hasObsPre:
+        pair_diffs = pair_sep_pre2 - pair_sep_pre1
+        model_diffs = pair_model_pre2 - pair_model_pre1
+        pair_errs = np.sqrt(pair_sep_err_pre1**2 + pair_sep_err_pre2**2)
+        model_errs = np.sqrt(pair_model_err_pre1**2 + pair_model_err_pre2**2)
+
+        pairs_chisq = calc_chi_squared_nu(remove_nans(pair_diffs),
+                                          remove_nans(pair_errs), 1)
+        model_chisq = calc_chi_squared_nu(remove_nans(model_diffs),
+                                          remove_nans(model_errs), 1)
+        pairs_sigma = np.nanstd(pair_diffs)
+        model_sigma = np.nanstd(model_diffs)
+
+        ax_pre.errorbar(pair_diffs, pair_indices,
+                        xerr=pair_errs,
+                        color='Chocolate', markeredgecolor='Black',
+                        linestyle='', marker='o',
+                        label=r'Pair $\chi^2_\nu$:'
+                        f' {pairs_chisq:.2f}, RMS: {pairs_sigma:.2f}')
+        ax_pre.errorbar(model_diffs, model_pair_indices,
+                        xerr=model_errs,
+                        color='SeaGreen', markeredgecolor='Black',
+                        linestyle='', marker='o',
+                        label=r'Model $\chi^2_\nu$:'
+                        f' {model_chisq:.2f}, RMS: {model_sigma:.2f}')
+        ax_pre.legend()
+
+    if star.hasObsPost:
+        pair_diffs = pair_sep_post2 - pair_sep_post1
+        pair_errs = np.sqrt(pair_sep_err_post1**2 + pair_sep_err_post2**2)
+        model_diffs = pair_model_post2 - pair_model_post1
+        model_errs = np.sqrt(pair_model_err_post1**2 + pair_model_err_post2**2)
+
+        pairs_chisq = calc_chi_squared_nu(remove_nans(pair_diffs),
+                                          remove_nans(pair_errs), 1)
+        model_chisq = calc_chi_squared_nu(remove_nans(model_diffs),
+                                          remove_nans(model_errs), 1)
+        pairs_sigma = np.std(pair_diffs)
+        model_sigma = np.std(model_diffs)
+
+        ax_post.errorbar(pair_diffs, pair_indices,
+                         xerr=pair_errs,
+                         color='DodgerBlue', markeredgecolor='Black',
+                         linestyle='', marker='o',
+                         label=r'Pair $\chi^2_\nu$:'
+                         f' {pairs_chisq:.2f}, RMS: {pairs_sigma:.2f}')
+        ax_post.errorbar(model_diffs, model_pair_indices,
+                         xerr=model_errs,
+                         color='GoldenRod', markeredgecolor='Black',
+                         linestyle='', marker='o',
+                         label=r'Model $\chi^2_\nu$:'
+                         f' {model_chisq:.2f}, RMS: {model_sigma:.2f}')
+        ax_post.legend()
+
+    # plt.show(fig)
+    output_dir = Path('/Users/dberke/Pictures/duplicate_pairs')
+    outfile = output_dir /\
+        f'{star.name}_{star.radialVelocity.value:.2f}kms.png'
+    fig.savefig(str(outfile))
+    plt.close('all')
 
 
 def create_example_plots():
@@ -1355,6 +1609,9 @@ parser.add_argument('--sigma-sys-vs-pair-separations', action='store_true',
 parser.add_argument('--model-diff-vs-pair-separations', action='store_true',
                     help='Plot the model difference for each pair as a function'
                     ' of it weighted-mean separation.')
+parser.add_argument('--plot-duplicate-pairs', action='store_true',
+                    help='Plot differences in measured and model-corrected'
+                    ' pair separations for duplicate pairs for a given star.')
 
 parameter_options.add_argument('-T', '--temperature',
                                dest='parameters_to_plot',
@@ -1453,3 +1710,10 @@ if args.star is not None and args.model is not None and args.sigma is not None\
             datawriter.writerow(header)
             for row in results:
                 datawriter.writerow(row)
+
+if args.star is not None and args.plot_duplicate_pairs:
+    if len(args.star) == 1:
+        plot_duplicate_pairs(star)
+    elif len(args.star) > 1:
+        for star in args.star:
+            plot_duplicate_pairs(get_star(star))
