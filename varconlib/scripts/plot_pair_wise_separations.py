@@ -22,6 +22,7 @@ import sys
 
 from astropy.coordinates import SkyCoord
 import astropy.units as units
+import cmasher as cmr
 import matplotlib
 from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
@@ -1106,18 +1107,6 @@ def plot_duplicate_pairs(star):
 
     """
 
-    # Define a function to get the weighted mean of a given array, with given
-    # time-slice and column index
-    def get_weighted_mean(values_array, errs_array, time_slice, col_index):
-        values, mask = remove_nans(values_array[time_slice, col_index],
-                                   return_mask=True)
-        errs = errs_array[time_slice, col_index][mask]
-
-        try:
-            return weighted_mean_and_error(values, errs)
-        except ZeroDivisionError:
-            return (np.nan, np.nan)
-
     pair_sep_pre1, pair_model_pre1 = [], []
     pair_sep_err_pre1, pair_model_err_pre1 = [], []
     pair_sep_post1, pair_model_post1 = [], []
@@ -1331,6 +1320,142 @@ def plot_duplicate_pairs(star):
         f'{star.name}_{star.radialVelocity.value:.2f}kms.png'
     fig.savefig(str(outfile))
     plt.close('all')
+
+
+def plot_pair_depth_differences(star):
+    """
+    Create a plot to investigate pair depth differences for systematics.
+
+    Parameters
+    ----------
+    star : `varconlib.star.Star`
+        The star to plot the differences for.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    tqdm.write(f'{star.name} has {star.numObs} observations'
+               f' ({star.numObsPre} pre, {star.numObsPost} post)')
+
+    plots_dir = Path('/Users/dberke/Pictures/'
+                     'pair_depth_difference_investigation')
+
+    pair_depth_diffs = []
+    pair_depth_means = []
+    pair_model_sep_pre, pair_model_sep_post = [], []
+    pair_model_err_pre, pair_model_err_post = [], []
+
+    pre_slice = slice(None, star.fiberSplitIndex)
+    post_slice = slice(star.fiberSplitIndex, None)
+
+    for pair in star.pairsList:
+        for order_num in pair.ordersToMeasureIn:
+            pair_label = '_'.join([pair.label, str(order_num)])
+            col_index = star._pair_bidict[pair_label]
+            h_d = pair._higherEnergyTransition.normalizedDepth
+            l_d = pair._lowerEnergyTransition.normalizedDepth
+            # depth_diff = l_d - h_d
+            pair_depth_means.append((l_d + h_d) / 2)
+            pair_depth_diffs.append(abs(l_d - h_d))
+
+            if star.hasObsPre:
+                w_mean, eotwm = get_weighted_mean(star.pairModelOffsetsArray,
+                                                  star.pairModelErrorsArray,
+                                                  pre_slice, col_index)
+                pair_model_sep_pre.append(w_mean)
+                pair_model_err_pre.append(eotwm.value)
+
+            if star.hasObsPost:
+                w_mean, eotwm = get_weighted_mean(star.pairModelOffsetsArray,
+                                                  star.pairModelErrorsArray,
+                                                  post_slice, col_index)
+                pair_model_sep_post.append(w_mean)
+                pair_model_err_post.append(eotwm.value)
+
+    pair_depth_diffs = np.array(pair_depth_diffs)
+    pair_depth_means = np.array(pair_depth_means)
+    pair_model_sep_pre = np.array(pair_model_sep_pre)
+    pair_model_sep_post = np.array(pair_model_sep_post)
+
+    fig = plt.figure(figsize=(10, 10), tight_layout=True)
+    gs = GridSpec(ncols=1, nrows=4, figure=fig,
+                  height_ratios=(4, 2, 4, 2))
+    ax_pre = fig.add_subplot(gs[0, 0])
+    ax_pre_sig = fig.add_subplot(gs[1, 0])
+    ax_post = fig.add_subplot(gs[2, 0])
+    ax_post_sig = fig.add_subplot(gs[3, 0])
+
+    if star.hasObsPre:
+        ax_pre.errorbar(pair_depth_diffs, pair_model_sep_pre,
+                        yerr=pair_model_err_pre,
+                        linestyle='', marker='.',
+                        color='Black',
+                        zorder=0)
+        ax_pre.scatter(pair_depth_diffs, pair_model_sep_pre,
+                       marker='o',
+                       c=pair_depth_means, cmap=cmr.ember,
+                       zorder=2)
+
+    if star.hasObsPost:
+        ax_post.errorbar(pair_depth_diffs, pair_model_sep_post,
+                         yerr=pair_model_err_post,
+                         linestyle='', marker='.',
+                         color='Black',
+                         zorder=0)
+        ax_post.scatter(pair_depth_diffs, pair_model_sep_post,
+                        marker='o',
+                        c=pair_depth_means, cmap=cmr.freeze,
+                        zorder=2)
+
+    plt.show(fig)
+
+
+def get_weighted_mean(values_array, errs_array, time_slice, col_index):
+    """
+    Get the weighted mean of a column in an array avoiding NaNs.
+
+    This function is intended to get the weighted mean of the values for either
+    a transition or pair from star, from a give time period using the given
+    column index.
+
+    It is CRITICAL that you check if the star has observations in the pre- or
+    post-fiber change era before calling this function; due to a quirk, a star
+    with observation only in the pre-fiber change era will return all of its
+    observations if given a timeslice for its post-change observations, so only
+    call this after checking a star actually has observations for the era in
+    question.
+
+    Parameters
+    ----------
+    values_array : array-like
+        The array from which to get the values (specifically, some array from
+        a `varconlib.star.Star` object).
+    errs_array : array-like
+        An array of the same shape as the array given to `values_array`.
+    time_slice : Slice
+        A Slice object.
+    col_index : int
+        The index of the column to get the values from.
+
+    Returns
+    -------
+    tuple, length-2 of floats
+        A tuple containing the weighted mean and error on the weighted mean for
+        the given slice and era.
+
+    """
+
+    values, mask = remove_nans(values_array[time_slice, col_index],
+                               return_mask=True)
+    errs = errs_array[time_slice, col_index][mask]
+
+    try:
+        return weighted_mean_and_error(values, errs)
+    except ZeroDivisionError:
+        return (np.nan, np.nan)
 
 
 def create_example_plots():
@@ -1612,6 +1737,9 @@ parser.add_argument('--model-diff-vs-pair-separations', action='store_true',
 parser.add_argument('--plot-duplicate-pairs', action='store_true',
                     help='Plot differences in measured and model-corrected'
                     ' pair separations for duplicate pairs for a given star.')
+parser.add_argument('--plot-depth-differences', action='store_true',
+                    help='Create a plot of systematic differences as a function'
+                    ' of pair depth differences.')
 
 parameter_options.add_argument('-T', '--temperature',
                                dest='parameters_to_plot',
@@ -1717,3 +1845,7 @@ if args.star is not None and args.plot_duplicate_pairs:
     elif len(args.star) > 1:
         for star in args.star:
             plot_duplicate_pairs(get_star(star))
+
+if args.star is not None and args.plot_depth_differences:
+    if len(args.star) == 1:
+        plot_pair_depth_differences(star)
