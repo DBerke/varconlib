@@ -1343,10 +1343,18 @@ def plot_pair_depth_differences(star):
     plots_dir = Path('/Users/dberke/Pictures/'
                      'pair_depth_difference_investigation')
 
+    filename = vcl.output_dir /\
+        f'fit_params/quadratic_pairs_4.0sigma_params.hdf5'
+    fit_results_dict = get_params_file(filename)
+    sigma_sys_dict = fit_results_dict['sigmas_sys']
+
     pair_depth_diffs = []
     pair_depth_means = []
     pair_model_sep_pre, pair_model_sep_post = [], []
     pair_model_err_pre, pair_model_err_post = [], []
+
+    sigmas_sys_pre = []
+    sigmas_sys_post = []
 
     pre_slice = slice(None, star.fiberSplitIndex)
     post_slice = slice(star.fiberSplitIndex, None)
@@ -1367,6 +1375,8 @@ def plot_pair_depth_differences(star):
                                                   pre_slice, col_index)
                 pair_model_sep_pre.append(w_mean)
                 pair_model_err_pre.append(eotwm.value)
+                sigmas_sys_pre.append(
+                    sigma_sys_dict[pair_label + '_pre'].value)
 
             if star.hasObsPost:
                 w_mean, eotwm = get_weighted_mean(star.pairModelOffsetsArray,
@@ -1374,42 +1384,103 @@ def plot_pair_depth_differences(star):
                                                   post_slice, col_index)
                 pair_model_sep_post.append(w_mean)
                 pair_model_err_post.append(eotwm.value)
+                sigmas_sys_post.append(
+                    sigma_sys_dict[pair_label + '_post'].value)
 
     pair_depth_diffs = np.array(pair_depth_diffs)
     pair_depth_means = np.array(pair_depth_means)
     pair_model_sep_pre = np.array(pair_model_sep_pre)
     pair_model_sep_post = np.array(pair_model_sep_post)
+    pair_model_err_pre = np.array(pair_model_err_pre)
+    pair_model_err_post = np.array(pair_model_err_post)
+    sigmas_sys_pre = np.array(sigmas_sys_pre)
+    sigmas_sys_post = np.array(sigmas_sys_post)
 
-    fig = plt.figure(figsize=(10, 10), tight_layout=True)
-    gs = GridSpec(ncols=1, nrows=4, figure=fig,
-                  height_ratios=(4, 2, 4, 2))
-    ax_pre = fig.add_subplot(gs[0, 0])
+    fig = plt.figure(figsize=(10, 9), tight_layout=True)
+    gs = GridSpec(ncols=2, nrows=4, figure=fig,
+                  height_ratios=(5, 2, 5, 2),
+                  width_ratios=(4.4, 1))
+    ax_pre = fig.add_subplot(gs[0, :])
     ax_pre_sig = fig.add_subplot(gs[1, 0])
-    ax_post = fig.add_subplot(gs[2, 0])
+    ax_post = fig.add_subplot(gs[2, :])
     ax_post_sig = fig.add_subplot(gs[3, 0])
 
+    for ax in (ax_pre, ax_post, ax_pre_sig, ax_post_sig):
+        ax.yaxis.grid(which='major', color='Gray',
+                      linestyle='-', alpha=0.65)
+        ax.yaxis.grid(which='minor', color='Gray',
+                      linestyle=':', alpha=0.5)
+
     if star.hasObsPre:
+        full_errs_pre = np.sqrt(pair_model_err_pre ** 2 +
+                                sigmas_sys_pre ** 2)
+        chisq = calc_chi_squared_nu(pair_model_sep_pre, full_errs_pre, 1)
         ax_pre.errorbar(pair_depth_diffs, pair_model_sep_pre,
-                        yerr=pair_model_err_pre,
+                        yerr=full_errs_pre,
                         linestyle='', marker='.',
-                        color='Black',
-                        zorder=0)
-        ax_pre.scatter(pair_depth_diffs, pair_model_sep_pre,
-                       marker='o',
-                       c=pair_depth_means, cmap=cmr.ember,
-                       zorder=2)
+                        color='Chocolate',
+                        zorder=0,
+                        label=r'$\chi^2_\nu$:'
+                        f' {chisq:.2f}, {star.numObsPre} obs')
+        clb_pre = ax_pre.scatter(pair_depth_diffs, pair_model_sep_pre,
+                                 marker='o',
+                                 c=pair_depth_means,
+                                 cmap=cmr.get_sub_cmap('cmr.ember',
+                                                       0.1, 0.85),
+                                 zorder=2)
+        fig.colorbar(clb_pre, ax=ax_pre)
+        ax_pre.legend()
 
     if star.hasObsPost:
+        full_errs_post = np.sqrt(pair_model_err_post ** 2 +
+                                 sigmas_sys_post ** 2)
+        chisq = calc_chi_squared_nu(pair_model_sep_post, full_errs_post, 1)
         ax_post.errorbar(pair_depth_diffs, pair_model_sep_post,
-                         yerr=pair_model_err_post,
+                         yerr=full_errs_post,
                          linestyle='', marker='.',
-                         color='Black',
+                         color='DodgerBlue',
                          zorder=0)
-        ax_post.scatter(pair_depth_diffs, pair_model_sep_post,
-                        marker='o',
-                        c=pair_depth_means, cmap=cmr.freeze,
-                        zorder=2)
+        clb_post = ax_post.scatter(pair_depth_diffs, pair_model_sep_post,
+                                   marker='o',
+                                   c=pair_depth_means,
+                                   cmap=cmr.get_sub_cmap('cmr.arctic',
+                                                         0.1, 0.85),
+                                   zorder=2,
+                                   label=r'$\chi^2_\nu$:'
+                                   f' {chisq:.2f}, {star.numObsPost} obs')
+        fig.colorbar(clb_post, ax=ax_post)
+        ax_post.legend()
 
+    # Get results for bins.
+    bin_lims = np.linspace(0, 0.2, 9)
+
+    if star.hasObsPre:
+        midpoints, w_means, eotwms = [], [], []
+        for i, lims in zip(range(8), pairwise(bin_lims)):
+            midpoints.append((lims[1] + lims[0]) / 2)
+            mask = np.where((pair_depth_diffs > lims[0]) &
+                            (pair_depth_diffs < lims[1]))
+            w_mean, eotwm = weighted_mean_and_error(pair_model_sep_pre[mask],
+                                                    pair_model_err_pre[mask])
+            w_means.append(w_mean)
+            eotwms.append(eotwm)
+
+        ax_pre_sig.errorbar(midpoints, w_means, yerr=eotwms,
+                            color='Green')
+
+    if star.hasObsPost:
+        midpoints, w_means, eotwms = [], [], []
+        for i, lims in zip(range(8), pairwise(bin_lims)):
+            midpoints.append((lims[1] + lims[0]) / 2)
+            mask = np.where((pair_depth_diffs > lims[0]) &
+                            (pair_depth_diffs < lims[1]))
+            w_mean, eotwm = weighted_mean_and_error(pair_model_sep_post[mask],
+                                                    pair_model_err_post[mask])
+            w_means.append(w_mean)
+            eotwms.append(eotwm)
+
+        ax_post_sig.errorbar(midpoints, w_means, yerr=eotwms,
+                             color='Green')
     plt.show(fig)
 
 
