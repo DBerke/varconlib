@@ -26,9 +26,9 @@ from varconlib.exceptions import (HDF5FileNotFoundError,
                                   PickleFilesNotFoundError)
 from varconlib.star import Star
 
-header = ['#pair_label', 'delta(v)_pair', 'err_delta(v)_pair',
+header = ['pair_label', 'deltav_pair', 'err_deltav_pair',
           'transition1', 'transition2', 't_err1', 't_err2',
-          'Teff', '[Fe/H]', 'log(g)', 'M_V']
+          'Teff', 'FeH', 'logg', 'M_V']
 
 
 def get_star(star_path, verbose=False, recreate=False):
@@ -123,7 +123,7 @@ def main():
                                       c.galactic.b.to_string(unit=unit.degree,
                                                              sep=' ')]
 
-        coords_header = ['#star_name', 'RA', 'DEC', 'l', 'b']
+        coords_header = ['star_name', 'RA', 'DEC', 'l', 'b']
         with open(star_coords_file, 'w', newline='') as f:
             datawriter = csv.writer(f)
             datawriter.writerow(coords_header)
@@ -152,10 +152,10 @@ def main():
     if args.stars:
         # Generate a file with properties constant for each star
         tqdm.write('Writing out data for each star.')
-        properties_header = ['#star_name', 'RA', 'DEC', 'l', 'b',
-                             'Teff (K)', '[Fe/H]', 'log(g)',
-                             'M_V', '#obs', 'start_date', 'end_date',
-                             'distance (pc)']
+        properties_header = ['star_name', 'RA', 'DEC', 'l', 'b',
+                             'Teff', 'FeH', 'logg',
+                             'M_V', 'Nobs', 'start_date', 'end_date',
+                             'distance']  # Distance in pc
 
         star_properties_file = output_dir / 'star_properties.csv'
         with open(star_properties_file, 'w', newline='') as f:
