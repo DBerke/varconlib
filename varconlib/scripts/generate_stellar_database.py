@@ -440,7 +440,7 @@ if __name__ == '__main__':
                         help='The names of stars (directories) containing the'
                         ' stars to be used in the plot.')
     parser.add_argument('--recreate-stars', action='store_true', default=False,
-                        help='Recreate all star.Star HDF5 files from'
+                        help='Recreate all "star.Star" HDF5 files from'
                         ' observations.')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help="Print more output about what's happening.")
