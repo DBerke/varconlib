@@ -1341,7 +1341,9 @@ def plot_pair_depth_differences(star):
                f' ({star.numObsPre} pre, {star.numObsPost} post)')
 
     plots_dir = Path('/Users/dberke/Pictures/'
-                     'pair_depth_difference_investigation')
+                     'pair_depth_differences_investigation')
+    if not plots_dir.exists():
+        os.mkdir(plots_dir)
 
     filename = vcl.output_dir /\
         f'fit_params/quadratic_pairs_4.0sigma_params.hdf5'
@@ -1374,7 +1376,7 @@ def plot_pair_depth_differences(star):
                                                   star.pairModelErrorsArray,
                                                   pre_slice, col_index)
                 pair_model_sep_pre.append(w_mean)
-                pair_model_err_pre.append(eotwm.value)
+                pair_model_err_pre.append(eotwm)
                 sigmas_sys_pre.append(
                     sigma_sys_dict[pair_label + '_pre'].value)
 
@@ -1383,7 +1385,7 @@ def plot_pair_depth_differences(star):
                                                   star.pairModelErrorsArray,
                                                   post_slice, col_index)
                 pair_model_sep_post.append(w_mean)
-                pair_model_err_post.append(eotwm.value)
+                pair_model_err_post.append(eotwm)
                 sigmas_sys_post.append(
                     sigma_sys_dict[pair_label + '_post'].value)
 
@@ -1399,22 +1401,31 @@ def plot_pair_depth_differences(star):
     fig = plt.figure(figsize=(10, 9), tight_layout=True)
     gs = GridSpec(ncols=2, nrows=4, figure=fig,
                   height_ratios=(5, 2, 5, 2),
-                  width_ratios=(4.4, 1))
+                  width_ratios=(4.8, 1))
     ax_pre = fig.add_subplot(gs[0, :])
     ax_pre_sig = fig.add_subplot(gs[1, 0])
     ax_post = fig.add_subplot(gs[2, :])
     ax_post_sig = fig.add_subplot(gs[3, 0])
+
+    ax_pre.set_ylabel('Model-corrected weighted\nmean pair separations (pre)')
+    ax_post.set_ylabel('Model-corrected weighted\nmean pair separations (post)')
+    ax_pre_sig.set_ylabel('Weighted mean\nper bin')
+    ax_post_sig.set_ylabel('Weighted mean\nper bin')
+    ax_post_sig.set_xlabel('Pair normalized depth difference')
 
     for ax in (ax_pre, ax_post, ax_pre_sig, ax_post_sig):
         ax.yaxis.grid(which='major', color='Gray',
                       linestyle='-', alpha=0.65)
         ax.yaxis.grid(which='minor', color='Gray',
                       linestyle=':', alpha=0.5)
+        ax.set_xlim(left=-0.002, right=0.202)
 
     if star.hasObsPre:
         full_errs_pre = np.sqrt(pair_model_err_pre ** 2 +
                                 sigmas_sys_pre ** 2)
-        chisq = calc_chi_squared_nu(pair_model_sep_pre, full_errs_pre, 1)
+        values, mask = remove_nans(pair_model_sep_pre, return_mask=True)
+        chisq = calc_chi_squared_nu(values,
+                                    full_errs_pre[mask], 1)
         ax_pre.errorbar(pair_depth_diffs, pair_model_sep_pre,
                         yerr=full_errs_pre,
                         linestyle='', marker='.',
@@ -1428,13 +1439,15 @@ def plot_pair_depth_differences(star):
                                  cmap=cmr.get_sub_cmap('cmr.ember',
                                                        0.1, 0.85),
                                  zorder=2)
-        fig.colorbar(clb_pre, ax=ax_pre)
+        fig.colorbar(clb_pre, ax=ax_pre, label='Mean pair depth')
         ax_pre.legend()
 
     if star.hasObsPost:
         full_errs_post = np.sqrt(pair_model_err_post ** 2 +
                                  sigmas_sys_post ** 2)
-        chisq = calc_chi_squared_nu(pair_model_sep_post, full_errs_post, 1)
+        values, mask = remove_nans(pair_model_sep_post, return_mask=True)
+        chisq = calc_chi_squared_nu(values,
+                                    full_errs_post[mask], 1)
         ax_post.errorbar(pair_depth_diffs, pair_model_sep_post,
                          yerr=full_errs_post,
                          linestyle='', marker='.',
@@ -1443,12 +1456,12 @@ def plot_pair_depth_differences(star):
         clb_post = ax_post.scatter(pair_depth_diffs, pair_model_sep_post,
                                    marker='o',
                                    c=pair_depth_means,
-                                   cmap=cmr.get_sub_cmap('cmr.arctic',
+                                   cmap=cmr.get_sub_cmap('cmr.cosmic',
                                                          0.1, 0.85),
                                    zorder=2,
                                    label=r'$\chi^2_\nu$:'
                                    f' {chisq:.2f}, {star.numObsPost} obs')
-        fig.colorbar(clb_post, ax=ax_post)
+        fig.colorbar(clb_post, ax=ax_post, label='Mean pair depth')
         ax_post.legend()
 
     # Get results for bins.
@@ -1460,8 +1473,10 @@ def plot_pair_depth_differences(star):
             midpoints.append((lims[1] + lims[0]) / 2)
             mask = np.where((pair_depth_diffs > lims[0]) &
                             (pair_depth_diffs < lims[1]))
-            w_mean, eotwm = weighted_mean_and_error(pair_model_sep_pre[mask],
-                                                    pair_model_err_pre[mask])
+            values, nan_mask = remove_nans(pair_model_sep_pre[mask],
+                                           return_mask=True)
+            errs = pair_model_err_pre[mask][nan_mask]
+            w_mean, eotwm = weighted_mean_and_error(values, errs)
             w_means.append(w_mean)
             eotwms.append(eotwm)
 
@@ -1474,14 +1489,19 @@ def plot_pair_depth_differences(star):
             midpoints.append((lims[1] + lims[0]) / 2)
             mask = np.where((pair_depth_diffs > lims[0]) &
                             (pair_depth_diffs < lims[1]))
-            w_mean, eotwm = weighted_mean_and_error(pair_model_sep_post[mask],
-                                                    pair_model_err_post[mask])
+            values, nan_mask = remove_nans(pair_model_sep_post[mask],
+                                           return_mask=True)
+            errs = pair_model_err_post[mask][nan_mask]
+            w_mean, eotwm = weighted_mean_and_error(values, errs)
             w_means.append(w_mean)
             eotwms.append(eotwm)
 
         ax_post_sig.errorbar(midpoints, w_means, yerr=eotwms,
                              color='Green')
-    plt.show(fig)
+    # plt.show(fig)
+    outfile = plots_dir / f'{star.name}_{star.numObs}_obs.png'
+    fig.savefig(str(outfile))
+    plt.close('all')
 
 
 def get_weighted_mean(values_array, errs_array, time_slice, col_index):
@@ -1920,3 +1940,6 @@ if args.star is not None and args.plot_duplicate_pairs:
 if args.star is not None and args.plot_depth_differences:
     if len(args.star) == 1:
         plot_pair_depth_differences(star)
+    if len(args.star) > 1:
+        for star_name in args.star:
+            plot_pair_depth_differences(get_star(star_name))
