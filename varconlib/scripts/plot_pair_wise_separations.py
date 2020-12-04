@@ -1504,6 +1504,126 @@ def plot_pair_depth_differences(star):
     plt.close('all')
 
 
+def plot_vs_pair_blendedness(star):
+    """
+    Create a plot for a star of its pair model-corrected values by blendedness.
+
+    Parameters
+    ----------
+    star : `varconlib.star.Star`
+        The star to create the plot using.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    sorted_blend_tuples = [(0, 0), (0, 1), (1, 1), (0, 2), (1, 2), (2, 2)]
+
+    pre_slice = slice(None, star.fiberSplitIndex)
+    post_slice = slice(star.fiberSplitIndex, None)
+
+    pair_blends_dict = {}
+    total_pairs = 0
+    for pair in star.pairsList:
+        for order_num in pair.ordersToMeasureIn:
+            total_pairs += 1
+            pair_label = '_'.join((pair.label, str(order_num)))
+            pair_blends_dict[pair_label] = pair.blendTuple
+
+    sorted_means_pre, sorted_errs_pre = [], []
+    sorted_means_post, sorted_errs_post = [], []
+    chi_squareds_pre, chi_squareds_post = [], []
+    sigmas_pre, sigmas_post = [], []
+    divisions = []
+    total = 0
+    for blend_tuple in sorted_blend_tuples:
+        bin_means_pre, bin_errs_pre = [], []
+        bin_means_post, bin_errs_post = [], []
+        for pair_label, value in pair_blends_dict.items():
+            if blend_tuple == value:
+                total += 1
+                if star.hasObsPre:
+                    w_mean, eotwm = get_weighted_mean(
+                        star.pairModelOffsetsArray,
+                        star.pairModelErrorsArray,
+                        pre_slice, star._pair_bidict[pair_label])
+                    bin_means_pre.append(w_mean)
+                    bin_errs_pre.append(eotwm)
+                if star.hasObsPost:
+                    w_mean, eotwm = get_weighted_mean(
+                        star.pairModelOffsetsArray,
+                        star.pairModelErrorsArray,
+                        post_slice, star._pair_bidict[pair_label])
+                    bin_means_post.append(w_mean)
+                    bin_errs_post.append(eotwm)
+        divisions.append(total + 0.5)
+        if len(bin_means_pre) > 2:
+            chi_squareds_pre.append(calc_chi_squared_nu(
+                np.array(bin_means_pre), np.array(bin_errs_pre), 1))
+            sigmas_pre.append(np.std(bin_means_pre))
+        else:
+            chi_squareds_pre.append(np.nan)
+            sigmas_pre.append(np.nan)
+        if len(bin_means_post) > 2:
+            chi_squareds_post.append(calc_chi_squared_nu(
+                np.array(bin_means_post), np.array(bin_errs_post), 1))
+            sigmas_post.append(np.std(bin_means_post))
+        else:
+            chi_squareds_post.append(np.nan)
+            sigmas_post.append(np.nan)
+        sorted_means_pre.extend(bin_means_pre)
+        sorted_errs_pre.extend(bin_errs_pre)
+        sorted_means_post.extend(bin_means_post)
+        sorted_errs_post.extend(bin_errs_post)
+
+    # Plot the results.
+    fig = plt.figure(figsize=(10, 9), tight_layout=True)
+    ax_pre = fig.add_subplot(2, 1, 1)
+    ax_post = fig.add_subplot(2, 1, 2)
+
+    ax_pre.set_ylabel('Model-corrected pair offsets (m/s, pre)')
+    ax_post.set_ylabel('Model-corrected pair offsets (m/s, post)')
+    label_positions = (0.01, 0.155, 0.315, 0.49, 0.85, 0.99)
+    for ax in (ax_pre, ax_post):
+        for div, b_tuple, label_pos, chisq_pre,\
+        chisq_post, sig_pre, sig_post in zip(
+                divisions, sorted_blend_tuples, label_positions,
+                chi_squareds_pre, chi_squareds_post, sigmas_pre, sigmas_post):
+            ax.set_xlim(left=-1, right=total_pairs)
+            ax.axvline(x=div, color='DarkSlateGray', alpha=0.8)
+            ax_pre.annotate(f'{b_tuple}, {chisq_pre:.2f}, {sig_pre:.2f}',
+                            xy=(div - 5, 0),
+                            xytext=(label_pos, 0.01),
+                            textcoords='axes fraction',
+                            horizontalalignment='center',
+                            verticalalignment='bottom',
+                            rotation=90)
+            ax_post.annotate(f'{b_tuple}, {chisq_post:.2f}, {sig_post:.2f}',
+                             xy=(div - 5, 0),
+                             xytext=(label_pos, 0.01),
+                             textcoords='axes fraction',
+                             horizontalalignment='center',
+                             verticalalignment='bottom',
+                             rotation=90)
+        ax.axhline(y=0, color='Black', alpha=1)
+
+    indices = [x for x in range(total_pairs)]
+
+    if star.hasObsPre:
+        ax_pre.errorbar(x=indices, y=sorted_means_pre, yerr=sorted_errs_pre,
+                        color='Chocolate', markeredgecolor='Black',
+                        linestyle='', marker='o')
+
+    if star.hasObsPost:
+        ax_post.errorbar(x=indices, y=sorted_means_post, yerr=sorted_errs_post,
+                         color='DodgerBlue', markeredgecolor='Black',
+                         linestyle='', marker='o')
+
+    plt.show()
+
+
 def get_weighted_mean(values_array, errs_array, time_slice, col_index):
     """
     Get the weighted mean of a column in an array avoiding NaNs.
@@ -1831,6 +1951,8 @@ parser.add_argument('--plot-duplicate-pairs', action='store_true',
 parser.add_argument('--plot-depth-differences', action='store_true',
                     help='Create a plot of systematic differences as a function'
                     ' of pair depth differences.')
+parser.add_argument('--plot-vs-blendedness', action='store_true',
+                    help='Plot pairs sorted by blendedness.')
 
 parameter_options.add_argument('-T', '--temperature',
                                dest='parameters_to_plot',
@@ -1943,3 +2065,7 @@ if args.star is not None and args.plot_depth_differences:
     if len(args.star) > 1:
         for star_name in args.star:
             plot_pair_depth_differences(get_star(star_name))
+
+if args.star is not None and args.plot_vs_blendedness:
+    if len(args.star) == 1:
+        plot_vs_pair_blendedness(star)
