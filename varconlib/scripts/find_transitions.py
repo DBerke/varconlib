@@ -320,8 +320,8 @@ for obs_path in tqdm(files_to_work_on) if\
 
     # Pickle the list of fits, then compress them to save space before writing
     # them out.
-    info_msg = (f'Fit {fit_transitions}/{len(fits_list)} transitions'
-                f' in {obs_path.name}.')
+    info_msg = f'Fit {fit_transitions}/{len(fits_list)} transitions' +\
+               f' in {obs_path.name}.'
     vprint(info_msg)
     logger.info(info_msg)
     outfile = output_pickle_dir / '{}_gaussian_fits.lzma'.format(
