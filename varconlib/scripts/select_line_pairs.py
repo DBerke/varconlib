@@ -1164,7 +1164,7 @@ if __name__ == '__main__':
         # theory it shouldn't matter and the wavelength scale should be
         # corrected anyway, but it doesn't hurt to start with something close
         # to zero relative radial velocity.
-        base_file = varconlib.data_dir /\
+        base_file = vcl.data_dir /\
             'HARPS.2005-05-02T03:49:08.735_e2ds_A.fits'
 
         obs = HARPSFile2DScience(base_file)
