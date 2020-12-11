@@ -1112,7 +1112,13 @@ if __name__ == '__main__':
 
         good_transitions = []
         good_pairs = []
-        blends_of_interest = ((0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2))
+        # blends_of_interest = ((0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2))
+        blends_of_interest = ((0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5),
+                              (1, 1), (1, 2), (1, 3), (1, 4), (1, 5),
+                              (2, 2), (2, 3), (2, 4), (2, 5),
+                              (3, 3), (3, 4), (3, 5),
+                              (4, 4), (4, 5),
+                              (5, 5))
         for pair in tqdm(pairs):
             if pair.blendTuple in blends_of_interest:
                 good_pairs.append(pair)
@@ -1345,12 +1351,13 @@ if __name__ == '__main__':
                     print('   {}: {}, {}'.format(pair.label,
                           pair.ordersToMeasureIn, pair.status))
 
+        # if args.verbose:
+        double_pairs = []
+        for pair in pairs_to_consider:
+            if len(pair.ordersToMeasureIn) == 2:
+                double_pairs.append(pair)
+        print(f'Found {len(double_pairs)} pairs in two orders')
         if args.verbose:
-            double_pairs = []
-            for pair in pairs_to_consider:
-                if len(pair.ordersToMeasureIn) == 2:
-                    double_pairs.append(pair)
-            print(f'Found {len(double_pairs)} pairs in two orders:')
             for pair in double_pairs:
                 print(pair, pair.ordersToMeasureIn)
 
