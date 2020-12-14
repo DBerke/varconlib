@@ -79,6 +79,8 @@ class GaussianFit(object):
         self.BERV = observation.BERV
         self.airmass = observation.airmass
         self.exptime = observation.exptime
+        self.calibrationFile = observation.calibrationFile
+        self.calibrationSource = observation.calibrationSource
 
         self.order = int(order)
 

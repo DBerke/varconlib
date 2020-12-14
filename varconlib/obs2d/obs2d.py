@@ -29,16 +29,10 @@ from varconlib.exceptions import (BadRadialVelocityError,
 from varconlib.miscellaneous import wavelength2index, shift_wavelength
 
 
-base_path = Path(__file__).parent
-config_file = base_path / '../config/variables.cfg'
-config = configparser.ConfigParser(interpolation=configparser.
-                                   ExtendedInterpolation())
-config.read(config_file)
-
 # Read some path variables from the config file.
 # These are for directories outside the package parent directory.
-blaze_file_dir = Path(config['PATHS']['blaze_file_dir'])
-wavelength_cals_dir = Path(config['PATHS']['wavelength_cal_dir'])
+blaze_file_dir = Path(vcl.config['PATHS']['blaze_file_dir'])
+wavelength_cals_dir = Path(vcl.config['PATHS']['wavelength_cal_dir'])
 
 pixel_geom_files_dir = vcl.data_dir / 'pixel_geom_files'
 pixel_size_file = pixel_geom_files_dir / 'pixel_geom_size_HARPS_2004_A.fits'
@@ -93,13 +87,16 @@ class HARPSFile2D(object):
             self._rawData = self._reshape_if_necessary(data)
 
     def __repr__(self):
+        """Provide a representation of the class."""
         return "{}('{}')".format(self.__class__.__name__, self._filename)
 
     def __str__(self):
+        """Provide a string representation of the class."""
         return '{}, {}'.format(self._header['OBJECT'], self._filename.stem)
 
     @property
     def dateObs(self):
+        """Return the date the observation was taken as a `datetime` object."""
         if not hasattr(self, '_dateObs'):
             date_string = self.getHeaderCard('DATE-OBS')
             self._dateObs = dt.datetime.strptime(date_string,
@@ -355,12 +352,14 @@ class HARPSFile2DScience(HARPSFile2D):
 
     @property
     def wavelengthArray(self):
+        """Return the array of wavelengths in air."""
         if not hasattr(self, '_wavelengthArray'):
             tqdm.write('No wavelength array, something went wrong!')
         return self._wavelengthArray
 
     @property
     def vacuumArray(self):
+        """Return the array of wavelengths in vacuum."""
         if not hasattr(self, '_vacuumArray'):
             tqdm.write('Creating vacuum wavelength array.')
             self._vacuumArray = self.getVacuumArray(self.wavelengthArray)
@@ -368,6 +367,10 @@ class HARPSFile2DScience(HARPSFile2D):
 
     @property
     def barycentricArray(self):
+        """
+        Return the observation's wavelength array in the Solar System
+        barycentric reference frame.
+        """
         if not hasattr(self, '_barycentricArray'):
             tqdm.write('Creating barycentric vacuum wavelength array.')
             self._barycentricArray = self.barycenterCorrect(self.vacuumArray)
@@ -375,6 +378,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
     @property
     def pixelLowerArray(self):
+        """Return the array of pixel lower edges."""
         if not hasattr(self, '_pixelLowerArray'):
             tqdm.write('Creating lower pixel edge barycentric vacuum array.')
             pixel_lower = self.pixelPosArray - self.pixelSizeArray / 2
@@ -393,6 +397,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
     @property
     def pixelUpperArray(self):
+        """Return the array of upper pixel edges."""
         if not hasattr(self, '_pixelUpperArray'):
             tqdm.write('Creating upper pixel edge barycentric vacuum array.')
             pixel_upper = self.pixelPosArray + self.pixelSizeArray / 2
@@ -411,18 +416,25 @@ class HARPSFile2DScience(HARPSFile2D):
 
     @property
     def pixelSizeArray(self):
+        """Return the observation's pixel size array."""
         if not hasattr(self, '_pixelSizeArray'):
             self._pixelSizeArray = HARPSFile2D(pixel_size_file)._rawData
         return self._pixelSizeArray
 
     @property
     def pixelPosArray(self):
+        """Return the observation's pixel position array."""
         if not hasattr(self, '_pixelPosArray'):
             self._pixelPosArray = HARPSFile2D(pixel_pos_file)._rawData
         return self._pixelPosArray
 
     @property
     def rvCorrectedArray(self):
+        """
+        Return the wavelength array corrected for the star's radial
+        velocity.
+
+        """
         if not hasattr(self, '_rvCorrectedArray'):
             tqdm.write('Creating RV-corrected array.')
             self._rvCorrectedArray = shift_wavelength(self.barycentricArray,
@@ -431,6 +443,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
     @property
     def photonFluxArray(self):
+        """Return the observation's flux array."""
         if not hasattr(self, '_photonFluxArray'):
             tqdm.write('Generating photon flux array.')
             self._photonFluxArray = self.getPhotonFluxArray()
@@ -438,6 +451,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
     @property
     def errorArray(self):
+        """Return the observation's error array."""
         if not hasattr(self, '_errorArray'):
             tqdm.write('Generating error array.')
             self._errorArray = self.getErrorArray()
@@ -445,6 +459,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
     @property
     def blazeArray(self):
+        """Return the observation's blaze function array."""
         if not hasattr(self, '_blazeArray'):
             tqdm.write('Generating blaze array.')
             self._blazeArray = self.getBlazeArray()
@@ -452,6 +467,11 @@ class HARPSFile2DScience(HARPSFile2D):
 
     @property
     def radialVelocity(self):
+        """
+        Return the intrinsic radial velocity of the target of this
+        observation.
+
+        """
         if not hasattr(self, '_radialVelocity'):
             try:
                 rv_card = 'HIERARCH ESO TEL TARG RADVEL'
@@ -473,7 +493,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
     @property
     def BERV(self):
-        # BERV = Barycentric Earth Radial Velocity
+        """Return the Barycentric Earth Radial Velocity for this observation."""
         if not hasattr(self, '_BERV'):
             self._BERV = float(self.getHeaderCard('HIERARCH ESO DRS BERV'))\
                                * u.km / u.s
@@ -481,6 +501,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
     @property
     def airmassStart(self):
+        """Return the starting airmass for this observation."""
         if not hasattr(self, '_airmassStart'):
             self._airmassStart = float(self.getHeaderCard(
                                        'HIERARCH ESO TEL AIRM START'))
@@ -488,6 +509,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
     @property
     def airmassEnd(self):
+        """Return the ending airmass for this observation."""
         if not hasattr(self, '_airmassEnd'):
             self._airmassEnd = float(self.getHeaderCard(
                                      'HIERARCH ESO TEL AIRM END'))
@@ -495,15 +517,33 @@ class HARPSFile2DScience(HARPSFile2D):
 
     @property
     def airmass(self):
+        """Return the mean airmass for this observation."""
         if not hasattr(self, '_airmass'):
             self._airmass = (self.airmassStart + self.airmassEnd) / 2
         return self._airmass
 
     @property
     def exptime(self):
+        """Return the exposure time in seconds for the observation."""
         if not hasattr(self, '_exptime'):
             self._exptime = float(self.getHeaderCard('EXPTIME'))
         return self._exptime
+
+    @property
+    def calibrationFile(self):
+        """Return the calibration file used to calibration this observation."""
+        if not hasattr(self, '_calibrationFile'):
+            self._calibrationFile = self.getHeaderCard(
+                'HIERARCH ESO DRS CAL TH FILE')
+        return self._calibrationFile
+
+    @property
+    def calibrationSource(self):
+        """Return the calibration source used to calibrate this observation."""
+        if not hasattr(self, '_calibrationSource'):
+            self._calibrationSource = self.getHeaderCard(
+                'HIERARCH ESO DRS CAL TH LAMP USED')
+        return self._calibrationSource
 
     def getBlazeFile(self):
         """Find and return the blaze file associated with this observation.
@@ -555,7 +595,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
     def getWavelengthArray(self, use_new_coefficients=True,
                            use_pixel_positions=True):
-        """Construct a wavelength array (in Angstroms) for the observation.
+        r"""Construct a wavelength array (in Angstroms) for the observation.
 
         By default, the wavelength array returned using the coefficients in
         the headers are in air wavelengths, and uncorrected for the Earth's
