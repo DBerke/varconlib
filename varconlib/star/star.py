@@ -970,13 +970,14 @@ class Star(object):
             elif not item:
                 info_list[i] = 'nan'
 
-        self._formatHeader = ['#star_name', '#obs',
-                              'model_offset_pair(m/s)', 'err_stat_pair(m/s)',
-                              'err_sys_pair(m/s)', 'chisq_nu_pair',
-                              'offset_transition1(m/s)', 't_stat_err1(m/s)',
-                              't_sys_err1(m/s)', 'chisq_nu1',
-                              'offset_transition2(m/s)', 't_stat_err2(m/s)',
-                              't_sys_err2(m/s)', 'chisq_nu2']
+        # Everything with units in m/s
+        self._formatHeader = ['star_name', 'Nobs',
+                              'model_offset_pair', 'err_stat_pair',
+                              'err_sys_pair', 'chisq_nu_pair',
+                              'offset_transition1', 't_stat_err1',
+                              't_sys_err1', 'chisq_nu1',
+                              'offset_transition2', 't_stat_err2',
+                              't_sys_err2', 'chisq_nu2']
 
         return info_list
 
