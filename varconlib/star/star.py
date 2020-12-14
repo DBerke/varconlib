@@ -136,12 +136,19 @@ class Star(object):
         for each pair, with row 0 holding the pre-fiber change values and
         row 1 the post-change values.
     chiSquaredNuArray : `unyt.unyt_array`
-        A two-dimensional array holding the reduced chi-squared value of the
+        A 2D array holding the reduced chi-squared value of the
         Gaussian fit to each transition for each observation of the star.
         Rows correspond to observations, columns to transitions.
-    airmassArray : `np.ndarray` of floats
-        A one-dimensional array holding the airmass for each observation of the
+    airmassArray : `np.array` of floats
+        A 1D array holding the airmass for each observation of the
         star.
+    calSourceArray : `np.array` of str
+        A 1D array containing a string denoting the calibration source for each
+        observation; specifically, the value of the FITS header
+        'HIERARCH ESO DRS CAL TH LAMP USED'.
+    calFileArray : `np.array` of str
+        A 1D array containing a string denoting the calibration file associated
+        with each observation.
     _obs_date_bidict : `bidict_named.namedbidict`
         A custom `namedbidict` with attribute 'date_for' and 'index_for' which
         can be used to get the date for a given index, and vice versa.
@@ -432,14 +439,7 @@ class Star(object):
         self.chiSquaredNuArray = np.full_like(self.fitMeansArray,
                                               np.nan, dtype=float)
 
-        # self.fitOffsetsCorrectedArray = u.unyt_array(offsets_corrected_list,
-        #                                              u.m/u.s)
-        # self.fitOffsetsNormalizedArray = self.fitOffsetsCorrectedArray -\
-        #     self.obsRVOffsetsArray
-
         # Now set up 1D arrays holding information for each observation.
-        self.obsRVOffsetsArray = np.full((num_obs, 1),
-                                         np.nan, dtype=float)
         self.bervArray = np.full((num_obs, 1),
                                  np.nan, dtype=float) * u.km / u.s
         self.airmassArray = np.full_like(self.bervArray,
@@ -448,19 +448,6 @@ class Star(object):
                                            np.nan, dtype=float)
         self.calFileArray = np.full_like(self.bervArray,
                                          np.nan, dtype=float)
-        # self.chiSquaredNuArray = np.array(chi_squared_list)
-
-        # means_list = []
-        # errors_list = []
-        # offsets_list = []
-        # chi_squared_list = []
-        # ccd_corrections_list = []
-        # offsets_corrected_list = []
-
-        # total_obs = len(pickle_files)
-        # self.bervArray = np.empty(total_obs)
-        # self.airmassArray = np.empty(total_obs)
-        # self.obsRVOffsetsArray = np.empty((total_obs, 1))
 
         # For each pickle file:
         for obs_num, pickle_file in enumerate(tqdm(pickle_files)):
@@ -484,12 +471,6 @@ class Star(object):
             # Iterate through all the fits in the pickled list and save their
             # values only if the fit was 'good' (i.e., a mean value exists and
             # the amplitude of the fitted Gaussian is negative).
-            # obs_means = []
-            # obs_errors = []
-            # obs_offsets = []
-            # obs_chi_squareds = []
-            # obs_ccd_corrections = []
-            # obs_offsets_corrected = []
             for col_num, fit in enumerate(fits_list):
                 # Check that a fit 1) exists, 2) has a negative amplitude (since
                 # amplitude is unconstrained, a positive amplitude is a failed
@@ -510,65 +491,18 @@ class Star(object):
                                                    fit.centralIndex)
                     self.chiSquaredNuArray[obs_num, col_num] =\
                         fit.chiSquaredNu
-                    # fit_mean = fit.mean.to(u.angstrom).value
-                    # fit_error = fit.meanErrVel.to(u.m/u.s).value
-                    # fit_offset = fit.velocityOffset.to(u.m/u.s).value
-                    # fit_chi_squared = fit.chiSquaredNu
-                    # fit_ccd_correction = self._correctCCDSystematic(
-                    #     fit.order, fit.centralIndex)
-                    # fit_offset_corrected = fit_offset - fit_ccd_correction
-                # else:
-                #     fit_mean = np.nan
-                #     fit_error = np.nan
-                #     fit_offset = np.nan
-                #     fit_chi_squared = np.nan
-                #     fit_ccd_correction = np.nan
-                #     fit_offset_corrected = np.nan
 
-                # obs_means.append(fit_mean)
-                # obs_errors.append(fit_error)
-                # obs_offsets.append(fit_offset)
-                # obs_chi_squareds.append(fit_chi_squared)
-                # obs_ccd_corrections.append(fit_ccd_correction)
-                # obs_offsets_corrected.append(fit_offset_corrected)
-
-            # Create a list of each type of data for each observation.
-            # means_list.append(obs_means)
-            # errors_list.append(obs_errors)
-            # offsets_list.append(obs_offsets)
-            # chi_squared_list.append(obs_chi_squareds)
-            # ccd_corrections_list.append(obs_ccd_corrections)
-            # offsets_corrected_list.append(obs_offsets_corrected)
-
-            # self.obsRVOffsetsArray[obs_num] = np.nanmedian(
-            #     obs_offsets_corrected)
-
-        # Collate the above lists into arrays containing the results of all
-        # observations of the given star.
-        # self.fitMeansArray = u.unyt_array(np.asarray(means_list),
-        #                                   u.angstrom)
-        # self.fitErrorsArray = u.unyt_array(np.asarray(errors_list),
-        #                                    u.m/u.s)
-        # self.fitOffsetsArray = u.unyt_array(np.asarray(offsets_list),
-        #                                     u.m/u.s)
-
+        # Apply the CCD corrections to all measurements:
         self.fitOffsetsCorrectedArray = self.fitOffsetsArray -\
             self.ccdCorrectionArray
+        # Figure out the median value of the offsets and subtract it, to
+        # normalize out any correlated variation in RV from planets.
         self.obsRVOffsetsArray = np.nanmedian(self.fitOffsetsCorrectedArray,
                                               axis=0)
         self.fitOffsetsNormalizedArray = self.fitOffsetsCorrectedArray -\
             self.obsRVOffsetsArray
 
-        # self.obsRVOffsetsArray *= u.m / u.s
-        # self.ccdCorrectionArray = u.unyt_array(ccd_corrections_list,
-        #                                        u.m/u.s)
-        # self.fitOffsetsCorrectedArray = u.unyt_array(offsets_corrected_list,
-        #                                              u.m/u.s)
-        # self.fitOffsetsNormalizedArray = self.fitOffsetsCorrectedArray -\
-        #     self.obsRVOffsetsArray
-        # self.bervArray *= u.km / u.s
-        # self.chiSquaredNuArray = np.array(chi_squared_list)
-
+        # Create bidicts to match transition and pair labels to column numbers.
         transition_labels = []
         for transition in self.transitionsList:
             for order_num in transition.ordersToFitIn:
