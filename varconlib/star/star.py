@@ -385,8 +385,7 @@ class Star(object):
                 raise HDF5FileNotFoundError('No HDF5 file found for'
                                             f' {self.hdf5file}.')
 
-    def constructFromDir(self, star_dir, transitions_list=None,
-                         pairs_list=None):
+    def constructFromDir(self, star_dir):
         """
         Collect information on fits in observations of the star, and organize
         it.
@@ -396,17 +395,6 @@ class Star(object):
         star_dir : `pathlib.Path` or str
             A path object representing the root directory to look in for fits
             to the star's spectra.
-
-        Optional
-        --------
-        transitions_list : list
-            A list of `transition_line.Transition` objects. If this is omitted
-            the default list of transitions selected for use will be read, but
-            this will be slower.
-        pairs_list : list
-            A list of `transition_pair.TransitionPair` objects. If this is
-            omitted the default list of pairs selected for use will be read,
-            but this will be slower.
 
         """
 
@@ -426,44 +414,83 @@ class Star(object):
             raise PickleFilesNotFoundError('No pickled fits found'
                                            f' in {star_dir}.')
 
-        means_list = []
-        errors_list = []
-        offsets_list = []
-        chi_squared_list = []
-        ccd_corrections_list = []
-        offsets_corrected_list = []
+        # Set up arrays to hold the various values.
+        # First work out their dimensions: a row for each observation,
+        # and a column for each transition to be measured.
+        num_obs = len(pickle_files)
+        num_transitions = len(self.transitionsList)
 
-        total_obs = len(pickle_files)
-        self.bervArray = np.empty(total_obs)
-        self.airmassArray = np.empty(total_obs)
-        self.obsRVOffsetsArray = np.empty((total_obs, 1))
+        # Set up 2D arrays with entries for each transition in each observation.
+        self.fitMeansArray = np.full((num_obs, num_transitions),
+                                     np.nan, dtype=float) * u.angstrom
+        self.fitErrorsArray = np.full_like(self.fitMeansArray,
+                                           np.nan, dtype=float) * u.m / u.s
+        self.fitOffsetsArray = np.full_like(self.fitMeansArray,
+                                            np.nan, dtype=float) * u.m / u.s
+        self.ccdCorrectionArray = np.full_like(self.fitMeansArray,
+                                               np.nan, dtype=float) * u.m / u.s
+        self.chiSquaredNuArray = np.full_like(self.fitMeansArray,
+                                              np.nan, dtype=float)
+
+        # self.fitOffsetsCorrectedArray = u.unyt_array(offsets_corrected_list,
+        #                                              u.m/u.s)
+        # self.fitOffsetsNormalizedArray = self.fitOffsetsCorrectedArray -\
+        #     self.obsRVOffsetsArray
+
+        # Now set up 1D arrays holding information for each observation.
+        self.obsRVOffsetsArray = np.full((num_obs, 1),
+                                         np.nan, dtype=float)
+        self.bervArray = np.full((num_obs, 1),
+                                 np.nan, dtype=float) * u.km / u.s
+        self.airmassArray = np.full_like(self.bervArray,
+                                         np.nan, dtype=float)
+        self.calSourceArray = np.full_like(self.bervArray,
+                                           np.nan, dtype=float)
+        self.calFileArray = np.full_like(self.bervArray,
+                                         np.nan, dtype=float)
+        # self.chiSquaredNuArray = np.array(chi_squared_list)
+
+        # means_list = []
+        # errors_list = []
+        # offsets_list = []
+        # chi_squared_list = []
+        # ccd_corrections_list = []
+        # offsets_corrected_list = []
+
+        # total_obs = len(pickle_files)
+        # self.bervArray = np.empty(total_obs)
+        # self.airmassArray = np.empty(total_obs)
+        # self.obsRVOffsetsArray = np.empty((total_obs, 1))
 
         # For each pickle file:
         for obs_num, pickle_file in enumerate(tqdm(pickle_files)):
 
             with lzma.open(pickle_file, 'rb') as f:
                 fits_list = pickle.loads(f.read())
-            # Save the observation date.
-            # ??? Maybe save as datetime objects rather than strings?
+            # Find a fit which is not None (doesn't matter which it is as they
+            # should all have the same information) to get information on the
+            # observation.
             for fit in fits_list:
                 if fit is not None:
                     self._obs_date_bidict[fit.dateObs.isoformat(
                                           timespec='milliseconds')] = obs_num
                     # Save the BERV and airmass.
-                    self.bervArray[obs_num] = fit.BERV.to(u.km/u.s).value
+                    self.bervArray[obs_num] = fit.BERV.to(u.km/u.s)
                     self.airmassArray[obs_num] = fit.airmass
+                    self.calSourceArray[obs_num] = fit.calibrationSource
+                    self.calFileArray[obs_num] = fit.calibrationFile
                     break
 
             # Iterate through all the fits in the pickled list and save their
             # values only if the fit was 'good' (i.e., a mean value exists and
             # the amplitude of the fitted Gaussian is negative).
-            obs_means = []
-            obs_errors = []
-            obs_offsets = []
-            obs_chi_squareds = []
-            obs_ccd_corrections = []
-            obs_offsets_corrected = []
-            for fit in fits_list:
+            # obs_means = []
+            # obs_errors = []
+            # obs_offsets = []
+            # obs_chi_squareds = []
+            # obs_ccd_corrections = []
+            # obs_offsets_corrected = []
+            for col_num, fit in enumerate(fits_list):
                 # Check that a fit 1) exists, 2) has a negative amplitude (since
                 # amplitude is unconstrained, a positive amplitude is a failed
                 # fit because it's ended up fitting a peak), and 3) within
@@ -472,55 +499,75 @@ class Star(object):
                 if (fit is not None) and (fit.amplitude < 0) and\
                     abs(wave2vel(fit.mean,
                                  fit.correctedWavelength)) < 5 * u.km / u.s:
-                    fit_mean = fit.mean.to(u.angstrom).value
-                    fit_error = fit.meanErrVel.to(u.m/u.s).value
-                    fit_offset = fit.velocityOffset.to(u.m/u.s).value
-                    fit_chi_squared = fit.chiSquaredNu
-                    fit_ccd_correction = self._correctCCDSystematic(
-                        fit.order, fit.centralIndex)
-                    fit_offset_corrected = fit_offset - fit_ccd_correction
-                else:
-                    fit_mean = np.nan
-                    fit_error = np.nan
-                    fit_offset = np.nan
-                    fit_chi_squared = np.nan
-                    fit_ccd_correction = np.nan
-                    fit_offset_corrected = np.nan
+                    self.fitMeansArray[obs_num, col_num] =\
+                        fit.mean.to(u.angstrom)
+                    self.fitErrorsArray[obs_num, col_num] =\
+                        fit.meanErrVel.to(u.m/u.s)
+                    self.fitOffsetsArray[obs_num, col_num] =\
+                        fit.velocityOffset.to(u.m/u.s)
+                    self.ccdCorrectionArray[obs_num, col_num] =\
+                        self._correctCCDSystematic(fit.order,
+                                                   fit.centralIndex)
+                    self.chiSquaredNuArray[obs_num, col_num] =\
+                        fit.chiSquaredNu
+                    # fit_mean = fit.mean.to(u.angstrom).value
+                    # fit_error = fit.meanErrVel.to(u.m/u.s).value
+                    # fit_offset = fit.velocityOffset.to(u.m/u.s).value
+                    # fit_chi_squared = fit.chiSquaredNu
+                    # fit_ccd_correction = self._correctCCDSystematic(
+                    #     fit.order, fit.centralIndex)
+                    # fit_offset_corrected = fit_offset - fit_ccd_correction
+                # else:
+                #     fit_mean = np.nan
+                #     fit_error = np.nan
+                #     fit_offset = np.nan
+                #     fit_chi_squared = np.nan
+                #     fit_ccd_correction = np.nan
+                #     fit_offset_corrected = np.nan
 
-                obs_means.append(fit_mean)
-                obs_errors.append(fit_error)
-                obs_offsets.append(fit_offset)
-                obs_chi_squareds.append(fit_chi_squared)
-                obs_ccd_corrections.append(fit_ccd_correction)
-                obs_offsets_corrected.append(fit_offset_corrected)
+                # obs_means.append(fit_mean)
+                # obs_errors.append(fit_error)
+                # obs_offsets.append(fit_offset)
+                # obs_chi_squareds.append(fit_chi_squared)
+                # obs_ccd_corrections.append(fit_ccd_correction)
+                # obs_offsets_corrected.append(fit_offset_corrected)
 
             # Create a list of each type of data for each observation.
-            means_list.append(obs_means)
-            errors_list.append(obs_errors)
-            offsets_list.append(obs_offsets)
-            chi_squared_list.append(obs_chi_squareds)
-            ccd_corrections_list.append(obs_ccd_corrections)
-            offsets_corrected_list.append(obs_offsets_corrected)
-            self.obsRVOffsetsArray[obs_num] = np.nanmedian(
-                obs_offsets_corrected)
+            # means_list.append(obs_means)
+            # errors_list.append(obs_errors)
+            # offsets_list.append(obs_offsets)
+            # chi_squared_list.append(obs_chi_squareds)
+            # ccd_corrections_list.append(obs_ccd_corrections)
+            # offsets_corrected_list.append(obs_offsets_corrected)
+
+            # self.obsRVOffsetsArray[obs_num] = np.nanmedian(
+            #     obs_offsets_corrected)
 
         # Collate the above lists into arrays containing the results of all
         # observations of the given star.
-        self.fitMeansArray = u.unyt_array(np.asarray(means_list),
-                                          u.angstrom)
-        self.fitErrorsArray = u.unyt_array(np.asarray(errors_list),
-                                           u.m/u.s)
-        self.fitOffsetsArray = u.unyt_array(np.asarray(offsets_list),
-                                            u.m/u.s)
-        self.obsRVOffsetsArray *= u.m / u.s
-        self.ccdCorrectionArray = u.unyt_array(ccd_corrections_list,
-                                               u.m/u.s)
-        self.fitOffsetsCorrectedArray = u.unyt_array(offsets_corrected_list,
-                                                     u.m/u.s)
+        # self.fitMeansArray = u.unyt_array(np.asarray(means_list),
+        #                                   u.angstrom)
+        # self.fitErrorsArray = u.unyt_array(np.asarray(errors_list),
+        #                                    u.m/u.s)
+        # self.fitOffsetsArray = u.unyt_array(np.asarray(offsets_list),
+        #                                     u.m/u.s)
+
+        self.fitOffsetsCorrectedArray = self.fitOffsetsArray -\
+            self.ccdCorrectionArray
+        self.obsRVOffsetsArray = np.nanmedian(self.fitOffsetsCorrectedArray,
+                                              axis=0)
         self.fitOffsetsNormalizedArray = self.fitOffsetsCorrectedArray -\
             self.obsRVOffsetsArray
-        self.bervArray *= u.km / u.s
-        self.chiSquaredNuArray = np.array(chi_squared_list)
+
+        # self.obsRVOffsetsArray *= u.m / u.s
+        # self.ccdCorrectionArray = u.unyt_array(ccd_corrections_list,
+        #                                        u.m/u.s)
+        # self.fitOffsetsCorrectedArray = u.unyt_array(offsets_corrected_list,
+        #                                              u.m/u.s)
+        # self.fitOffsetsNormalizedArray = self.fitOffsetsCorrectedArray -\
+        #     self.obsRVOffsetsArray
+        # self.bervArray *= u.km / u.s
+        # self.chiSquaredNuArray = np.array(chi_squared_list)
 
         transition_labels = []
         for transition in self.transitionsList:
