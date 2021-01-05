@@ -14,15 +14,18 @@ import argparse
 from glob import glob
 import logging
 import lzma
+import multiprocessing
 import os
 from pathlib import Path
 import pickle
 import sys
+import time
 
 from adjustText import adjust_text
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticks
 import numpy as np
+from p_tqdm import p_map
 from tqdm import tqdm
 import unyt as u
 
@@ -41,162 +44,23 @@ desc = ("Fit absorption features in spectra.\n\n"
         " HD117618 --pixel-positions --new-coefficients --integrated-gaussian"
         " --create-plots")
 
-parser = argparse.ArgumentParser(description=desc,
-                                 formatter_class=argparse.
-                                 RawDescriptionHelpFormatter)
-parser.add_argument('object_dir', action='store',
-                    help='Directory in which to find e2ds sub-folders.')
-parser.add_argument('object_name', action='store',
-                    help='Name of object to use for storing output.')
 
-parser.add_argument('--output_dir', action='store',
-                    help='Directory in which to store output. Defaults to'
-                    f""" "{vcl.config['PATHS']['output_dir']}" if not"""
-                    ' specified.')
+def find_transitions_in_obs(obs_path):
+    """
+    Find transitions in a given observation file.
 
-parser.add_argument('--start', type=int, action='store', default=0,
-                    help='Start position in the list of observations.')
-parser.add_argument('--end', type=int, action='store', default=None,
-                    help='End position in the list of observations.')
+    Parameters
+    ----------
+    obs_path : `pathlib.Path` or str
+        A file path to an observation file.
 
-parser.add_argument('-rv', '--radial-velocity', action='store', type=float,
-                    default=None,
-                    help='Radial velocity to use for the star, in km/s.'
-                    ' If not given will use the value from the FITS files.')
+    Returns
+    -------
+    None.
 
-parser.add_argument('--pixel-positions', action='store_true',
-                    default=False,
-                    help='Use new pixel positions.')
-parser.add_argument('--new-coefficients', action='store_true',
-                    default=False,
-                    help='Use new calibration coefficients.')
-parser.add_argument('--integrated-gaussian', action='store_true',
-                    default=False,
-                    help='Fit using an integrated Gaussian.')
-parser.add_argument('--update', action='store', metavar='HDU-name',
-                    nargs='+', default=[],
-                    help='Which HDUs to update (WAVE, BARY, PIXLOWER, PIXUPPER'
-                    ' FLUX, ERR, BLAZE, or ALL)')
-
-parser.add_argument('--create-plots', action='store_true', default=False,
-                    help='Create plots of the fit for each transition.')
-parser.add_argument('--create-ccd-plots', action='store_true',
-                    help='Create plots of the CCD positions of each transition'
-                    ' for each observation.')
-
-parser.add_argument('-p', '--preview', action='store_true',
-                    help='Show which observations will be selected to work on,'
-                    ' then exit.')
-parser.add_argument('-v', '--verbose', action='store_true', default=False,
-                    help='Print out additional information while running.')
-
-args = parser.parse_args()
-
-vprint = vcl.verbose_print(args.verbose)
-
-if args.radial_velocity:
-    rv = args.radial_velocity * u.km / u.s
-    assert abs(rv) < u.c, 'Given RV exceeds speed of light!'
-else:
-    rv = args.radial_velocity
-
-observations_dir = Path(args.object_dir)
-# Check that the path given exists:
-if not observations_dir.exists():
-    raise FileNotFoundError('The given directory:\n'
-                            f'"{observations_dir}"\n'
-                            'could not be found.')
-
-# Check if the given path ends in data/reduced:
-if observations_dir.match('*/data/reduced'):
-    pass
-else:
-    observations_dir = observations_dir / 'data/reduced'
-    if not observations_dir.exists():
-        raise FileNotFoundError('The given directory:\n'
-                                f'"{observations_dir}"\n'
-                                'could not be found.')
-
-# Search through subdirectories for e2ds files:
-glob_search_string = str(observations_dir) + '/*/*e2ds_A.fits'
-# Get a list of all the data files in the data directory:
-data_files = [Path(string) for string in sorted(glob(glob_search_string))]
-
-files_to_work_on = data_files[slice(args.start, args.end)]
-
-tqdm.write('=' * 41)
-tqdm.write(f'Found {len(data_files)} observations in the directory'
-           f' for {args.object_name},'
-           f' working on {len(files_to_work_on)}:')
-for file in files_to_work_on:
-    tqdm.write(str(file.name))
-
-tqdm.write('=' * 41)
-if args.preview:
-    sys.exit(0)
-
-# Set up the output directory.
-if not args.output_dir:
-    output_dir = Path(vcl.config['PATHS']['output_dir'])
-else:
-    output_dir = Path(args.output_dir)
-data_dir = output_dir / args.object_name
-if not data_dir.exists():
-    tqdm.write(f'Creating output directory {data_dir}...')
-    os.mkdir(data_dir)
-
-# Set up logging.
-logger = logging.getLogger('find_transitions')
-logger.setLevel(logging.INFO)
-
-log_file = data_dir / f'{args.object_name}.log'
-file_handler = logging.FileHandler(log_file, mode='w', delay=False)
-file_handler.setLevel(logging.INFO)
-logger.addHandler(file_handler)
-
-# Define edges between pixels to plot to see if transitions overlap them.
-edges = (509.5, 1021.5, 1533.5, 2045.5, 2557.5, 3069.5, 3581.5)
-
-# Read the red and blue spectral format files for HARPS.
-blue_spec_format = np.loadtxt(blueCCDpath, skiprows=1, delimiter=',',
-                              usecols=(0, 5, 6))
-red_spec_format = np.loadtxt(redCCDpath, skiprows=1, delimiter=',',
-                             usecols=(0, 5, 6))
-
-# Read the pickled list of the final selection of transitions:
-with open(vcl.final_selection_file, 'rb') as f:
-    tqdm.write('Unpickling list of transitions...')
-    transitions_list = pickle.load(f)
-
-tqdm.write(f'Found {len(transitions_list)} transitions.')
-
-# Set variables for using new calibration methods.
-pix_pos = True if args.pixel_positions else False
-if pix_pos:
-    tqdm.write('Using new pixel positions.')
-new_coeffs = True if args.new_coefficients else False
-if new_coeffs:
-    tqdm.write('Using new wavelength calibration coefficients.')
-
-# Define directory suffixes based on arguments:
-if (not args.pixel_positions) and (not args.new_coefficients):
-    suffix = 'old'
-elif args.pixel_positions and (not args.new_coefficients):
-    suffix = 'pix'
-elif (not args.pixel_positions) and args.new_coefficients:
-    suffix = 'coeffs'
-elif args.pixel_positions and args.new_coefficients:
-    if args.integrated_gaussian:
-        suffix = 'int'
-    else:
-        suffix = 'new'
-
-total = len(data_files) - args.start
-
-for obs_path in tqdm(files_to_work_on) if\
-                     len(files_to_work_on) > 1 else files_to_work_on:
-    tqdm.write('-' * 40)
-    tqdm.write('Fitting {}...'.format(obs_path.name))
+    """
+    # tqdm.write('-' * 40)
+    vprint('Fitting {}...'.format(obs_path.name))
     try:
         obs = obs2d.HARPSFile2DScience(obs_path,
                                        pixel_positions=pix_pos,
@@ -209,15 +73,15 @@ for obs_path in tqdm(files_to_work_on) if\
             obs.getWavelengthCalibrationFile()
     except BlazeFileNotFoundError:
         err_msg = f'Blaze file not found for {obs_path.name}, continuing.'
-        tqdm.write(err_msg)
+        vprint(err_msg)
         logger.warning(err_msg)
-        continue
+        return
     except NewCoefficientsNotFoundError:
         err_msg = f'New coefficients not found for {obs_path.name},'\
                   ' continuing.'
-        tqdm.write(err_msg)
+        vprint(err_msg)
         logger.warning(err_msg)
-        continue
+        return
 
     obs_dir = data_dir / obs_path.stem
 
@@ -256,8 +120,8 @@ for obs_path in tqdm(files_to_work_on) if\
 
     fits_list = []
     fit_transitions = 0
-    tqdm.write('Fitting transitions...')
-    for transition in tqdm(transitions_list):
+    # tqdm.write('Fitting transitions...')
+    for transition in transitions_list:
         for order_num in transition.ordersToFitIn:
             vprint(f'Attempting fit of {transition} in order'
                    f' {order_num}')
@@ -276,7 +140,7 @@ for obs_path in tqdm(files_to_work_on) if\
                 err_msg = ('Unable to fit'
                            f' {transition}_{order_num} for'
                            f' {obs_path.name}!')
-                tqdm.write(err_msg)
+                vprint(err_msg)
                 logger.warning(err_msg)
                 # Append None to fits list to signify that no fit exists for
                 # this transition.
@@ -288,7 +152,7 @@ for obs_path in tqdm(files_to_work_on) if\
                 err_msg = (f'Fit of {transition} {order_num} failed with'
                            ' PositiveAmplitudeError in'
                            f' {obs_path.name}!')
-                tqdm.write(err_msg)
+                vprint(err_msg)
                 logger.warning(err_msg)
                 fits_list.append(None)
                 if args.create_ccd_plots:
@@ -355,9 +219,6 @@ for obs_path in tqdm(files_to_work_on) if\
         for i in range(17, 73, 1):
             ax.axhline(i, linestyle='--', color='Gray', alpha=0.7)
 
-#        for j in edges:
-#            ax.axvline(j, linestyle='-', color='SlateGray', alpha=0.8)
-
         ax.axhline(46.5, linestyle='-.', color='Peru', alpha=0.8)
 
         ax.plot(transitions_x, transitions_y, marker='+', color='RoyalBlue',
@@ -383,6 +244,163 @@ for obs_path in tqdm(files_to_work_on) if\
         fig.savefig(str(ccd_position_filename))
         plt.close(fig)
 
+
+parser = argparse.ArgumentParser(description=desc,
+                                 formatter_class=argparse.
+                                 RawDescriptionHelpFormatter)
+parser.add_argument('object_dir', action='store',
+                    help='Directory in which to find e2ds sub-folders.')
+parser.add_argument('object_name', action='store',
+                    help='Name of object to use for storing output.')
+
+parser.add_argument('--output_dir', action='store',
+                    help='Directory in which to store output. Defaults to'
+                    f""" "{vcl.config['PATHS']['output_dir']}" if not"""
+                    ' specified.')
+
+parser.add_argument('--start', type=int, action='store', default=0,
+                    help='Start position in the list of observations.')
+parser.add_argument('--end', type=int, action='store', default=None,
+                    help='End position in the list of observations.')
+
+parser.add_argument('-rv', '--radial-velocity', action='store', type=float,
+                    default=None,
+                    help='Radial velocity to use for the star, in km/s.'
+                    ' If not given will use the value from the FITS files.')
+
+parser.add_argument('--pixel-positions', action='store_true',
+                    default=False,
+                    help='Use new pixel positions.')
+parser.add_argument('--new-coefficients', action='store_true',
+                    default=False,
+                    help='Use new calibration coefficients.')
+parser.add_argument('--integrated-gaussian', action='store_true',
+                    default=False,
+                    help='Fit using an integrated Gaussian.')
+parser.add_argument('--update', action='store', metavar='HDU-name',
+                    nargs='+', default=[],
+                    help='Which HDUs to update (WAVE, BARY, PIXLOWER, PIXUPPER'
+                    ' FLUX, ERR, BLAZE, or ALL)')
+
+parser.add_argument('--create-plots', action='store_true', default=False,
+                    help='Create plots of the fit for each transition.')
+parser.add_argument('--create-ccd-plots', action='store_true',
+                    help='Create plots of the CCD positions of each transition'
+                    ' for each observation.')
+
+parser.add_argument('-p', '--preview', action='store_true',
+                    help='Show which observations will be selected to work on,'
+                    ' then exit.')
+parser.add_argument('-v', '--verbose', action='store_true', default=False,
+                    help='Print out additional information while running.')
+
+args = parser.parse_args()
+
+vprint = vcl.verbose_print(args.verbose)
+
+start_time = time.time()
+
+if args.radial_velocity:
+    rv = args.radial_velocity * u.km / u.s
+    assert abs(rv) < u.c, 'Given RV exceeds speed of light!'
+else:
+    rv = args.radial_velocity
+
+observations_dir = Path(args.object_dir)
+# Check that the path given exists:
+if not observations_dir.exists():
+    raise FileNotFoundError('The given directory:\n'
+                            f'"{observations_dir}"\n'
+                            'could not be found.')
+
+# Check if the given path ends in data/reduced:
+if observations_dir.match('*/data/reduced'):
+    pass
+else:
+    observations_dir = observations_dir / 'data/reduced'
+    if not observations_dir.exists():
+        raise FileNotFoundError('The given directory:\n'
+                                f'"{observations_dir}"\n'
+                                'could not be found.')
+
+# Search through subdirectories for e2ds files:
+glob_search_string = str(observations_dir) + '/*/*e2ds_A.fits'
+# Get a list of all the data files in the data directory:
+data_files = [Path(string) for string in sorted(glob(glob_search_string))]
+
+files_to_work_on = data_files[slice(args.start, args.end)]
+
+tqdm.write('=' * 41)
+tqdm.write(f'Found {len(data_files)} observations in the directory'
+           f' for {args.object_name},'
+           f' working on {len(files_to_work_on)}:')
+for file in files_to_work_on:
+    vprint(str(file.name))
+
+tqdm.write('=' * 41)
+if args.preview:
+    sys.exit(0)
+
+# Set up the output directory.
+if not args.output_dir:
+    output_dir = Path(vcl.config['PATHS']['output_dir'])
+else:
+    output_dir = Path(args.output_dir)
+data_dir = output_dir / args.object_name
+if not data_dir.exists():
+    tqdm.write(f'Creating output directory {data_dir}...')
+    os.mkdir(data_dir)
+
+# Set up logging.
+logger = logging.getLogger('find_transitions')
+logger.setLevel(logging.INFO)
+
+log_file = data_dir / f'{args.object_name}.log'
+file_handler = logging.FileHandler(log_file, mode='w', delay=False)
+file_handler.setLevel(logging.INFO)
+logger.addHandler(file_handler)
+
+# Define edges between pixels to plot to see if transitions overlap them.
+edges = (509.5, 1021.5, 1533.5, 2045.5, 2557.5, 3069.5, 3581.5)
+
+# Read the red and blue spectral format files for HARPS.
+blue_spec_format = np.loadtxt(blueCCDpath, skiprows=1, delimiter=',',
+                              usecols=(0, 5, 6))
+red_spec_format = np.loadtxt(redCCDpath, skiprows=1, delimiter=',',
+                             usecols=(0, 5, 6))
+
+# Read the pickled list of the final selection of transitions:
+with open(vcl.final_selection_file, 'rb') as f:
+    tqdm.write('Unpickling list of transitions...')
+    transitions_list = pickle.load(f)
+
+tqdm.write(f'Found {len(transitions_list)} transitions.')
+
+# Set variables for using new calibration methods.
+pix_pos = True if args.pixel_positions else False
+if pix_pos:
+    tqdm.write('Using new pixel positions.')
+new_coeffs = True if args.new_coefficients else False
+if new_coeffs:
+    tqdm.write('Using new wavelength calibration coefficients.')
+
+# Define directory suffixes based on arguments:
+if (not args.pixel_positions) and (not args.new_coefficients):
+    suffix = 'old'
+elif args.pixel_positions and (not args.new_coefficients):
+    suffix = 'pix'
+elif (not args.pixel_positions) and args.new_coefficients:
+    suffix = 'coeffs'
+elif args.pixel_positions and args.new_coefficients:
+    if args.integrated_gaussian:
+        suffix = 'int'
+    else:
+        suffix = 'new'
+
+total = len(data_files) - args.start
+
+# Use multiprocessing to look at multiple obserations in parallel.
+p_map(find_transitions_in_obs, files_to_work_on)
 
 # Create hard links to all the fit plots by transition (across star) in
 # their own directories, to make it easier to compare transitions
@@ -419,4 +437,5 @@ for transition in tqdm(transitions_list):
                 os.link(file_to_link, dest_name)
 
 tqdm.write('-' * 30)
-tqdm.write(f'Finished analyzing {args.object_name}.')
+duration = time.time() - start_time
+tqdm.write(f'Finished analyzing {args.object_name} in {duration:.2f} s.')
