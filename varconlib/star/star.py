@@ -19,6 +19,7 @@ import os
 from pathlib import Path
 import pickle
 import re
+import time
 
 from bidict import namedbidict
 import h5py
@@ -28,7 +29,8 @@ import numpy.ma as ma
 from tqdm import tqdm, trange
 import unyt as u
 from unyt import accepts, returns
-from unyt.dimensions import length, time, temperature
+from unyt.dimensions import length, temperature
+from unyt.dimensions import time as time_dim
 
 import varconlib as vcl
 from varconlib.exceptions import (HDF5FileNotFoundError,
@@ -135,10 +137,13 @@ class Star(object):
         A 2D array containing the empirically-determined systematic error found
         for each pair, with row 0 holding the pre-fiber change values and
         row 1 the post-change values.
-    chiSquaredNuArray : `unyt.unyt_array`
+    chiSquaredNuArray : `np.ndarray`
         A 2D array holding the reduced chi-squared value of the
         Gaussian fit to each transition for each observation of the star.
         Rows correspond to observations, columns to transitions.
+    normalizedDepthArray : 'np.ndarray'
+        A 2D holding the measured normalized depth of each measured absorption
+        feature.
     airmassArray : `np.array` of floats
         A 1D array holding the airmass for each observation of the
         star.
@@ -249,11 +254,16 @@ class Star(object):
 
     other_attributes = {'/metadata/version': 'version',
                         '/arrays/reduced_chi_squareds': 'chiSquaredNuArray',
+                        '/arrays/normalized_depths': 'normalizedDepthArray',
                         '/arrays/airmasses': 'airmassArray',
                         '/arrays/transition_outliers_mask':
                             'transitionOutliersMask',
                         '/arrays/pair_outliers_mask':
                             'pairOutliersMask',
+                        '/arrays/calibration_sources':
+                            'calSourceArray',
+                        '/arrays/calibration_files':
+                            'calFileArray',
                         '/bidicts/obs_date_bidict': '_obs_date_bidict',
                         '/bidicts/transition_bidict': '_transition_bidict',
                         '/bidicts/pair_bidict': '_pair_bidict',
@@ -273,7 +283,7 @@ class Star(object):
     fiber_change_date = dt.datetime(year=2015, month=6, day=1,
                                     hour=0, minute=0, second=0)
 
-    def __init__(self, name, star_dir=None,
+    def __init__(self, name, star_dir=None, output_dir=None,
                  transitions_list=None, pairs_list=None,
                  load_data=None, init_params="Casagrande2011",
                  correction_model='quadratic'):
@@ -286,10 +296,14 @@ class Star(object):
 
         Optional
         --------
-        star_dir : `pathlib.Path`
+        star_dir : `pathlib.Path` or str
             A Path object specifying the root directory to look in for fits of
             the star's spectra. If given, will be passed to the
             `initializeFromFits` method.
+        output_dir : `pathlib.Path` or str
+            A string or Path specifying where to save the output HDF5 file
+            holding the collected data for the star. If None, will use the path
+            given by `star_dir`.
         transitions_list : list
             A list of `transition_line.Transition` objects. If `star_dir` is
             given, will be passed to `initializeFromFits`, otherwise no effect.
@@ -321,6 +335,7 @@ class Star(object):
 
         """
 
+        start_time = time.time()
         self.name = str(name)
         self.version = CURRENT_VERSION
         self.base_dir = None
@@ -349,39 +364,37 @@ class Star(object):
         self._parallax = None
         self.specialAttributes = {}
 
-        if transitions_list:
-            self.transitionsList = transitions_list
-        if pairs_list:
-            self.pairsList = pairs_list
-
         if (star_dir is not None):
             assert init_params in ('Nordstrom2004', 'Casagrande2011'),\
                 f'{init_params} is not a valid paper name.'
             self.getStellarParameters(init_params)
 
             star_dir = Path(star_dir)
+            if output_dir is None:
+                output_dir = star_dir
             self.base_dir = star_dir
             self.hdf5file = self.base_dir / f'{name}_data.hdf5'
             if load_data is False or\
                     (load_data is None and not self.hdf5file.exists()):
-                self.constructFromDir(star_dir,
-                                      pairs_list=pairs_list,
-                                      transitions_list=transitions_list)
-                t_filename = vcl.output_dir /\
-                    f'fit_params/{correction_model}_transitions_params.hdf5'
-                if t_filename.is_file():
-                    self.createTransitionModelCorrectedArrays(
-                        filename=t_filename)
-                    self.createPairSeparationArrays()
-                    p_filename = vcl.output_dir /\
-                        f'fit_params/{correction_model}_pairs_params.hdf5'
-                    if p_filename.is_file():
-                        self.createPairModelCorrectedArrays(
-                            filename=p_filename)
+                self.constructFromDir(star_dir)
+                # t_filename = vcl.output_dir /\
+                #     f'fit_params/{correction_model}_transitions_params.hdf5'
+                # if t_filename.is_file():
+                #     self.createTransitionModelCorrectedArrays(
+                #         filename=t_filename)
+                #     self.createPairSeparationArrays()
+                #     p_filename = vcl.output_dir /\
+                #         f'fit_params/{correction_model}_pairs_params.hdf5'
+                #     if p_filename.is_file():
+                #         self.createPairModelCorrectedArrays(
+                #             filename=p_filename)
 
-                self.saveDataToDisk(self.hdf5file)
+                self.saveDataToDisk(output_dir)
                 self.specialAttributes.update(
                     self.getSpecialAttributes(self.base_dir))
+                init_duration = time.time() - start_time
+                tqdm.write(f'Finished initializing in {init_duration:.2f}'
+                           ' seconds.')
 
             elif (load_data is True or load_data is None)\
                     and self.hdf5file.exists():
@@ -415,90 +428,61 @@ class Star(object):
 
         # Get a list of pickled fit results in the given directory.
         search_str = str(star_dir) + f'/HARPS*/pickles_int/*fits.lzma'
-        pickle_files = [Path(path) for path in sorted(glob(search_str))]
+        self.pickle_files = [Path(path) for path in sorted(glob(search_str))]
 
-        if len(pickle_files) == 0:
+        num_obs = len(self.pickle_files)
+        if num_obs == 0:
             raise PickleFilesNotFoundError('No pickled fits found'
                                            f' in {star_dir}.')
 
         # Set up arrays to hold the various values.
         # First work out their dimensions: a row for each observation,
         # and a column for each transition to be measured.
-        num_obs = len(pickle_files)
-        num_transitions = len(self.transitionsList)
+        num_cols = 0
+        for transition in self.transitionsList:
+            num_cols += len(transition.ordersToFitIn)
 
         # Set up 2D arrays with entries for each transition in each observation.
-        self.fitMeansArray = np.full((num_obs, num_transitions),
+        self.fitMeansArray = np.full((num_obs, num_cols),
                                      np.nan, dtype=float) * u.angstrom
-        self.fitErrorsArray = np.full_like(self.fitMeansArray,
-                                           np.nan, dtype=float) * u.m / u.s
-        self.fitOffsetsArray = np.full_like(self.fitMeansArray,
-                                            np.nan, dtype=float) * u.m / u.s
-        self.ccdCorrectionArray = np.full_like(self.fitMeansArray,
-                                               np.nan, dtype=float) * u.m / u.s
-        self.chiSquaredNuArray = np.full_like(self.fitMeansArray,
-                                              np.nan, dtype=float)
+        self.fitErrorsArray = np.full((num_obs, num_cols),
+                                      np.nan, dtype=float) * u.m / u.s
+        self.fitOffsetsArray = np.full((num_obs, num_cols),
+                                       np.nan, dtype=float) * u.m / u.s
+        self.ccdCorrectionArray = np.full((num_obs, num_cols),
+                                          np.nan, dtype=float) * u.m / u.s
+        self.chiSquaredNuArray = np.full((num_obs, num_cols),
+                                         np.nan, dtype=float)
+        self.normalizedDepthArray = np.full((num_obs, num_cols),
+                                            np.nan, dtype=float)
 
         # Now set up 1D arrays holding information for each observation.
-        self.bervArray = np.full((num_obs, 1),
+        self.bervArray = np.full(num_obs,
                                  np.nan, dtype=float) * u.km / u.s
-        self.airmassArray = np.full_like(self.bervArray,
-                                         np.nan, dtype=float)
-        self.calSourceArray = np.full_like(self.bervArray,
-                                           np.nan, dtype=float)
-        self.calFileArray = np.full_like(self.bervArray,
-                                         np.nan, dtype=float)
+        self.airmassArray = np.full(num_obs, np.nan, dtype=float)
+        self.calSourceArray = ['' for _ in range(num_obs)]
+        self.calFileArray = ['' for _ in range(num_obs)]
 
         # For each pickle file:
-        for obs_num, pickle_file in enumerate(tqdm(pickle_files)):
+        for obs_num in tqdm(range(num_obs)):
+            self._read_observation(obs_num)
 
-            with lzma.open(pickle_file, 'rb') as f:
-                fits_list = pickle.loads(f.read())
-            # Find a fit which is not None (doesn't matter which it is as they
-            # should all have the same information) to get information on the
-            # observation.
-            for fit in fits_list:
-                if fit is not None:
-                    self._obs_date_bidict[fit.dateObs.isoformat(
-                                          timespec='milliseconds')] = obs_num
-                    # Save the BERV and airmass.
-                    self.bervArray[obs_num] = fit.BERV.to(u.km/u.s)
-                    self.airmassArray[obs_num] = fit.airmass
-                    self.calSourceArray[obs_num] = fit.calibrationSource
-                    self.calFileArray[obs_num] = fit.calibrationFile
-                    break
+        # Create arrays from the lists of strings:
+        self.calSourceArray = np.array(self.calSourceArray, dtype=str)
+        self.calFileArray = np.array(self.calFileArray, dtype=str)
 
-            # Iterate through all the fits in the pickled list and save their
-            # values only if the fit was 'good' (i.e., a mean value exists and
-            # the amplitude of the fitted Gaussian is negative).
-            for col_num, fit in enumerate(fits_list):
-                # Check that a fit 1) exists, 2) has a negative amplitude (since
-                # amplitude is unconstrained, a positive amplitude is a failed
-                # fit because it's ended up fitting a peak), and 3) within
-                # 5 km/s of its expected wavelength (since the fit only looks
-                # within that range, if it's outside it MUST be wrong).
-                if (fit is not None) and (fit.amplitude < 0) and\
-                    abs(wave2vel(fit.mean,
-                                 fit.correctedWavelength)) < 5 * u.km / u.s:
-                    self.fitMeansArray[obs_num, col_num] =\
-                        fit.mean.to(u.angstrom)
-                    self.fitErrorsArray[obs_num, col_num] =\
-                        fit.meanErrVel.to(u.m/u.s)
-                    self.fitOffsetsArray[obs_num, col_num] =\
-                        fit.velocityOffset.to(u.m/u.s)
-                    self.ccdCorrectionArray[obs_num, col_num] =\
-                        self._correctCCDSystematic(fit.order,
-                                                   fit.centralIndex)
-                    self.chiSquaredNuArray[obs_num, col_num] =\
-                        fit.chiSquaredNu
-
-        # Apply the CCD corrections to all measurements:
+        # Apply the CCD corrections to all measured offsets:
         self.fitOffsetsCorrectedArray = self.fitOffsetsArray -\
             self.ccdCorrectionArray
+        # And to the measured wavelengths, but due to the implementation of
+        # shift_wavelength(), invert them first.
+        self.fitMeansCCDCorrectedArray = shift_wavelength(
+            self.fitMeansArray, -1 * self.ccdCorrectionArray)
+
         # Figure out the median value of the offsets and subtract it, to
         # normalize out any correlated variation in RV from planets.
         self.obsRVOffsetsArray = np.nanmedian(self.fitOffsetsCorrectedArray,
-                                              axis=0)
+                                              axis=1).reshape((num_obs, 1))
         self.fitOffsetsNormalizedArray = self.fitOffsetsCorrectedArray -\
             self.obsRVOffsetsArray
 
@@ -521,6 +505,68 @@ class Star(object):
                                                       for num, transition_label
                                                       in enumerate(
                                                           transition_labels)})
+
+    def _read_observation(self, obs_num):
+        """
+        Read the information from a single observation and update arrays.
+
+        Parameters
+        ----------
+        pickle_file : Path
+            A path to a LZMA-compressed pickle file holding a list of
+            `transition_line.Transition` objects.
+        obs_num : int
+            An integer index representing the row in the array to fill in with
+            information from this observation. The total should be equal to the
+            total number of observations for this star.
+
+        Returns
+        -------
+        None.
+
+        """
+
+        # tqdm.write(f'Executing observation {obs_num}.')
+        with lzma.open(self.pickle_files[obs_num], 'rb') as f:
+            fits_list = pickle.loads(f.read())
+        # Find a fit which is not None (doesn't matter which it is as they
+        # should all have the same information) to get information on the
+        # observation.
+        for fit in fits_list:
+            if fit is not None:
+                self._obs_date_bidict[fit.dateObs.isoformat(
+                                      timespec='milliseconds')] = obs_num
+                # Save the BERV and airmass.
+                self.bervArray[obs_num] = fit.BERV.to(u.km/u.s)
+                self.airmassArray[obs_num] = fit.airmass
+                self.calSourceArray[obs_num] = fit.calibrationSource
+                self.calFileArray[obs_num] = fit.calibrationFile
+
+        # Iterate through all the fits in the pickled list and save their
+        # values only if the fit was 'good' (i.e., a mean value exists and
+        # the amplitude of the fitted Gaussian is negative).
+        for col_num, fit in enumerate(fits_list):
+            # Check that a fit 1) exists, 2) has a negative amplitude (since
+            # amplitude is unconstrained, a positive amplitude is a failed
+            # fit because it's ended up fitting a peak), and 3) within
+            # 5 km/s of its expected wavelength (since the fit only looks
+            # within that range, if it's outside it MUST be wrong).
+            if (fit is not None) and (fit.amplitude < 0) and\
+                abs(wave2vel(fit.mean,
+                             fit.correctedWavelength)) < 5 * u.km / u.s:
+                self.fitMeansArray[obs_num, col_num] =\
+                    fit.mean.to(u.angstrom)
+                self.fitErrorsArray[obs_num, col_num] =\
+                    fit.meanErrVel.to(u.m/u.s)
+                self.fitOffsetsArray[obs_num, col_num] =\
+                    fit.velocityOffset.to(u.m/u.s)
+                self.ccdCorrectionArray[obs_num, col_num] =\
+                    self._correctCCDSystematic(fit.order,
+                                               fit.centralIndex)
+                self.chiSquaredNuArray[obs_num, col_num] =\
+                    fit.chiSquaredNu
+                self.normalizedDepthArray[obs_num, col_num] =\
+                    fit.normalizedLineDepth
 
     def createTransitionModelCorrectedArrays(self, model_func='quadratic',
                                              filename=None, n_sigma=2.5):
@@ -547,7 +593,7 @@ class Star(object):
             also possible.
         filename : `pathlib.Path` or str, Default : None
             The path to a file containing a model function and fitting
-            coefficients for each transition. If not give, the filename to use
+            coefficients for each transition. If not given, the filename to use
             will be created from `model_func`.
         n_sigma : float, Default : 2.5
             The number of standard deviations a point must be away from the
@@ -558,8 +604,9 @@ class Star(object):
 
         # Use the parameters derived from results with outliers removed.
         if filename is None:
-            filename = vcl.output_dir /\
-                f'fit_params/{model_func}_transitions_params.hdf5'
+            file_dir = vcl.output_dir / 'fit_params'
+            filename = file_dir /\
+                f'{model_func}_transitions_{n_sigma:.1f}sigma_params.hdf5'
         fit_results_dict = get_params_file(filename)
         function = fit_results_dict['model_func']
         coeffs_dict = fit_results_dict['coeffs']
@@ -666,12 +713,9 @@ class Star(object):
 
         # Invert the CCD corrections, as they represent the measured offsets
         # from the correct value, and thus need to be shifted oppositely.
-        if flip:
-            self.fitMeansCCDCorrectedArray = shift_wavelength(
-                self.fitMeansArray, -1 * self.ccdCorrectionArray)
-        else:
-            self.fitMeansCCDCorrectedArray = shift_wavelength(
-                self.fitMeansArray, self.ccdCorrectionArray)
+        # self.fitMeansCCDCorrectedArray = shift_wavelength(
+        #     self.fitMeansArray, -1 * self.ccdCorrectionArray)
+
         # Set all values where the mask is True (=bad) to NaN.
         self.fitMeansCCDCorrectedArray[self.transitionOutliersMask] = np.nan
 
@@ -971,15 +1015,16 @@ class Star(object):
         Parameters
         ----------
         file_path : `pathlib.Path` or `str`
-            The file name to save the data to. If `str`, will be converted to
-            a `Path` object.
+            The directory to save the data in. If  a string, it will be
+            converted to a `Path` object. The actual file saved will be this
+            directory + "{self.name}_data.hdf5"
 
         """
 
-        if file_path is None:
+        if file_path is None:  # This is mostly a shortcut for interactive use.
             file_path = self.hdf5file
         else:
-            file_path = Path(file_path)
+            file_path = Path(file_path) / f'{self.name}_data.hdf5'
 
         if file_path.exists():
             # Save the previously existing file as a backup.
@@ -991,7 +1036,7 @@ class Star(object):
                 getattr(self, attr_name).write_hdf5(file_path,
                                                     dataset_name=dataset_name)
             except AttributeError:
-                print(f'Missing attribute {attr_name}.')
+                tqdm.write(f'Missing attribute {attr_name}.')
                 continue
 
         with h5py.File(file_path, mode='a') as f:
@@ -1002,6 +1047,10 @@ class Star(object):
                 except AttributeError:
                     print(f'Missing attribute {attr_name}.')
                     continue
+                except TypeError:
+                    print(path_name, attr_name)
+                    print(getattr(self, attr_name))
+                    raise
 
     def constructFromHDF5(self, filename):
         """Retrieve datasets from HDF5 file.
@@ -1023,8 +1072,8 @@ class Star(object):
                                                  dataset_name=dataset_name)
                 setattr(self, attr_name, dataset)
             except KeyError:
-                print(f'Key "{attr_name}" with path "{dataset_name}"'
-                      f' was not found in saved data for {self.name}.')
+                tqdm.write(f'Key "{attr_name}" with path "{dataset_name}"'
+                           f' was not found in saved data for {self.name}.')
                 pass
 
         with h5py.File(filename, mode='r') as f:
@@ -1032,11 +1081,16 @@ class Star(object):
             for path_name, attr_name in self.other_attributes.items():
                 try:
                     setattr(self, attr_name, hickle.load(f, path=path_name))
-                except AttributeError:
-                    print(f'Attribute "{attr_name}" with path "{path_name}"'
-                          f' was not found in saved data for {self.name}.')
+                except ValueError:
+                    tqdm.write(f'Attribute "{attr_name}" with'
+                               f' path "{path_name}" was not found in'
+                               f' saved data for {self.name}.')
+                except TypeError:
+                    print(attr_name)
+                    print(hickle.load(f, path=path_name))
                 pass
 
+    @returns(length/time_dim)
     def _correctCCDSystematic(self, order, pixel):
         """Return the velocity correction for a given pixel and order number.
 
@@ -1056,10 +1110,9 @@ class Star(object):
 
         Returns
         -------
-        float
+        unyt_quantity, length/time
             A quantity representing the amount to correct the given feature
-            measurement by in order to correct for CCD systematics.
-            (Numerically it will be a value in m/s, though without units.)
+            measurement by in order to correct for CCD systematics in m/s.
 
         """
 
@@ -1086,13 +1139,13 @@ class Star(object):
 
         key_pos = sorted(shift_dict.keys())
         if pixel < key_pos[0]:
-            return shift_dict[key_pos[0]]
+            return shift_dict[key_pos[0]] * u.m / u.s
         elif pixel > key_pos[-1]:
-            return shift_dict[key_pos[-1]]
+            return shift_dict[key_pos[-1]] * u.m / u.s
         else:
             for pos in key_pos:
                 if pixel == pos:
-                    return shift_dict[pos]
+                    return shift_dict[pos] * u.m / u.s
                 elif pixel < pos:
                     # Find the equation of the line made by interpolating
                     # between the two surrounding points so we can find the
@@ -1105,7 +1158,7 @@ class Star(object):
                     assert -15 < result < 15,\
                         f'{pixel}, {order}: ({x1}, {y1}), ({x2}, {y2}),' +\
                         ' {m}, {b}, {result}'
-                    return result
+                    return result * u.m / u.s
             # If for some reason it runs through everything and still doesn't
             # find an answer, raise an error:
             raise RuntimeError('Unable to find correction!')
@@ -1193,7 +1246,7 @@ class Star(object):
                     self._pairs_list = pairs_list
 
     @property
-    @returns(length/time)
+    @returns(length/time_dim)
     def radialVelocity(self):
         """Return the radial velocity of this star."""
         if self._radialVelocity is None:
@@ -1212,7 +1265,7 @@ class Star(object):
         return self._radialVelocity
 
     @radialVelocity.setter
-    @accepts(new_RV=length/time)
+    @accepts(new_RV=length/time_dim)
     def radialVelocity(self, new_RV):
         self._radialVelocity = new_RV
 
