@@ -356,23 +356,23 @@ def main():
                 star_transition_offsets_EotWM[1, i, j] = star_eotwm
                 star_transition_offsets_EotM[1, i, j] = star_eotm
                 star_transition_offsets_stds[1, i, j] = star_std
+        if not args.transitions_only:
+            for k, label in enumerate(tqdm(pair_labels)):
+                col_index = star.p_index(label)
 
-        for k, label in enumerate(tqdm(pair_labels)):
-            col_index = star.p_index(label)
+                if star.hasObsPre:
+                    star_mean, star_eotwm, star_eotm, star_std =\
+                        get_pair_data_point(star, pre_slice, col_index)
+                    star_pair_separations[0, i, k] = star_mean
+                    star_pair_separations_EotWM[0, i, k] = star_eotwm
+                    star_pair_separations_EotM[0, i, k] = star_eotm
 
-            if star.hasObsPre:
-                star_mean, star_eotwm, star_eotm, star_std =\
-                    get_pair_data_point(star, pre_slice, col_index)
-                star_pair_separations[0, i, k] = star_mean
-                star_pair_separations_EotWM[0, i, k] = star_eotwm
-                star_pair_separations_EotM[0, i, k] = star_eotm
-
-            if star.hasObsPost:
-                star_mean, star_eotwm, star_eotm, star_std =\
-                    get_pair_data_point(star, post_slice, col_index)
-                star_pair_separations[1, i, k] = star_mean
-                star_pair_separations_EotWM[1, i, k] = star_eotwm
-                star_pair_separations_EotM[1, i, k] = star_eotm
+                if star.hasObsPost:
+                    star_mean, star_eotwm, star_eotm, star_std =\
+                        get_pair_data_point(star, post_slice, col_index)
+                    star_pair_separations[1, i, k] = star_mean
+                    star_pair_separations_EotWM[1, i, k] = star_eotwm
+                    star_pair_separations_EotM[1, i, k] = star_eotm
 
         star_temperatures[i] = star.temperature
         star_metallicities[i] = star.metallicity
@@ -383,16 +383,18 @@ def main():
     star_transition_offsets_EotWM *= star.fitErrorsArray.units
     star_transition_offsets_EotM *= star.fitErrorsArray.units
     star_transition_offsets_stds *= star.fitErrorsArray.units
-    star_pair_separations *= star.pairSeparationsArray.units
-    star_pair_separations_EotWM *= star.pairSepErrorsArray.units
-    star_pair_separations_EotM *= star.pairSepErrorsArray.units
     star_temperatures *= u.K
+    if not args.transitions_only:
+        star_pair_separations *= star.pairSeparationsArray.units
+        star_pair_separations_EotWM *= star.pairSepErrorsArray.units
+        star_pair_separations_EotM *= star.pairSepErrorsArray.units
 
     # Save the output to disk.
     unyt_arrays = ('star_transition_offsets', 'star_transition_offsets_EotWM',
                    'star_transition_offsets_EotM', 'star_standard_deviations',
-                   'star_pair_separations', 'star_pair_separations_EotWM',
-                   'star_pair_separations_EotM', 'star_temperatures')
+                   'star_temperatures')
+    pair_arrays = ('star_pair_separations', 'star_pair_separations_EotWM',
+                   'star_pair_separations_EotM')
     other_arrays = ('star_metallicities', 'star_magnitudes', 'star_gravities')
 
     if not vcl.databases_dir.exists():
@@ -410,12 +412,21 @@ def main():
                                 star_transition_offsets_EotWM,
                                 star_transition_offsets_EotM,
                                 star_transition_offsets_stds,
-                                star_pair_separations,
-                                star_pair_separations_EotWM,
-                                star_pair_separations_EotM,
                                 star_temperatures)):
             vprint(f'{name}: {array.shape}')
-            array.write_hdf5(db_file, dataset_name=f'/{name}')
+            try:
+                array.write_hdf5(db_file, dataset_name=f'/{name}')
+            except AttributeError:
+                print(name)
+                print(array)
+                raise
+        if not args.transitions_only:
+            for name, array in zip(pair_arrays,
+                                   (star_pair_separations,
+                                    star_pair_separations_EotWM,
+                                    star_pair_separations_EotM)):
+                vprint(f'{name}: {array.shape}')
+                array.write_hdf5(db_file, dataset_name=f'/{name}')
 
         for name, array in zip(other_arrays, (star_metallicities,
                                               star_magnitudes,
@@ -447,6 +458,8 @@ if __name__ == '__main__':
     parser.add_argument('--exclude-hot-stars', action='store_true',
                         help="Exclude stars hotter than solar + 300 K from the"
                         " database.")
+    parser.add_argument('--transitions-only', action='store_true',
+                        help='Exclude information on pair measurements.')
 
     paper = parser.add_mutually_exclusive_group()
     paper.add_argument('--casagrande2011', action='store_true',
