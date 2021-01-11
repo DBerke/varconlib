@@ -57,7 +57,7 @@ def recreate_star(star_dir):
 
     Parameters
     ----------
-    star_dir : str or `pathlib.Path`
+    star_dir :`pathlib.Path`
         The directory in which to find the star's files.
 
     Returns
@@ -66,17 +66,61 @@ def recreate_star(star_dir):
 
     """
 
-    if isinstance(star_dir, str):
-        star_dir = Path(star_dir)
-    else:
-        pass
     tqdm.write(f'Creating {star_dir.stem}')
     try:
         Star(star_dir.stem, star_dir, load_data=False)
     except PickleFilesNotFoundError:
-        star_dir = Path('/Volumes/External Storage/data_output') / star_dir.stem
+        newstar_dir = Path('/Volumes/External Storage/data_output') /\
+            star_dir.stem
         tqdm.write('Using external storage files.')
-        Star(star_dir.stem, star_dir, load_data=False)
+        Star(star_dir.stem, new_star_dir, load_data=False, output_dir=star_dir)
+
+
+def create_transition_model_corrected_arrays(star_dir):
+    """
+    Create the transition model-corrected arrays for a Star from a given
+    directory.
+
+
+    Parameters
+    ----------
+    star_dir : `pathlib.Path`
+        The directory in which to find the star's files.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    tqdm.write(f'Working on {star_dir.stem}')
+    star = Star(star_dir.stem, star_dir, load_data=True)
+    star.createTransitionModelCorrectedArrays(model_func='quadratic',
+                                              n_sigma=2.5)
+    star.createPairSeparationArrays()
+    star.saveDataToDisk()
+
+
+def create_pair_model_corrected_arrays(star_dir):
+    """
+    Create the pair model-corrected array for a Star from a given directory.
+
+    Parameters
+    ----------
+    star_dir : `pathlib.Path`
+        The directory in which to find the star's files.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    tqdm.write(f'Working on {star_dir.stem}')
+    star = Star(star_dir.stem, star_dir, load_data=True)
+    star.createPairModelCorrectedArrays(model_func='quadratic',
+                                        n_sigma=4.0)
+    star.saveDataToDisk()
 
 
 if __name__ == '__main__':
@@ -86,6 +130,15 @@ if __name__ == '__main__':
     parser.add_argument('star_names', action='store', type=str, nargs='*',
                         help='The names of stars (directories) containing the'
                         ' stars to be used in the plot.')
+    parser.add_argument('--recreate-stars', action='store_true',
+                        help='Trigger a full rebuild of stars from the pickled'
+                        ' results files (LENGTHY!).')
+    parser.add_argument('--transitions', action='store_true',
+                        help='Create the transition model-corrected arrays and'
+                        ' pair separation arrays for stars.')
+    parser.add_argument('--pairs', action='store_true',
+                        help='Create the pair model-corrected arrays for'
+                        ' stars.')
 
     args = parser.parse_args()
 
@@ -99,12 +152,14 @@ if __name__ == '__main__':
         # No stars given, fall back on included list:
         star_dirs = [output_dir / star_name for star_name in stars_to_use]
 
-    # tqdm.set_lock(RLock)
-    # p = Pool(initializer=tqdm.set_lock, initargs=(tqdm.get_lock(),))
+    if args.recreate_stars:
+        p_umap(recreate_star, star_dirs)
 
-    # with Pool() as pool:
-    #     pool.map(recreate_star, star_dirs)
-    p_umap(recreate_star, star_dirs)
+    if args.transitions:
+        p_umap(create_transition_model_corrected_arrays, star_dirs)
+
+    if args.pairs:
+        p_umap(create_pair_model_corrected_arrays, star_dirs)
 
     duration = time.time() - start_time
     print(f'Finished recreating stars in {duration:.2f} seconds.')
