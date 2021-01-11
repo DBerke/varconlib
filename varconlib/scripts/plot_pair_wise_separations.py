@@ -31,6 +31,7 @@ import matplotlib.ticker as ticker
 import numpy as np
 import numpy.ma as ma
 from numpy import cos, sin
+from p_tqdm import p_map
 import pandas as pd
 from scipy.stats import norm
 from tqdm import tqdm
@@ -875,15 +876,16 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=5.0):
         ax.axhline(y=0, linestyle='--', color='Gray')
 
     # Add some information about the star to the figure:
-    information = [r'T$_\mathrm{eff}$:' + f' {star.temperature}',
-                   f'[Fe/H]: {star.metallicity}',
-                   r'$\log{g}$:' + f' {star.logg}']
-    for key, value in star.specialAttributes.items():
-        information.append(f'{key}: {value}')
+    # information = [r'T$_\mathrm{eff}$:' + f' {star.temperature}',
+    #                f'[Fe/H]: {star.metallicity}',
+    #                r'$\log{g}$:' + f' {star.logg}']
+    # for key, value in star.specialAttributes.items():
+    #     information.append(f'{key}: {value}')
 
-    info = '      '.join(information)
-    ax_pre.annotate(info, (0.07, 0.5),
-                    xycoords='figure fraction')
+    # info = '      '.join(information)
+    # ax_pre.annotate(info, (0.07, 0.5),
+    #                 xycoords='figure fraction')
+    add_star_information(star, ax_pre, (0.07, 0.5))
 
     if star.hasObsPre:
         full_errs_pre = np.sqrt(u.unyt_array(pair_sep_errs_pre,
@@ -1220,7 +1222,7 @@ def plot_duplicate_pairs(star):
 
     # Plot the results
 
-    fig = plt.figure(figsize=(12, 9), tight_layout=True)
+    fig = plt.figure(figsize=(12, 12), tight_layout=True)
     gs = GridSpec(ncols=2, nrows=1, figure=fig,
                   width_ratios=(1, 1))
     ax_pre = fig.add_subplot(gs[0, 0])
@@ -1250,7 +1252,7 @@ def plot_duplicate_pairs(star):
         # ax.yaxis.grid(which='minor', color='Gray', alpha=0.6,
         #               linestyle='--')
         ax.axvline(x=0, linestyle='-', color='Gray')
-        ax.set_ylim(bottom=-1, top=56)
+        ax.set_ylim(bottom=-1, top=134)
         for b in order_boundaries:
             ax.axhline(y=b, linestyle='--', color='DimGray')
 
@@ -1297,8 +1299,8 @@ def plot_duplicate_pairs(star):
                                           remove_nans(pair_errs), 1)
         model_chisq = calc_chi_squared_nu(remove_nans(model_diffs),
                                           remove_nans(model_errs), 1)
-        pairs_sigma = np.std(pair_diffs)
-        model_sigma = np.std(model_diffs)
+        pairs_sigma = np.nanstd(pair_diffs)
+        model_sigma = np.nanstd(model_diffs)
 
         ax_post.errorbar(pair_diffs, pair_indices,
                          xerr=pair_errs,
@@ -1361,15 +1363,25 @@ def plot_pair_depth_differences(star):
     pre_slice = slice(None, star.fiberSplitIndex)
     post_slice = slice(star.fiberSplitIndex, None)
 
-    for pair in star.pairsList:
+    for pair in tqdm(star.pairsList):
         for order_num in pair.ordersToMeasureIn:
             pair_label = '_'.join([pair.label, str(order_num)])
             col_index = star._pair_bidict[pair_label]
-            h_d = pair._higherEnergyTransition.normalizedDepth
-            l_d = pair._lowerEnergyTransition.normalizedDepth
+            label_high = '_'.join([pair._higherEnergyTransition.label,
+                                  str(order_num)])
+            label_low = '_'.join([pair._lowerEnergyTransition.label,
+                                 str(order_num)])
+            col_high = star._transition_bidict[label_high]
+            col_low = star._transition_bidict[label_low]
+            depths_high = remove_nans(star.normalizedDepthArray[:, col_high])
+            depths_low = remove_nans(star.normalizedDepthArray[:, col_low])
+            mean_high = np.nanmean(depths_high)
+            mean_low = np.nanmean(depths_low)
+            # h_d = pair._higherEnergyTransition.normalizedDepth
+            # l_d = pair._lowerEnergyTransition.normalizedDepth
             # depth_diff = l_d - h_d
-            pair_depth_means.append((l_d + h_d) / 2)
-            pair_depth_diffs.append(abs(l_d - h_d))
+            pair_depth_means.append((mean_high + mean_low) / 2)
+            pair_depth_diffs.append(abs(mean_low - mean_high))
 
             if star.hasObsPre:
                 w_mean, eotwm = get_weighted_mean(star.pairModelOffsetsArray,
@@ -1399,10 +1411,12 @@ def plot_pair_depth_differences(star):
     sigmas_sys_post = np.array(sigmas_sys_post)
 
     # Plot as a function of pair depth separation.
-    fig = plt.figure(figsize=(10, 9), tight_layout=True)
+    point_size = 18
+
+    fig = plt.figure(figsize=(15, 9), tight_layout=True)
     gs = GridSpec(ncols=2, nrows=7, figure=fig,
-                  height_ratios=(4.8, 1, 1, 0.7, 4.8, 1, 1),
-                  width_ratios=(30, 1),
+                  height_ratios=(4.8, 1, 1, 0.8, 4.8, 1, 1),
+                  width_ratios=(40, 1),
                   hspace=0)
     ax_pre = fig.add_subplot(gs[0, 0])
     ax_pre_chi = fig.add_subplot(gs[1, 0])
@@ -1426,16 +1440,23 @@ def plot_pair_depth_differences(star):
     ax_post.set_xticklabels('')
     ax_post_chi.set_xticklabels('')
 
-    for ax in (ax_pre, ax_post, ax_pre_wmean, ax_post_wmean):
-        # ax.yaxis.grid(which='major', color='Gray',
-        #               linestyle='-', alpha=0.65)
-        # ax.yaxis.grid(which='minor', color='Gray',
-        #               linestyle=':', alpha=0.5)
+    for ax in (ax_pre, ax_post):
+        ax.set_ylim(bottom=-150, top=150)
         ax.axhline(y=0, color='Gray', linestyle='--')
-        ax.set_xlim(left=-0.002, right=0.202)
+    for ax in (ax_pre_wmean, ax_post_wmean):
+        ax.axhline(y=0, color='Gray', linestyle='--')
+    for ax in (ax_pre, ax_post, ax_pre_wmean, ax_post_wmean,
+               ax_pre_chi, ax_post_chi):
+        ax.xaxis.set_major_locator(ticker.AutoLocator())
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.xaxis.grid(which='major', color='Gray',
+                      linestyle=':', alpha=0.8)
+        ax.xaxis.grid(which='minor', color='Gray',
+                      linestyle=':', alpha=0.5)
+        ax.set_xlim(left=-0.001, right=0.35)
     for ax in (ax_pre_chi, ax_post_chi):
         ax.axhline(y=1, color='Black', linestyle='--')
-        ax.set_xlim(left=-0.002, right=0.202)
+        ax.set_ylim(bottom=0, top=2)
 
     if star.hasObsPre:
         full_errs_pre = np.sqrt(pair_model_err_pre ** 2 +
@@ -1446,12 +1467,12 @@ def plot_pair_depth_differences(star):
         ax_pre.errorbar(pair_depth_diffs, pair_model_sep_pre,
                         yerr=full_errs_pre,
                         linestyle='', marker='.',
-                        color='Chocolate',
+                        color='Peru',
                         zorder=0,
                         label=r'$\chi^2_\nu$:'
                         f' {chisq:.2f}, {star.numObsPre} obs')
         clb_pre = ax_pre.scatter(pair_depth_diffs, pair_model_sep_pre,
-                                 marker='o',
+                                 marker='o', s=point_size,
                                  c=pair_depth_means,
                                  cmap=cmr.get_sub_cmap('cmr.ember',
                                                        0.1, 0.85),
@@ -1469,10 +1490,10 @@ def plot_pair_depth_differences(star):
         ax_post.errorbar(pair_depth_diffs, pair_model_sep_post,
                          yerr=full_errs_post,
                          linestyle='', marker='.',
-                         color='DodgerBlue',
+                         color='DeepSkyBlue',
                          zorder=0)
         clb_post = ax_post.scatter(pair_depth_diffs, pair_model_sep_post,
-                                   marker='o',
+                                   marker='o', s=point_size,
                                    c=pair_depth_means,
                                    cmap=cmr.get_sub_cmap('cmr.cosmic',
                                                          0.1, 0.85),
@@ -1483,19 +1504,24 @@ def plot_pair_depth_differences(star):
                      label='Mean pair depth')
         ax_post.legend()
 
+    add_star_information(star, ax_pre_wmean, (0.07, 0.5))
+
     # Get results for bins.
-    bin_lims = np.linspace(0, 0.2, 9)
+    bin_lims = np.linspace(0, 0.35, 15)
 
     if star.hasObsPre:
         midpoints, w_means, eotwms, chisq = [], [], [], []
-        for i, lims in zip(range(8), pairwise(bin_lims)):
+        for i, lims in zip(range(len(bin_lims)), pairwise(bin_lims)):
             midpoints.append((lims[1] + lims[0]) / 2)
             mask = np.where((pair_depth_diffs > lims[0]) &
                             (pair_depth_diffs < lims[1]))
             values, nan_mask = remove_nans(pair_model_sep_pre[mask],
                                            return_mask=True)
             errs = full_errs_pre[mask][nan_mask]
-            w_mean, eotwm = weighted_mean_and_error(values, errs)
+            try:
+                w_mean, eotwm = weighted_mean_and_error(values, errs)
+            except ZeroDivisionError:
+                w_mean, eotwm = np.nan, np.nan
             w_means.append(w_mean)
             eotwms.append(eotwm)
 
@@ -1507,14 +1533,17 @@ def plot_pair_depth_differences(star):
 
     if star.hasObsPost:
         midpoints, w_means, eotwms, chisq = [], [], [], []
-        for i, lims in zip(range(8), pairwise(bin_lims)):
+        for i, lims in zip(range(len(bin_lims)), pairwise(bin_lims)):
             midpoints.append((lims[1] + lims[0]) / 2)
             mask = np.where((pair_depth_diffs > lims[0]) &
                             (pair_depth_diffs < lims[1]))
             values, nan_mask = remove_nans(pair_model_sep_post[mask],
                                            return_mask=True)
             errs = full_errs_post[mask][nan_mask]
-            w_mean, eotwm = weighted_mean_and_error(values, errs)
+            try:
+                w_mean, eotwm = weighted_mean_and_error(values, errs)
+            except ZeroDivisionError:
+                w_mean, eotwm = np.nan, np.nan
             w_means.append(w_mean)
             eotwms.append(eotwm)
 
@@ -1530,10 +1559,10 @@ def plot_pair_depth_differences(star):
     plt.close('all')
 
     # Plot as a function of mean pair depth.
-    fig = plt.figure(figsize=(10, 9), tight_layout=True)
+    fig = plt.figure(figsize=(15, 9), tight_layout=True)
     gs = GridSpec(ncols=2, nrows=7, figure=fig,
-                  height_ratios=(4.8, 1, 1, 0.7, 4.8, 1, 1),
-                  width_ratios=(29, 1),
+                  height_ratios=(4.8, 1, 1, 0.8, 4.8, 1, 1),
+                  width_ratios=(40, 1),
                   hspace=0)
     ax_pre = fig.add_subplot(gs[0, 0])
     ax_pre_chi = fig.add_subplot(gs[1, 0])
@@ -1559,16 +1588,23 @@ def plot_pair_depth_differences(star):
     ax_post.set_xticklabels('')
     ax_post_chi.set_xticklabels('')
 
-    for ax in (ax_pre, ax_post, ax_pre_wmean, ax_post_wmean):
-        # ax.yaxis.grid(which='major', color='Gray',
-        #               linestyle='-', alpha=0.65)
-        # ax.yaxis.grid(which='minor', color='Gray',
-        #               linestyle=':', alpha=0.5)
+    for ax in (ax_pre, ax_post):
+        ax.set_ylim(bottom=-150, top=150)
         ax.axhline(y=0, color='Gray', linestyle='--')
-        # ax.set_xlim(left=-0.002, right=0.202)
+    for ax in (ax_pre_wmean, ax_post_wmean):
+        ax.axhline(y=0, color='Gray', linestyle='--')
+    for ax in (ax_pre, ax_post, ax_pre_wmean, ax_post_wmean,
+               ax_pre_chi, ax_post_chi):
+        ax.xaxis.set_major_locator(ticker.AutoLocator())
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.xaxis.grid(which='major', color='Gray',
+                      linestyle=':', alpha=0.65)
+        ax.xaxis.grid(which='minor', color='Gray',
+                      linestyle=':', alpha=0.5)
+        ax.set_xlim(left=0, right=1)
     for ax in (ax_pre_chi, ax_post_chi):
         ax.axhline(y=1, color='Black', linestyle='--')
-        # ax.set_xlim(left=-0.002, right=0.202)
+        ax.set_ylim(bottom=0, top=2)
 
     if star.hasObsPre:
         full_errs_pre = np.sqrt(pair_model_err_pre ** 2 +
@@ -1579,12 +1615,12 @@ def plot_pair_depth_differences(star):
         ax_pre.errorbar(pair_depth_means, pair_model_sep_pre,
                         yerr=full_errs_pre,
                         linestyle='', marker='.',
-                        color='Chocolate',
+                        color='Peru',
                         zorder=0,
                         label=r'$\chi^2_\nu$:'
                         f' {chisq:.2f}, {star.numObsPre} obs')
         clb_pre = ax_pre.scatter(pair_depth_means, pair_model_sep_pre,
-                                 marker='o',
+                                 marker='o', s=point_size,
                                  c=pair_depth_diffs,
                                  cmap=cmr.get_sub_cmap('cmr.ember',
                                                        0.1, 0.85),
@@ -1602,10 +1638,10 @@ def plot_pair_depth_differences(star):
         ax_post.errorbar(pair_depth_means, pair_model_sep_post,
                          yerr=full_errs_post,
                          linestyle='', marker='.',
-                         color='DodgerBlue',
+                         color='DeepSkyBlue',
                          zorder=0)
         clb_post = ax_post.scatter(pair_depth_means, pair_model_sep_post,
-                                   marker='o',
+                                   marker='o', s=point_size,
                                    c=pair_depth_diffs,
                                    cmap=cmr.get_sub_cmap('cmr.cosmic',
                                                          0.1, 0.85),
@@ -1616,19 +1652,25 @@ def plot_pair_depth_differences(star):
                      label='Mean pair depth difference')
         ax_post.legend()
 
+    add_star_information(star, ax_pre, (0.07, 0.5))
+
     # Get results for bins.
-    bin_lims = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8)
+    # bin_lims = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8)
+    bin_lims = np.linspace(0, 1, 11)
 
     if star.hasObsPre:
         midpoints, w_means, eotwms, chisq = [], [], [], []
-        for i, lims in zip(range(8), pairwise(bin_lims)):
+        for i, lims in zip(range(len(bin_lims)), pairwise(bin_lims)):
             midpoints.append((lims[1] + lims[0]) / 2)
             mask = np.where((pair_depth_means > lims[0]) &
                             (pair_depth_means < lims[1]))
             values, nan_mask = remove_nans(pair_model_sep_pre[mask],
                                            return_mask=True)
             errs = full_errs_pre[mask][nan_mask]
-            w_mean, eotwm = weighted_mean_and_error(values, errs)
+            try:
+                w_mean, eotwm = weighted_mean_and_error(values, errs)
+            except ZeroDivisionError:
+                w_mean, eotwm = np.nan, np.nan
             w_means.append(w_mean)
             eotwms.append(eotwm)
 
@@ -1640,14 +1682,17 @@ def plot_pair_depth_differences(star):
 
     if star.hasObsPost:
         midpoints, w_means, eotwms, chisq = [], [], [], []
-        for i, lims in zip(range(8), pairwise(bin_lims)):
+        for i, lims in zip(range(len(bin_lims)), pairwise(bin_lims)):
             midpoints.append((lims[1] + lims[0]) / 2)
             mask = np.where((pair_depth_means > lims[0]) &
                             (pair_depth_means < lims[1]))
             values, nan_mask = remove_nans(pair_model_sep_post[mask],
                                            return_mask=True)
             errs = full_errs_post[mask][nan_mask]
-            w_mean, eotwm = weighted_mean_and_error(values, errs)
+            try:
+                w_mean, eotwm = weighted_mean_and_error(values, errs)
+            except ZeroDivisionError:
+                w_mean, eotwm = np.nan, np.nan
             w_means.append(w_mean)
             eotwms.append(eotwm)
 
@@ -1677,7 +1722,26 @@ def plot_vs_pair_blendedness(star):
 
     """
 
+    # tqdm.write(f'Plotting {star.name}...')
     plots_dir = Path('/Users/dberke/Pictures/blendedness_investigation')
+
+    sorted_blend_tuples = ((0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5),
+                           (1, 1), (1, 2), (1, 3), (1, 4), (1, 5),
+                           (2, 2), (2, 3), (2, 4), (2, 5),
+                           (3, 3), (3, 4), (3, 5),
+                           (4, 4), (4, 5),
+                           (5, 5))
+
+    sorted_blend_tuples = ((0, 0), (0, 1), (0, 2), (0, 3), (0, 4),
+                           (1, 1), (1, 2), (1, 3), (1, 4),
+                           (2, 2), (2, 3), (2, 4),
+                           (3, 3), (3, 4),
+                           (4, 4))
+
+    sorted_blend_tuples = ((0, 0), (0, 1), (0, 2), (0, 3),
+                           (1, 1), (1, 2), (1, 3),
+                           (2, 2), (2, 3),
+                           (3, 3))
 
     sorted_blend_tuples = [(0, 0), (0, 1), (1, 1), (0, 2), (1, 2), (2, 2)]
 
@@ -1703,7 +1767,9 @@ def plot_vs_pair_blendedness(star):
 
     for blend_tuple in sorted_blend_tuples:
         bin_means_pre, bin_errs_pre = [], []
+        bin_means_pre_nn, bin_errors_pre_nn = [], []
         bin_means_post, bin_errs_post = [], []
+        bin_means_post_nn, bin_means_post_nn = [], []
         for pair_label, value in pair_blends_dict.items():
             col_index = star.p_index(pair_label)
             if blend_tuple == value:
@@ -1726,13 +1792,24 @@ def plot_vs_pair_blendedness(star):
                     bin_errs_post.append(
                         np.sqrt(eotwm**2 +
                                 star.pairSysErrorsArray[1, col_index]**2))
-        divisions.append(total + 0.5)
-        if len(bin_means_pre) >= 2:
+        divisions.append(total - 0.5)
+        if star.hasObsPre:
+            bin_means_pre_nn, mask_pre = remove_nans(np.array(bin_means_pre),
+                                                     return_mask=True)
+            bin_errs_pre_nn = np.array(bin_errs_pre)[mask_pre]
+
+        if star.hasObsPost:
+            bin_means_post_nn, mask_post = remove_nans(np.array(bin_means_post),
+                                                       return_mask=True)
+            bin_errs_post_nn = np.array(bin_errs_post)[mask_post]
+
+        if len(bin_means_pre_nn) >= 2:
+
             chi_squareds_pre.append(calc_chi_squared_nu(
-                np.array(bin_means_pre), np.array(bin_errs_pre), 1))
+                bin_means_pre_nn, bin_errs_pre_nn, 1))
             sigmas_pre.append(np.nanstd(bin_means_pre))
-            wmean, eotwm = weighted_mean_and_error(np.array(bin_means_pre),
-                                                   np.array(bin_errs_pre))
+            wmean, eotwm = weighted_mean_and_error(bin_means_pre_nn,
+                                                   bin_errs_pre_nn)
             per_bin_wmeans_pre.append(wmean)
             per_bin_errs_pre.append(eotwm)
         else:
@@ -1740,12 +1817,13 @@ def plot_vs_pair_blendedness(star):
             sigmas_pre.append(np.nan)
             per_bin_wmeans_pre.append(np.nan)
             per_bin_errs_pre.append(np.nan)
-        if len(bin_means_post) >= 2:
+
+        if len(bin_means_post_nn) >= 2:
             chi_squareds_post.append(calc_chi_squared_nu(
-                np.array(bin_means_post), np.array(bin_errs_post), 1))
+                bin_means_post_nn, bin_errs_post_nn, 1))
             sigmas_post.append(np.nanstd(bin_means_post))
-            wmean, eotwm = weighted_mean_and_error(np.array(bin_means_post),
-                                                   np.array(bin_errs_post))
+            wmean, eotwm = weighted_mean_and_error(bin_means_post_nn,
+                                                   bin_errs_post_nn)
             per_bin_wmeans_post.append(wmean)
             per_bin_errs_post.append(eotwm)
         else:
@@ -1753,6 +1831,7 @@ def plot_vs_pair_blendedness(star):
             sigmas_post.append(np.nan)
             per_bin_wmeans_post.append(np.nan)
             per_bin_errs_post.append(np.nan)
+
         sorted_means_pre.extend(bin_means_pre)
         sorted_errs_pre.extend(bin_errs_pre)
         sorted_means_post.extend(bin_means_post)
@@ -1764,9 +1843,9 @@ def plot_vs_pair_blendedness(star):
     sorted_errs_post = np.array(sorted_errs_post)
 
     # Plot the results.
-    fig = plt.figure(figsize=(10, 9), tight_layout=True)
+    fig = plt.figure(figsize=(18, 10), tight_layout=True)
     gs = GridSpec(ncols=1, nrows=7, figure=fig,
-                  height_ratios=(3.5, 1, 1, 0.3, 3, 1, 1), hspace=0)
+                  height_ratios=(3.1, 1, 1, 0.6, 3.1, 1, 1), hspace=0)
     ax_pre = fig.add_subplot(gs[0, 0])
     ax_post = fig.add_subplot(gs[4, 0])
     ax_chi_pre = fig.add_subplot(gs[1, 0])
@@ -1778,49 +1857,67 @@ def plot_vs_pair_blendedness(star):
     ax_post.set_ylabel('Model-corrected pair\noffsets post (m/s)')
     ax_chi_pre.set_ylabel(r'$\chi^2_\nu$')
     ax_chi_post.set_ylabel(r'$\chi^2_\nu$')
-    ax_wmean_pre.set_ylabel('Weighted\nmean (m/s)')
-    ax_wmean_post.set_ylabel('Weighted\nmean (m/s)')
+    ax_wmean_pre.set_ylabel('Weighted\nmean\n/sigma (m/s)')
+    ax_wmean_post.set_ylabel('Weighted\nmean\n/sigma (m/s)')
     label_positions = (0.01, 0.155, 0.315, 0.49, 0.85, 0.99)
+    label_positions = [(div / total) - np.sqrt(div / total) * 0.005
+                       for div in divisions]
+
     for ax in (ax_pre, ax_post, ax_chi_pre, ax_chi_post,
                ax_wmean_pre, ax_wmean_post):
-        ax.set_xlim(left=-1, right=total_pairs)
-        ax.axhline(y=0, color='Black', alpha=1)
+        # Set the x-limits for the plot
+        ax.set_xlim(left=-1, right=total)
+        ax.axhline(y=0, color='Black', alpha=1, linestyle='--')
+    for ax in (ax_wmean_pre, ax_wmean_post):
+        ax.set_ylim(bottom=-40, top=40)
     for ax in (ax_chi_pre, ax_chi_post):
         ax.axhline(y=1, color='Black', linestyle='--')
+        ax.set_ylim(bottom=0, top=2)
     for ax in (ax_pre, ax_post):
+        ax.set_ylim(bottom=-110, top=110)
         for div, b_tuple, label_pos, sig_pre, sig_post in zip(
                 divisions, sorted_blend_tuples, label_positions,
                 sigmas_pre, sigmas_post):
             ax.axvline(x=div, color='DarkSlateGray', alpha=0.8)
             ax_pre.annotate(f'{sig_pre:.2f} m/s',
-                            xy=(div - 5, 0),
+                            xy=(div, 0),
                             xytext=(label_pos, 0.01),
                             textcoords='axes fraction',
                             horizontalalignment='center',
                             verticalalignment='bottom',
                             rotation=90)
             ax_pre.annotate(f'{b_tuple}',
-                            xy=(div-5, 0), xytext=(label_pos, 0.99),
+                            xy=(div, 0), xytext=(label_pos, 0.99),
                             textcoords='axes fraction',
                             horizontalalignment='center',
                             verticalalignment='top',
                             rotation=90)
             ax_post.annotate(f'{sig_post:.2f} m/s',
-                             xy=(div - 5, 0),
+                             xy=(div, 0),
                              xytext=(label_pos, 0.01),
                              textcoords='axes fraction',
                              horizontalalignment='center',
                              verticalalignment='bottom',
                              rotation=90)
             ax_post.annotate(f'{b_tuple}',
-                             xy=(div-5, 0), xytext=(label_pos, 0.99),
+                             xy=(div, 0), xytext=(label_pos, 0.99),
                              textcoords='axes fraction',
                              horizontalalignment='center',
                              verticalalignment='top',
                              rotation=90)
 
-    indices = [x for x in range(total_pairs)]
-    bin_mids = (2, 27, 66, 115, 190, 260)
+    add_star_information(star, ax_wmean_pre, (0.07, 0.5))
+
+    indices = [x for x in range(total)]
+    boundaries = [0]
+    boundaries.extend(divisions)
+    bin_mids = [(a + b) / 2 for a, b in pairwise(boundaries)]
+
+    max_tuple = sorted_blend_tuples[-1]
+    legend_loc = {(2, 2): 0.51,
+                  (3, 3): 0.50,
+                  (4, 4): 0.41,
+                  (5, 5): 0.38}
 
     if star.hasObsPre:
         values, mask = remove_nans(sorted_means_pre, return_mask=True)
@@ -1828,7 +1925,8 @@ def plot_vs_pair_blendedness(star):
                                         sorted_errs_pre[mask], 1)
         ax_pre.errorbar(x=indices, y=sorted_means_pre, yerr=sorted_errs_pre,
                         color='Chocolate', markeredgecolor='Black',
-                        linestyle='', marker='o',
+                        ecolor='Peru',
+                        linestyle='', marker='o', markersize=4,
                         label=f'{star.numObsPre} obs,'
                         r' $\chi^2_\nu$:'
                         f' {chisq_pre:.2f}')
@@ -1839,7 +1937,10 @@ def plot_vs_pair_blendedness(star):
                               yerr=per_bin_errs_pre,
                               linestyle='-', color='Black',
                               marker='.')
-        ax_pre.legend(loc=(0.51, 0.01))
+        ax_wmean_pre.plot(bin_mids, sigmas_pre,
+                          linestyle='-', color='Green',
+                          marker='.')
+        ax_pre.legend(loc=(legend_loc[max_tuple], 0.01))
 
     if star.hasObsPost:
         values, mask = remove_nans(sorted_means_post, return_mask=True)
@@ -1847,7 +1948,8 @@ def plot_vs_pair_blendedness(star):
                                          sorted_errs_post[mask], 1)
         ax_post.errorbar(x=indices, y=sorted_means_post, yerr=sorted_errs_post,
                          color='DodgerBlue', markeredgecolor='Black',
-                         linestyle='', marker='o',
+                         ecolor='DeepSkyBlue',
+                         linestyle='', marker='o', markersize=4,
                          label=f'{star.numObsPost} obs,'
                          r' $\chi^2_\nu$:'
                          f' {chisq_post:.2f}')
@@ -1858,9 +1960,12 @@ def plot_vs_pair_blendedness(star):
                                yerr=per_bin_errs_post,
                                linestyle='-', color='Black',
                                marker='.')
-        ax_post.legend(loc=(0.51, 0.01))
+        ax_wmean_post.plot(bin_mids, sigmas_post,
+                           linestyle='-', color='Green',
+                           marker='.')
+        ax_post.legend(loc=(legend_loc[max_tuple], 0.01))
 
-    filename = plots_dir / f'{star.name}_by_blendedness.png'
+    filename = plots_dir / f'{star.name}_by_blendedness_{max_tuple}.png'
     if not plots_dir.exists():
         os.mkdir(plots_dir)
     fig.savefig(str(filename))
@@ -2141,6 +2246,37 @@ def format_pair_label(pair_label, use_latex=False):
                f' {wavelength2}'
 
 
+def add_star_information(star, axis, coords):
+    """Write information on a star to a plot.
+
+
+    Parameters
+    ----------
+    star : `varconlib.star.Star`
+        The star to get information from.
+    axis : `matplotlib Axes` instance
+        The axis to attach the information to.
+    coords : tuple
+        A 2-tuple of floats between 0 and 1, denoting the figure coordinates
+        where to place the information.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    information = [r'T$_\mathrm{eff}$:' + f' {star.temperature}',
+                   f'[Fe/H]: {star.metallicity}',
+                   r'$\log{g}$:' + f' {star.logg}']
+    for key, value in star.specialAttributes.items():
+        information.append(f'{key}: {value}')
+
+    info = '      '.join(information)
+    axis.annotate(info, coords,
+                  xycoords='figure fraction')
+
+
 def get_star(star_name):
     """
     Return a `varconlib.star.Star` object using this name.
@@ -2170,9 +2306,9 @@ parameter_options = parser.add_argument_group(
     description="Select what parameters to plot the pairs-wise velocity"
     " separations by.")
 
-parser.add_argument('star', nargs='*', default=None, const=None, type=str,
-                    help='The name of a single, specific star to make a plot'
-                    ' from. If not given will default to using all stars.')
+parser.add_argument('stars', nargs='*', default=None, const=None, type=str,
+                    help='A list of stars to make plots from. If not given'
+                    ' will default to using all stars.')
 
 parser.add_argument('-m', '--model', type=str, action='store',
                     help='The name of a model to test against.')
@@ -2232,8 +2368,10 @@ args = parser.parse_args()
 vprint = vcl.verbose_print(args.verbose)
 
 # Get the star from the name.
-if len(args.star) == 1:
-    star = get_star(args.star[0])
+if len(args.stars) == 1:
+    star = get_star(args.stars[0])
+else:
+    stars = [get_star(star_name) for star_name in args.stars]
 
 csv_dir = vcl.output_dir / 'pair_separation_files'
 
@@ -2265,23 +2403,23 @@ if args.galactocentric_distance:
 if args.example_plot:
     create_example_plots()
 
-if args.star is not None and args.pair_label:
+if args.stars is not None and args.pair_label:
     plot_pair_stability(star, args.pair_label)
 
-if args.star is not None and args.sigma_sys_vs_pair_separations:
+if args.stars is not None and args.sigma_sys_vs_pair_separations:
     plot_sigma_sys_vs_pair_separation(star)
 
 # Create plots as a function of pair separation distance.
-if args.star is not None and args.model is not None and args.sigma is not None\
+if args.stars is not None and args.model is not None and args.sigma is not None\
         and args.model_diff_vs_pair_separations:
-    if len(args.star) == 1:
+    if len(args.stars) == 1:
         plot_model_diff_vs_pair_separation(star, args.model.replace('-', '_'),
                                            n_sigma=args.sigma)
-    elif len(args.star) > 1:
+    elif len(args.stars) > 1:
         results_file = vcl.output_dir /\
             f'pair_separation_files/star_pair_separation_{args.sigma}sigma.csv'
         results = []
-        for star in tqdm(args.star):
+        for star in tqdm(args.stars):
             results.append(plot_model_diff_vs_pair_separation(
                 get_star(star), args.model.replace('-', '_'),
                 n_sigma=args.sigma))
@@ -2296,24 +2434,25 @@ if args.star is not None and args.model is not None and args.sigma is not None\
             for row in results:
                 datawriter.writerow(row)
 
-if args.star is not None and args.plot_duplicate_pairs:
-    if len(args.star) == 1:
+if args.stars is not None and args.plot_duplicate_pairs:
+    if len(args.stars) == 1:
         plot_duplicate_pairs(star)
-    elif len(args.star) > 1:
-        for star in tqdm(args.star):
+    elif len(args.stars) > 1:
+        for star in tqdm(args.stars):
             plot_duplicate_pairs(get_star(star))
 
-if args.star is not None and args.plot_depth_differences:
-    if len(args.star) == 1:
+if args.stars is not None and args.plot_depth_differences:
+    if len(args.stars) == 1:
         plot_pair_depth_differences(star)
-    if len(args.star) > 1:
-        for star_name in tqdm(args.star):
-            plot_pair_depth_differences(get_star(star_name))
+    if len(args.stars) > 1:
+        p_map(plot_pair_depth_differences, stars)
+        # for star_name in tqdm(args.stars):
+        #     plot_pair_depth_differences(get_star(star_name))
 
-if args.star is not None and args.plot_vs_blendedness:
-    if len(args.star) == 1:
+if args.stars is not None and args.plot_vs_blendedness:
+    if len(args.stars) == 1:
         plot_vs_pair_blendedness(star)
-    if len(args.star) > 1:
-        for star_name in tqdm(args.star):
-            tqdm.write(f'Plotting {star_name}...')
-            plot_vs_pair_blendedness(get_star(star_name))
+    if len(args.stars) > 1:
+        p_map(plot_vs_pair_blendedness, stars)
+        # for star_name in tqdm(args.stars):
+        #     plot_vs_pair_blendedness(get_star(star_name))
