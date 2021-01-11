@@ -493,8 +493,8 @@ def calc_chi_squared_nu(residuals, errors, n_params):
 
     chi_squared = np.sum(np.square(residuals / errors))
     dof = len(residuals) - n_params
-    if dof == 0:
-        return 0
+    if dof <= 0:
+        return np.nan
     else:
         return chi_squared / dof
 
