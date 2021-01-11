@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import pickle
 import sys
+import time
 
 from bidict import bidict
 import h5py
@@ -472,4 +473,9 @@ if __name__ == '__main__':
     # Define vprint to only print when the verbose flag is given.
     vprint = vcl.verbose_print(args.verbose)
 
+    start_time = time.time()
+
     main()
+
+    duration = time.time() - start_time
+    print(f'Finished in {duration:.1f} seconds.')
