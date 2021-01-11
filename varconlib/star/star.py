@@ -475,7 +475,8 @@ class Star(object):
         self.fitOffsetsCorrectedArray = self.fitOffsetsArray -\
             self.ccdCorrectionArray
         # And to the measured wavelengths, but due to the implementation of
-        # shift_wavelength(), invert them first.
+        # shift_wavelength(), invert them first to apply them correctly
+        # ('subtract' them).
         self.fitMeansCCDCorrectedArray = shift_wavelength(
             self.fitMeansArray, -1 * self.ccdCorrectionArray)
 
@@ -685,7 +686,7 @@ class Star(object):
         self.transitionSysErrorsArray = u.unyt_array(sigma_sys_array,
                                                      units='m/s')
 
-    def createPairSeparationArrays(self, flip=True):
+    def createPairSeparationArrays(self):
         """Create attributes containing pair separations and associated errors.
 
         This method creates attributes called pairSeparationsArray and
