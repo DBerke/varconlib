@@ -464,7 +464,7 @@ def create_offset_plot(star):
 
     plot_name = data_dir / f'{data_dir.stem}_offset_pattern.png'
 
-    fig = plt.figure(figsize=(9, 7), tight_layout=True)
+    fig = plt.figure(figsize=(14, 7), tight_layout=True)
     gs = GridSpec(nrows=2, ncols=1, figure=fig,
                   height_ratios=[1, 1], hspace=0)
     ax1 = fig.add_subplot(gs[0])
@@ -1096,7 +1096,7 @@ if __name__ == '__main__':
             load_data = False
         else:
             load_data = None
-        star = Star(obj_name, data_dir, suffix=args.suffix,
+        star = Star(obj_name, data_dir,
                     load_data=load_data)
 
         if args.create_offset_plot:
