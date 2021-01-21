@@ -33,6 +33,7 @@ import numpy.ma as ma
 from numpy import cos, sin
 from p_tqdm import p_map
 import pandas as pd
+from scipy.optimize import curve_fit
 from scipy.stats import norm
 from tqdm import tqdm
 import unyt as u
@@ -415,14 +416,22 @@ def plot_pair_stability(star, pair_label):
     pre_slice = slice(None, star.fiberSplitIndex)
     post_slice = slice(star.fiberSplitIndex, None)
 
-    fig = plt.figure(figsize=(10, 7), tight_layout=True)
-    gs = GridSpec(2, 1, figure=fig)
+    fig = plt.figure(figsize=(10, 9), tight_layout=True)
+    gs = GridSpec(nrows=5, ncols=1, figure=fig,
+                  height_ratios=(5, 4, 1, 5, 4), hspace=0)
     ax_pre = fig.add_subplot(gs[0, 0])
-    ax_post = fig.add_subplot(gs[1, 0])
-    for ax in (ax_pre, ax_post):
-        ax.set_xlabel('BERV (km/s)')
-    ax_pre.set_ylabel('Pair difference (m/s) (pre)')
-    ax_post.set_ylabel('Pair difference (m/s) (post)')
+    ax_post = fig.add_subplot(gs[3, 0], sharex=ax_pre, sharey=ax_pre)
+    ax_bins_pre = fig.add_subplot(gs[1, 0], sharex=ax_pre)
+    ax_bins_post = fig.add_subplot(gs[4, 0], sharex=ax_post, sharey=ax_bins_pre)
+    for ax in (ax_pre, ax_post, ax_bins_pre, ax_bins_post):
+        ax.axhline(y=0, color='Gray', linestyle=':', alpha=0.9)
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(base=5))
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+    ax_pre.set_ylabel('Model offset\n(pre) (m/s')
+    ax_post.set_ylabel('Model offset\n(post) (m/s')
+    ax_bins_pre.set_ylabel('Weighted\nmean (m/s)')
+    ax_bins_post.set_ylabel('Weighted\nmean (m/s)')
+    ax_bins_post.set_xlabel('BERV (km/s)')
 
     separation_limits = [i for i in range(-25, 30, 5)]
 
@@ -483,12 +492,6 @@ def plot_pair_stability(star, pair_label):
                                         m_errs[mask], 1)
             w_means.append(w_mean)
             eotwms.append(eotwm)
-            ax_pre.annotate(f'{chisq:.2f}', (midpoints[i], w_means[i]),
-                            xytext=(i * bin_num/100 + bin_num/200, -0.02),
-                            color='SaddleBrown',
-                            textcoords='axes fraction',
-                            horizontalalignment='center',
-                            verticalalignment='top')
 
         midpoints = np.array(midpoints)
         w_means = np.array(w_means)
@@ -500,9 +503,10 @@ def plot_pair_stability(star, pair_label):
         #                       sigma_values,
         #                       color='Chocolate', linestyle='',
         #                       marker='.')
-        ax_pre.errorbar(midpoints, w_means, yerr=eotwms,
-                        linestyle='-', color='Red',
-                        marker='')
+        ax_bins_pre.errorbar(midpoints, w_means, yerr=eotwms,
+                             linestyle='-', color='Green',
+                             marker='',
+                             capsize=4)
         # ax_sigma_pre.errorbar(midpoints, w_means / eotwms,
         #                       linestyle=':', marker='o',
         #                       color='ForestGreen')
@@ -568,12 +572,6 @@ def plot_pair_stability(star, pair_label):
                                         m_errs[mask], 1)
             w_means.append(w_mean)
             eotwms.append(eotwm)
-            ax_post.annotate(f'{chisq:.2f}', (midpoints[i], w_means[i]),
-                             xytext=(i * bin_num/100 + bin_num/200, -0.02),
-                             color='RoyalBlue',
-                             textcoords='axes fraction',
-                             horizontalalignment='center',
-                             verticalalignment='top')
 
         midpoints = np.array(midpoints)
         w_means = np.array(w_means)
@@ -585,9 +583,10 @@ def plot_pair_stability(star, pair_label):
         #                       sigma_values,
         #                       color='Chocolate', linestyle='',
         #                       marker='.')
-        ax_post.errorbar(midpoints, w_means, yerr=eotwms,
-                         linestyle='-', color='Red',
-                         marker='')
+        ax_bins_post.errorbar(midpoints, w_means, yerr=eotwms,
+                              linestyle='-', color='Green',
+                              marker='',
+                              capsize=4)
         # ax_sigma_pre.errorbar(midpoints, w_means / eotwms,
         #                       linestyle=':', marker='o',
         #                       color='ForestGreen')
@@ -681,7 +680,7 @@ def plot_sigma_sys_vs_pair_separation(star):
     # plt.show()
 
 
-def plot_model_diff_vs_pair_separation(star, model, n_sigma=5.0):
+def plot_model_diff_vs_pair_separation(star, model, n_sigma=4.0):
     """
     Create a plot showing the difference from a model vs. the pair separation.
 
@@ -835,57 +834,60 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=5.0):
             model_offsets_post.append(weighted_c_mean * u.m/u.s)
 
     # Plot the results.
-    fig = plt.figure(figsize=(14, 10), tight_layout=True)
-    gs = GridSpec(ncols=2, nrows=5, figure=fig,
+    fig = plt.figure(figsize=(14, 10.5), tight_layout=True)
+    gs = GridSpec(ncols=2, nrows=7, figure=fig,
                   width_ratios=(8.5, 1),
-                  height_ratios=(2.1, 1, 0.4, 2.1, 1), hspace=0)
+                  height_ratios=(2, 1, 1, 0.6, 2, 1, 1), hspace=0)
     ax_pre = fig.add_subplot(gs[0, 0])
-    ax_post = fig.add_subplot(gs[3, 0], sharex=ax_pre, sharey=ax_pre)
-    ax_hist_pre = fig.add_subplot(gs[0, -1], sharey=ax_pre)
-    ax_hist_post = fig.add_subplot(gs[3, -1], sharey=ax_post)
-    ax_sigma_pre = fig.add_subplot(gs[1, 0], sharex=ax_pre)
-    ax_sigma_post = fig.add_subplot(gs[4, 0], sharex=ax_pre,
-                                    sharey=ax_sigma_pre)
-    ax_sigma_hist_pre = fig.add_subplot(gs[1, 1])
-    ax_sigma_hist_post = fig.add_subplot(gs[4, 1],
+    ax_post = fig.add_subplot(gs[4, 0], sharex=ax_pre, sharey=ax_pre)
+    ax_hist_pre = fig.add_subplot(gs[0, 1], sharey=ax_pre)
+    ax_hist_post = fig.add_subplot(gs[4, 1], sharey=ax_post)
+    # ax_sigma_pre = fig.add_subplot(gs[1, 0], sharex=ax_pre)
+    # ax_sigma_post = fig.add_subplot(gs[4, 0], sharex=ax_pre,
+    #                                 sharey=ax_sigma_pre)
+    ax_chi_pre = fig.add_subplot(gs[1, 0], sharex=ax_pre)
+    ax_chi_post = fig.add_subplot(gs[5, 0], sharex=ax_post, sharey=ax_chi_pre)
+    ax_wmean_pre = fig.add_subplot(gs[2, 0], sharex=ax_pre)
+    ax_wmean_post = fig.add_subplot(gs[6, 0], sharex=ax_post,
+                                    sharey=ax_wmean_pre)
+    ax_sigma_hist_pre = fig.add_subplot(gs[1:3, 1])
+    ax_sigma_hist_post = fig.add_subplot(gs[5:7, 1],
                                          sharey=ax_sigma_hist_pre)
 
-    ax_pre.set_xlim(left=0, right=800)
-    ax_pre.set_ylim(bottom=-60, top=60)
+    ax_pre.set_xlim(left=0, right=805)
+    ax_pre.set_ylim(bottom=-70, top=70)
     ax_sigma_hist_pre.set_ylim(bottom=-3, top=3)
-    for ax in (ax_sigma_pre, ax_sigma_post,
-               ax_sigma_hist_pre, ax_sigma_hist_post):
-        ax.yaxis.grid(which='major', color='Gray', alpha=0.7,
-                      linestyle='-')
-        ax.yaxis.grid(which='minor', color='Gray', alpha=0.6,
-                      linestyle='--')
-        ax.yaxis.set_major_locator(ticker.AutoLocator())
-        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
-    for ax in (ax_pre, ax_post, ax_hist_pre, ax_hist_post):
-        plt.setp(ax.get_xticklabels(), visible=False)
-    ax_post.set_xlabel('Weighted mean pair separation (km/s)')
-    ax_pre.set_ylabel('Offset from model\nvalue (pre) (m/s)')
-    ax_post.set_ylabel('Offset from model\nvalue (post) (m/s)')
-    ax_sigma_pre.set_ylabel('Binned weighted means/\n'
-                            r'$\sigma$-offsets (m/s)/$\sigma$')
-    ax_sigma_post.set_ylabel('Binned weighted means/\n'
-                             r'$\sigma$-offsets (m/s)/$\sigma$')
+    # for ax in (ax_sigma_pre, ax_sigma_post,
+    #            ax_sigma_hist_pre, ax_sigma_hist_post):
+    #     ax.yaxis.grid(which='major', color='Gray', alpha=0.7,
+    #                   linestyle='-')
+    #     ax.yaxis.grid(which='minor', color='Gray', alpha=0.6,
+    #                   linestyle='--')
+    #     ax.yaxis.set_major_locator(ticker.AutoLocator())
+    #     ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
     for ax in (ax_pre, ax_post, ax_hist_pre, ax_hist_post,
-               ax_sigma_pre, ax_sigma_post,
-               ax_sigma_hist_pre, ax_sigma_hist_post):
+               ax_chi_pre, ax_chi_post):
+        plt.setp(ax.get_xticklabels(), visible=False)
+    ax_wmean_post.set_xlabel('Weighted mean pair separation (km/s)')
+    ax_pre.set_ylabel('Model offset\npre (m/s)')
+    ax_post.set_ylabel('Model offset\npost (m/s)')
+    ax_chi_pre.set_ylabel(r'$\chi^2_\nu$')
+    ax_chi_post.set_ylabel(r'$\chi^2_\nu$')
+    ax_wmean_pre.set_ylabel('Weighted\nmean pre\n(m/s)')
+    ax_wmean_post.set_ylabel('Weighted\nmean post\n(m/s)')
+    ax_sigma_hist_pre.set_ylabel('Significance')
+    ax_sigma_hist_post.set_ylabel('Significance')
+    for ax in (ax_pre, ax_post, ax_hist_pre, ax_hist_post,
+               # ax_sigma_pre, ax_sigma_post,
+               ax_sigma_hist_pre, ax_sigma_hist_post,
+               ax_wmean_pre, ax_wmean_post):
         ax.axhline(y=0, linestyle='--', color='Gray')
+    for ax in (ax_chi_pre, ax_chi_post):
+        ax.axhline(y=1, linestyle=':', color='Gray')
+        ax.set_ylim(bottom=0, top=2)
 
     # Add some information about the star to the figure:
-    # information = [r'T$_\mathrm{eff}$:' + f' {star.temperature}',
-    #                f'[Fe/H]: {star.metallicity}',
-    #                r'$\log{g}$:' + f' {star.logg}']
-    # for key, value in star.specialAttributes.items():
-    #     information.append(f'{key}: {value}')
-
-    # info = '      '.join(information)
-    # ax_pre.annotate(info, (0.07, 0.5),
-    #                 xycoords='figure fraction')
-    add_star_information(star, ax_pre, (0.07, 0.5))
+    add_star_information(star, ax_wmean_pre, (0.1, 0.5))
 
     if star.hasObsPre:
         full_errs_pre = np.sqrt(u.unyt_array(pair_sep_errs_pre,
@@ -962,7 +964,8 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=5.0):
                              (0.99, 0.99),
                              xycoords='axes fraction',
                              verticalalignment='top',
-                             horizontalalignment='right')
+                             horizontalalignment='right',
+                             fontsize=20)
     if star.hasObsPost:
         ax_hist_post.hist(model_offsets_post, bins=bins, color='Black',
                           histtype='step', orientation='horizontal')
@@ -977,7 +980,8 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=5.0):
                               (0.99, 0.99),
                               xycoords='axes fraction',
                               verticalalignment='top',
-                              horizontalalignment='right')
+                              horizontalalignment='right',
+                              fontsize=20)
 
     # Do the binned checks.
     separation_limits = [i for i in range(0, 900, 100)]
@@ -989,23 +993,25 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=5.0):
         model_offsets_post = np.array(model_offsets_post)
 
     if star.hasObsPre:
-        midpoints, w_means, eotwms = [], [], []
-        for i, lims in zip(range(8), pairwise(separation_limits)):
+        midpoints, w_means, eotwms, chisq = [], [], [], []
+        for i, lims in zip(range(len(separation_limits)-1),
+                           pairwise(separation_limits)):
             midpoints.append((lims[1] + lims[0]) / 2)
             mask = np.where((average_separations_pre > lims[0]) &
                             (average_separations_pre < lims[1]))
             w_mean, eotwm = weighted_mean_and_error(model_offsets_pre[mask],
                                                     full_errs_pre[mask])
-            chisq = calc_chi_squared_nu(model_offsets_pre[mask],
-                                        full_errs_pre[mask], 1).value
+            chisq.append(calc_chi_squared_nu(model_offsets_pre[mask],
+                                             full_errs_pre[mask], 1).value)
+
             w_means.append(w_mean)
             eotwms.append(eotwm)
-            ax_sigma_pre.annotate(f'{chisq:.2f}', (midpoints[i], w_means[i]),
-                                  xytext=(i * 0.125 + 0.0625, -0.02),
-                                  color='SaddleBrown',
-                                  textcoords='axes fraction',
-                                  horizontalalignment='center',
-                                  verticalalignment='top')
+            # ax_sigma_pre.annotate(f'{chisq:.2f}', (midpoints[i], w_means[i]),
+            #                       xytext=(i * 0.125 + 0.0625, -0.02),
+            #                       color='SaddleBrown',
+            #                       textcoords='axes fraction',
+            #                       horizontalalignment='center',
+            #                       verticalalignment='top')
 
         midpoints = np.array(midpoints)
         w_means = np.array(w_means)
@@ -1013,43 +1019,46 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=5.0):
 
         sigma_values = model_offsets_pre / full_errs_pre
 
-        ax_sigma_pre.errorbar(average_separations_pre,
-                              sigma_values,
-                              color='Chocolate', linestyle='',
-                              marker='.')
-        ax_sigma_pre.errorbar(midpoints, w_means, yerr=eotwms,
+        # ax_sigma_pre.errorbar(average_separations_pre,
+        #                       sigma_values,
+        #                       color='Chocolate', linestyle='',
+        #                       marker='.')
+        ax_wmean_pre.errorbar(midpoints, w_means, yerr=eotwms,
                               linestyle='-', color='Black',
                               marker='o')
-        ax_sigma_pre.errorbar(midpoints, w_means / eotwms,
-                              linestyle=':', marker='o',
-                              color='ForestGreen')
+        ax_chi_pre.plot(midpoints, chisq, linestyle='-',
+                        color='SaddleBrown', marker='o')
+        # ax_sigma_pre.errorbar(midpoints, w_means / eotwms,
+        #                       linestyle=':', marker='o',
+        #                       color='ForestGreen')
         ax_sigma_hist_pre.hist(sigma_values,
                                bins=[x for x in np.linspace(-5, 5, num=50)],
                                color='Black', histtype='step',
                                orientation='horizontal')
 
     if star.hasObsPost:
-        midpoints, w_means, eotwms, chiqs = [], [], [], []
-        for i, lims in zip(range(8), pairwise(separation_limits)):
+        midpoints, w_means, eotwms, chisq = [], [], [], []
+        for i, lims in zip(range(len(separation_limits)-1),
+                           pairwise(separation_limits)):
             midpoints.append((lims[1] + lims[0]) / 2)
             mask = np.where((average_separations_post > lims[0]) &
                             (average_separations_post < lims[1]))
             w_mean, eotwm = weighted_mean_and_error(model_offsets_post[mask],
                                                     full_errs_post[mask])
-            chisq = calc_chi_squared_nu(model_offsets_post[mask],
-                                        full_errs_post[mask], 1).value
+            chisq.append(calc_chi_squared_nu(model_offsets_post[mask],
+                                             full_errs_post[mask], 1).value)
             w_means.append(w_mean)
             eotwms.append(eotwm)
-            ax_sigma_post.annotate(f'{chisq:.2f}', (midpoints[i], w_means[i]),
-                                   xytext=(i * 0.125 + 0.0625, -0.02),
-                                   color='RoyalBlue',
-                                   textcoords='axes fraction',
-                                   horizontalalignment='center',
-                                   verticalalignment='top')
+            # ax_sigma_post.annotate(f'{chisq:.2f}', (midpoints[i], w_means[i]),
+            #                        xytext=(i * 0.125 + 0.0625, -0.02),
+            #                        color='RoyalBlue',
+            #                        textcoords='axes fraction',
+            #                        horizontalalignment='center',
+            #                        verticalalignment='top')
 
-            if lims[0] == 500 and lims[1] == 600:
-                print(w_mean)
-                print(eotwm)
+            # if lims[0] == 500 and lims[1] == 600:
+            #     print(w_mean)
+            #     print(eotwm)
                 # outfile = plots_dir /\
                 #     f'{n_sigma}sigma_bin_values_{star.name}.csv'
                 # with open(outfile, 'w', newline='') as f:
@@ -1064,16 +1073,18 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=5.0):
 
         sigma_values = model_offsets_post / full_errs_post
 
-        ax_sigma_post.errorbar(average_separations_post,
-                               sigma_values,
-                               color='DodgerBlue', linestyle='',
-                               marker='.')
-        ax_sigma_post.errorbar(midpoints, w_means, yerr=eotwms,
+        # ax_sigma_post.errorbar(average_separations_post,
+        #                        sigma_values,
+        #                        color='DodgerBlue', linestyle='',
+        #                        marker='.')
+        ax_wmean_post.errorbar(midpoints, w_means, yerr=eotwms,
                                linestyle='-', color='Black',
                                marker='o')
-        ax_sigma_post.errorbar(midpoints, w_means / eotwms,
-                               linestyle=':', marker='o',
-                               color='ForestGreen')
+        ax_chi_post.plot(midpoints, chisq, linestyle='-',
+                         color='RoyalBlue', marker='o')
+        # ax_sigma_post.errorbar(midpoints, w_means / eotwms,
+        #                        linestyle=':', marker='o',
+        #                        color='ForestGreen')
         ax_sigma_hist_post.hist(sigma_values,
                                 bins=[x for x in np.linspace(-5, 5, num=50)],
                                 color='Black', histtype='step',
@@ -1222,21 +1233,21 @@ def plot_duplicate_pairs(star):
 
     # Plot the results
 
-    fig = plt.figure(figsize=(12, 12), tight_layout=True)
-    gs = GridSpec(ncols=2, nrows=1, figure=fig,
-                  width_ratios=(1, 1))
+    fig = plt.figure(figsize=(16, 12), tight_layout=True)
+    gs = GridSpec(ncols=1, nrows=2, figure=fig,
+                  height_ratios=(1, 1))
     ax_pre = fig.add_subplot(gs[0, 0])
     if (star.hasObsPre and star.hasObsPost):
-        ax_post = fig.add_subplot(gs[0, 1],
+        ax_post = fig.add_subplot(gs[1, 0],
                                   sharex=ax_pre)
     else:
-        ax_post = fig.add_subplot(gs[0, 1])
+        ax_post = fig.add_subplot(gs[1, 0])
 
-    ax_pre.set_ylabel('Pair index')
+    ax_post.set_xlabel('Pair index')
     # ax_post.set_ylabel(r'$\Delta$(Separation) post')
-    ax_pre.set_xlabel(f'(Instance 2 – Instance 1) {star.numObsPre} obs'
+    ax_pre.set_ylabel(f'(Instance 2 – Instance 1) {star.numObsPre} obs'
                       ' (pre, m/s)')
-    ax_post.set_xlabel(f'(Instance 2 – Instance 1) {star.numObsPost} obs'
+    ax_post.set_ylabel(f'(Instance 2 – Instance 1) {star.numObsPost} obs'
                        ' (post, m/s)')
 
     order_boundaries = []
@@ -1251,10 +1262,12 @@ def plot_duplicate_pairs(star):
         #               linestyle='-')
         # ax.yaxis.grid(which='minor', color='Gray', alpha=0.6,
         #               linestyle='--')
-        ax.axvline(x=0, linestyle='-', color='Gray')
-        ax.set_ylim(bottom=-1, top=134)
+        ax.axhline(y=0, linestyle='-', color='Gray')
+        ax.set_xlim(left=-1, right=134)
         for b in order_boundaries:
-            ax.axhline(y=b, linestyle='--', color='DimGray')
+            ax.axvline(x=b, linestyle=':', color='DimGray', alpha=0.75)
+
+    add_star_information(star, ax_pre, (0.07, 0.49))
 
     if star.hasObsPre:
         pair_indices = np.array([x for x in range(len(pair_sep_pre1))])
@@ -1275,16 +1288,16 @@ def plot_duplicate_pairs(star):
         pairs_sigma = np.nanstd(pair_diffs)
         model_sigma = np.nanstd(model_diffs)
 
-        ax_pre.errorbar(pair_diffs, pair_indices,
-                        xerr=pair_errs,
+        ax_pre.errorbar(pair_indices, pair_diffs,
+                        yerr=pair_errs,
                         color='Chocolate', markeredgecolor='Black',
                         linestyle='', marker='o',
                         label=r'Pair $\chi^2_\nu$:'
                         f' {pairs_chisq:.2f}, RMS: {pairs_sigma:.2f}')
-        ax_pre.errorbar(model_diffs, model_pair_indices,
-                        xerr=model_errs,
-                        color='SeaGreen', markeredgecolor='Black',
-                        linestyle='', marker='o',
+        ax_pre.errorbar(model_pair_indices, model_diffs,
+                        yerr=model_errs,
+                        color='MediumSeaGreen', markeredgecolor='Black',
+                        linestyle='', marker='D',
                         label=r'Model $\chi^2_\nu$:'
                         f' {model_chisq:.2f}, RMS: {model_sigma:.2f}')
         ax_pre.legend()
@@ -1302,16 +1315,16 @@ def plot_duplicate_pairs(star):
         pairs_sigma = np.nanstd(pair_diffs)
         model_sigma = np.nanstd(model_diffs)
 
-        ax_post.errorbar(pair_diffs, pair_indices,
-                         xerr=pair_errs,
+        ax_post.errorbar(pair_indices, pair_diffs,
+                         yerr=pair_errs,
                          color='DodgerBlue', markeredgecolor='Black',
                          linestyle='', marker='o',
                          label=r'Pair $\chi^2_\nu$:'
                          f' {pairs_chisq:.2f}, RMS: {pairs_sigma:.2f}')
-        ax_post.errorbar(model_diffs, model_pair_indices,
-                         xerr=model_errs,
+        ax_post.errorbar(model_pair_indices, model_diffs,
+                         yerr=model_errs,
                          color='GoldenRod', markeredgecolor='Black',
-                         linestyle='', marker='o',
+                         linestyle='', marker='D',
                          label=r'Model $\chi^2_\nu$:'
                          f' {model_chisq:.2f}, RMS: {model_sigma:.2f}')
         ax_post.legend()
@@ -1413,9 +1426,9 @@ def plot_pair_depth_differences(star):
     # Plot as a function of pair depth separation.
     point_size = 18
 
-    fig = plt.figure(figsize=(15, 9), tight_layout=True)
+    fig = plt.figure(figsize=(15, 10), tight_layout=True)
     gs = GridSpec(ncols=2, nrows=7, figure=fig,
-                  height_ratios=(4.8, 1, 1, 0.8, 4.8, 1, 1),
+                  height_ratios=(4.8, 1.5, 1.5, 1, 4.8, 1.5, 1.5),
                   width_ratios=(40, 1),
                   hspace=0)
     ax_pre = fig.add_subplot(gs[0, 0])
@@ -1427,8 +1440,8 @@ def plot_pair_depth_differences(star):
     ax_clb_pre = fig.add_subplot(gs[0, 1])
     ax_clb_post = fig.add_subplot(gs[4, 1])
 
-    ax_pre.set_ylabel('Model-corrected weighted\nmean pair separations (pre)')
-    ax_post.set_ylabel('Model-corrected weighted\nmean pair separations (post)')
+    ax_pre.set_ylabel('Model-offset pre\n(m/s)')
+    ax_post.set_ylabel('Model-offset post\n(m/s)')
     ax_pre_chi.set_ylabel(r'$\chi^2_\nu$')
     ax_post_chi.set_ylabel(r'$\chi^2_\nu$')
     ax_pre_wmean.set_ylabel('Weighted\nmean (m/s)')
@@ -1504,7 +1517,7 @@ def plot_pair_depth_differences(star):
                      label='Mean pair depth')
         ax_post.legend()
 
-    add_star_information(star, ax_pre_wmean, (0.07, 0.5))
+    add_star_information(star, ax_pre_wmean, (0.1, 0.5))
 
     # Get results for bins.
     bin_lims = np.linspace(0, 0.35, 15)
@@ -1559,9 +1572,9 @@ def plot_pair_depth_differences(star):
     plt.close('all')
 
     # Plot as a function of mean pair depth.
-    fig = plt.figure(figsize=(15, 9), tight_layout=True)
+    fig = plt.figure(figsize=(15, 10), tight_layout=True)
     gs = GridSpec(ncols=2, nrows=7, figure=fig,
-                  height_ratios=(4.8, 1, 1, 0.8, 4.8, 1, 1),
+                  height_ratios=(4.8, 1.8, 1.9, 1, 4.8, 1.8, 1.9),
                   width_ratios=(40, 1),
                   hspace=0)
     ax_pre = fig.add_subplot(gs[0, 0])
@@ -1573,10 +1586,8 @@ def plot_pair_depth_differences(star):
     ax_clb_pre = fig.add_subplot(gs[0, 1])
     ax_clb_post = fig.add_subplot(gs[4, 1])
 
-    ax_pre.set_ylabel('Model-corrected weighted\n'
-                      'mean pair separations pre (m/s))')
-    ax_post.set_ylabel('Model-corrected weighted\n'
-                       'mean pair separations post (m/s))')
+    ax_pre.set_ylabel('Model offset pre\n(m/s)')
+    ax_post.set_ylabel('Model offset post\n(m/s))')
     ax_pre_chi.set_ylabel(r'$\chi^2_\nu$')
     ax_post_chi.set_ylabel(r'$\chi^2_\nu$')
     ax_pre_wmean.set_ylabel('Weighted\nmean (m/s)')
@@ -1626,7 +1637,7 @@ def plot_pair_depth_differences(star):
                                                        0.1, 0.85),
                                  zorder=2)
         fig.colorbar(clb_pre, pad=0.01, cax=ax_clb_pre,
-                     label='Mean pair depth difference')
+                     label=r'Mean pair depth $\Delta$')
         ax_pre.legend()
 
     if star.hasObsPost:
@@ -1649,10 +1660,10 @@ def plot_pair_depth_differences(star):
                                    label=r'$\chi^2_\nu$:'
                                    f' {chisq:.2f}, {star.numObsPost} obs')
         fig.colorbar(clb_post, pad=0.01, cax=ax_clb_post,
-                     label='Mean pair depth difference')
+                     label=r'Mean pair depth $\Delta$')
         ax_post.legend()
 
-    add_star_information(star, ax_pre, (0.07, 0.5))
+    # add_star_information(star, ax_pre, (0.15, 0.5))
 
     # Get results for bins.
     # bin_lims = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8)
@@ -1973,6 +1984,182 @@ def plot_vs_pair_blendedness(star):
     # plt.show()
 
 
+def plot_vs_radial_velocity(star_list):
+    """
+    Plot a histogram of the slopes of lines fitted to pairs vs. star RV.
+
+    Parameters
+    ----------
+    star_list : list of star.Star
+        A list of stars to use to create the plot.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    pair_seps_pre, errors_pre, star_RVs_pre = [], [], []
+    pair_seps_post, errors_post, star_RVs_post = [], [], []
+
+    for pair in tqdm(pairs_list):
+        for order_num in pair.ordersToMeasureIn:
+            pair_label = '_'.join((pair.label, str(order_num)))
+
+            separations_pre, errs_pre, RVs_pre = [], [], []
+            separations_post, errs_post, RVs_post = [], [], []
+            for star in star_list:
+
+                pre_slice = slice(None, star.fiberSplitIndex)
+                post_slice = slice(star.fiberSplitIndex, None)
+
+                if star.hasObsPre:
+
+                    mean, error = get_weighted_mean(star.pairModelOffsetsArray,
+                                                    star.pairModelErrorsArray,
+                                                    pre_slice,
+                                                    star.p_index(pair_label))
+
+                    separations_pre.append(mean)
+                    errs_pre.append(error)
+                    if not np.isnan(mean):
+                        RVs_pre.append(star.radialVelocity.to(u.m/u.s))
+                    else:
+                        RVs_pre.append(np.nan * u.m/u.s)
+                else:
+                    separations_pre.append(np.nan * u.m/u.s)
+                    errs_pre.append(np.nan * u.m/u.s)
+                    RVs_pre.append(np.nan * u.m/u.s)
+
+                if star.hasObsPost:
+
+                    mean, error = get_weighted_mean(star.pairModelOffsetsArray,
+                                                    star.pairModelErrorsArray,
+                                                    post_slice,
+                                                    star.p_index(pair_label))
+
+                    separations_post.append(mean)
+                    errs_post.append(error)
+                    if not np.isnan(mean):
+                        RVs_post.append(star.radialVelocity.to(u.m/u.s))
+                    else:
+                        RVs_post.append(np.nan * u.m/u.s)
+                else:
+                    separations_post.append(np.nan * u.m/u.s)
+                    errs_post.append(np.nan * u.m/u.s)
+                    RVs_post.append(np.nan * u.m/u.s)
+
+            pair_seps_pre.append(separations_pre)
+            errors_pre.append(errs_pre)
+            star_RVs_pre.append(RVs_pre)
+
+            pair_seps_post.append(separations_post)
+            errors_post.append(errs_post)
+            star_RVs_post.append(RVs_post)
+
+    pair_seps_pre = np.array(pair_seps_pre)
+    errors_pre = np.array(errors_pre)
+    star_RVs_pre = np.array(star_RVs_pre)
+    pair_seps_post = np.array(pair_seps_post)
+    errors_post = np.array(errors_post)
+    star_RVs_post = np.array(star_RVs_post)
+
+    def linear_model(x, slope, intercept):
+        """
+        Return the value of a line at X with given slope and intercept.
+
+        Parameters
+        ----------
+        x : int, float, or iterable
+            The value(s) to evaluate the function at.
+        slope : float
+            The slope of the line.
+        intercept : float
+            The y-intercept of the line.
+
+        Returns
+        -------
+        float
+            The value of the line evaluated at the given x value(s).
+
+        """
+
+        return intercept + slope * x
+
+    slopes_pre = []
+    slopes_post = []
+    for pair_row, err_row, rv_row in tqdm(zip(pair_seps_pre, errors_pre,
+                                              star_RVs_pre)):
+        if not np.isnan(rv_row).all():
+            try:
+                popt, pcov = curve_fit(linear_model, remove_nans(rv_row),
+                                       remove_nans(pair_row),
+                                       sigma=remove_nans(err_row),
+                                       p0=(0, 0),
+                                       absolute_sigma=True, method='lm',
+                                       maxfev=1000)
+                slopes_pre.append(popt[0])
+            except ValueError:
+                print('='*10)
+                print(rv_row)
+                print(pair_row)
+                print(err_row)
+                print('='*10)
+                raise
+
+    for pair_row, err_row, rv_row in tqdm(zip(pair_seps_post, errors_post,
+                                              star_RVs_post)):
+        if not np.isnan(pair_row).all():
+            try:
+                popt, pcov = curve_fit(linear_model, remove_nans(rv_row),
+                                       remove_nans(pair_row),
+                                       sigma=remove_nans(err_row),
+                                       p0=(0, 0),
+                                       absolute_sigma=True, method='lm',
+                                       maxfev=1000)
+                slopes_post.append(popt[0])
+
+            except ValueError:
+                print('='*10)
+                print(rv_row)
+                print(pair_row)
+                print(err_row)
+                print('='*10)
+                raise
+
+    # Create the figure to plot these values.
+    fig = plt.figure(figsize=(9, 9), tight_layout=True)
+    gs = GridSpec(ncols=1, nrows=2, figure=fig,
+                  height_ratios=(1, 1))
+    ax_pre = fig.add_subplot(gs[0, 0])
+    ax_post = fig.add_subplot(gs[1, 0])
+
+    ax_pre.set_ylabel('Pre-change')
+    ax_post.set_ylabel('Post-change')
+    ax_post.set_xlabel('Slopes of line fits.')
+
+    ax_pre.hist(slopes_pre, bins='fd',
+                histtype='step', color='Black',
+                label=f'Mean: {np.mean(slopes_pre):.3e}\n'
+                fr'$\sigma$: {np.std(slopes_pre):.3e}')
+    ax_post.hist(slopes_post, bins='fd',
+                 histtype='step', color='Black',
+                 label=f'Mean: {np.mean(slopes_post):.3e}\n'
+                 fr'$\sigma$: {np.std(slopes_post):.3e}')
+
+    ax_pre.legend(loc='upper left')
+    ax_post.legend(loc='upper left')
+
+    plots_dir = Path('/Users/dberke/Pictures')
+    filename = plots_dir / f'Pair_separation_vs_radial_velocity.png'
+    if not plots_dir.exists():
+        os.mkdir(plots_dir)
+    fig.savefig(str(filename))
+    plt.close('all')
+
+    # plt.show(fig)
+
+
 def get_weighted_mean(values_array, errs_array, time_slice, col_index):
     """
     Get the weighted mean of a column in an array avoiding NaNs.
@@ -2266,15 +2453,16 @@ def add_star_information(star, axis, coords):
 
     """
 
-    information = [r'T$_\mathrm{eff}$:' + f' {star.temperature}',
-                   f'[Fe/H]: {star.metallicity}',
-                   r'$\log{g}$:' + f' {star.logg}']
+    information = [r'T$_\mathrm{eff}$:' + fr' {star.temperature}',
+                   fr'[Fe/H]: {star.metallicity}',
+                   r'$\log{g}$:' + fr' {star.logg}']
     for key, value in star.specialAttributes.items():
-        information.append(f'{key}: {value}')
+        information.append(f'{key}: {value}'.replace('_', '-'))
 
     info = '      '.join(information)
     axis.annotate(info, coords,
-                  xycoords='figure fraction')
+                  xycoords='figure fraction',
+                  fontsize=18)
 
 
 def get_star(star_name):
@@ -2333,6 +2521,9 @@ parser.add_argument('--plot-depth-differences', action='store_true',
                     ' of pair depth differences.')
 parser.add_argument('--plot-vs-blendedness', action='store_true',
                     help='Plot pairs sorted by blendedness.')
+parser.add_argument('--plot-vs-radial-velocity', action='store_true',
+                    help='Plot pair linear slopes as a function of radial'
+                    ' velocity.')
 
 parameter_options.add_argument('-T', '--temperature',
                                dest='parameters_to_plot',
@@ -2371,7 +2562,7 @@ vprint = vcl.verbose_print(args.verbose)
 if len(args.stars) == 1:
     star = get_star(args.stars[0])
 else:
-    stars = [get_star(star_name) for star_name in args.stars]
+    stars = [get_star(star_name) for star_name in tqdm(args.stars)]
 
 csv_dir = vcl.output_dir / 'pair_separation_files'
 
@@ -2456,3 +2647,6 @@ if args.stars is not None and args.plot_vs_blendedness:
         p_map(plot_vs_pair_blendedness, stars)
         # for star_name in tqdm(args.stars):
         #     plot_vs_pair_blendedness(get_star(star_name))
+
+if args.stars is not None and args.plot_vs_radial_velocity:
+    plot_vs_radial_velocity(stars)
