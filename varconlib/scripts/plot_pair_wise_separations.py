@@ -1148,14 +1148,16 @@ def plot_duplicate_pairs(star):
                     time_slice,
                     p_index1)
                 pair_sep_pre1.append(w_mean)
-                pair_sep_err_pre1.append(eotwm)
+                pair_sep_err_pre1.append(
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0, p_index1]**2))
                 w_mean, eotwm = get_weighted_mean(
                     star.pairModelOffsetsArray,
                     star.pairModelErrorsArray,
                     time_slice,
                     p_index1)
                 pair_model_pre1.append(w_mean)
-                pair_model_err_pre1.append(eotwm)
+                pair_model_err_pre1.append(
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0, p_index1]**2))
 
                 # Get the values for the second duplicate
                 time_slice = slice(None, star.fiberSplitIndex)
@@ -1165,14 +1167,16 @@ def plot_duplicate_pairs(star):
                     time_slice,
                     p_index2)
                 pair_sep_pre2.append(w_mean)
-                pair_sep_err_pre2.append(eotwm)
+                pair_sep_err_pre2.append(
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0, p_index2]**2))
                 w_mean, eotwm = get_weighted_mean(
                     star.pairModelOffsetsArray,
                     star.pairModelErrorsArray,
                     time_slice,
                     p_index2)
                 pair_model_pre2.append(w_mean)
-                pair_model_err_pre2.append(eotwm)
+                pair_model_err_pre2.append(
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0, p_index2]**2))
 
             if star.hasObsPost:
                 # Get the values for the first instance.
@@ -1183,14 +1187,16 @@ def plot_duplicate_pairs(star):
                     time_slice,
                     p_index1)
                 pair_sep_post1.append(w_mean)
-                pair_sep_err_post1.append(eotwm)
+                pair_sep_err_post1.append(
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[1, p_index1]**2))
                 w_mean, eotwm = get_weighted_mean(
                     star.pairModelOffsetsArray,
                     star.pairModelErrorsArray,
                     time_slice,
                     p_index1)
                 pair_model_post1.append(w_mean)
-                pair_model_err_post1.append(eotwm)
+                pair_model_err_post1.append(
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[1, p_index1]**2))
 
                 # Get the values for the second instance.
                 time_slice = slice(star.fiberSplitIndex, None)
@@ -1200,14 +1206,16 @@ def plot_duplicate_pairs(star):
                     time_slice,
                     p_index2)
                 pair_sep_post2.append(w_mean)
-                pair_sep_err_post2.append(eotwm)
+                pair_sep_err_post2.append(
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[1, p_index2]**2))
                 w_mean, eotwm = get_weighted_mean(
                     star.pairModelOffsetsArray,
                     star.pairModelErrorsArray,
                     time_slice,
                     p_index2)
                 pair_model_post2.append(w_mean)
-                pair_model_err_post2.append(eotwm)
+                pair_model_err_post2.append(
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[1, p_index2]**2))
 
     # pprint(pair_order_numbers)
 
