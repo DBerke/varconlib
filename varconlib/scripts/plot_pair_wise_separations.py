@@ -1671,7 +1671,7 @@ def plot_pair_depth_differences(star):
                      label=r'Mean pair depth $\Delta$')
         ax_post.legend()
 
-    # add_star_information(star, ax_pre, (0.15, 0.5))
+    add_star_information(star, ax_pre_wmean, (0.1, 0.5))
 
     # Get results for bins.
     # bin_lims = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8)
