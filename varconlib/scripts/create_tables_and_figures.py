@@ -11,19 +11,234 @@ thesis.
 """
 
 import argparse
+import csv
 from math import ceil
 import os
 from pathlib import Path
 import pickle
 
+import h5py
+import hickle
 import numpy as np
+import numpy.ma as ma
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 from tabulate import tabulate
 from tqdm import tqdm
 import unyt as u
 
 import varconlib as vcl
+import varconlib.fitting as fit
 from varconlib.transition_line import roman_numerals
+
+
+def create_example_plots():
+    """Create example plots for talks.
+
+    Returns
+    -------
+    None.
+
+    """
+    tqdm.write('Reading data from stellar database file...')
+
+    star_pair_separations = u.unyt_array.from_hdf5(
+        db_file, dataset_name='star_pair_separations')
+    star_pair_separations_EotWM = u.unyt_array.from_hdf5(
+        db_file, dataset_name='star_pair_separations_EotWM')
+    star_pair_separations_EotM = u.unyt_array.from_hdf5(
+        db_file, dataset_name='star_pair_separations_EotM')
+    star_temperatures = u.unyt_array.from_hdf5(
+        db_file, dataset_name='star_temperatures')
+
+    with h5py.File(db_file, mode='r') as f:
+
+        star_metallicities = hickle.load(f, path='/star_metallicities')
+        # star_magnitudes = hickle.load(f, path='/star_magnitudes')
+        star_gravities = hickle.load(f, path='/star_gravities')
+        transition_column_dict = hickle.load(f, path='/transition_column_index')
+        pair_column_dict = hickle.load(f, path='/pair_column_index')
+
+        star_names = hickle.load(f, path='/star_row_index')
+
+    label = '4492.660Fe2_4503.480Mn1_25'
+    label = '4588.413Fe1_4599.405Fe1_28'
+    # label = '4637.144Fe1_4638.802Fe1_29'
+    # label = '4652.593Cr1_4653.460Cr1_29'
+    # label = '4683.218Ti1_4684.870Fe1_30'
+    # label = '4789.165Fe1_4794.208Co1_33'
+    col = pair_column_dict[label]
+
+    # Just use the pre-change era (0) for these plots for simplicity.
+    mean = np.nanmean(star_pair_separations[0, :, col])
+    print(f'mean is {mean}')
+
+    # First, create a masked version to catch any missing
+    # entries:
+    m_seps = ma.masked_invalid(star_pair_separations[0, :, col])
+    m_seps = m_seps.reshape([len(m_seps), 1])
+
+    # Then create a new array from the non-masked data:
+    separations = u.unyt_array(m_seps[~m_seps.mask], units=u.km/u.s).to(u.m/u.s)
+
+    m_eotwms = ma.masked_invalid(star_pair_separations_EotWM[0, :, col])
+    m_eotwms = m_eotwms.reshape([len(m_eotwms), 1])
+    eotwms = u.unyt_array(m_eotwms[~m_seps.mask], units=u.m/u.s)
+
+    m_eotms = ma.masked_invalid(star_pair_separations_EotM[0, :, col])
+    m_eotms = m_eotms.reshape([len(m_eotms), 1])
+    # Use the same mask as for the offsets.
+    eotms = u.unyt_array(m_eotms[~m_seps.mask],
+                         units=u.m/u.s)
+    # Create an error array which uses the greater of the error
+    # on the mean or the error on the weighted mean.
+    err_array = ma.array(np.maximum(eotwms, eotms).value)
+
+    weighted_mean = np.average(separations, weights=err_array**-2).to(u.m/u.s)
+    print(f'weighted mean is {weighted_mean}')
+
+    temperatures = ma.masked_array(star_temperatures)
+    temps = temperatures[~m_seps.mask]
+    metallicities = ma.masked_array(star_metallicities)
+    metals = metallicities[~m_seps.mask]
+    gravities = ma.masked_array(star_gravities)
+    loggs = gravities[~m_seps.mask]
+
+    stars = ma.masked_array([key for key in
+                             star_names.keys()]).reshape(
+                                  len(star_names.keys()), 1)
+    print(len(stars))
+    # stars = ma.masked_array([key for key in star_names.keys()])
+
+    names = stars[~m_seps.mask]
+    print(len(names))
+
+    x_data = ma.array(np.stack((temps, metals, loggs), axis=0))
+
+    # separations -= weighted_mean
+
+    results = fit.find_sys_scatter(fit.constant_model,
+                                   x_data,
+                                   ma.array(separations.value),
+                                   err_array, (mean,),
+                                   n_sigma=10,
+                                   tolerance=0.01)
+
+    mask = results['mask_list'][-1]
+    residuals = ma.array(results['residuals'], mask=mask)
+    x_data.mask = mask
+    err_array.mask = mask
+    names.mask = mask
+    print(len(names))
+
+    fig1 = plt.figure(figsize=(6, 6), tight_layout=True)
+    fig2 = plt.figure(figsize=(6, 6), tight_layout=True)
+    ax1 = fig1.add_subplot(1, 1, 1)
+    ax2 = fig2.add_subplot(1, 1, 1)
+
+    # for fig in (fig1, fig2):
+    #     fig.suptitle(r'$\lambda$4588.413 Fe I - $\lambda$4599.405 Fe I')
+
+    for ax in (ax1, ax2):
+        ax.set_ylabel('Normalized pair\nseparation (m/s)')
+        ax.set_xlabel('[Fe/H]')
+
+    ax1.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+    # ax2.xaxis.set_major_locator(ticker.MultipleLocator(base=0.1))
+    ax2.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+
+    ax1.set_xlim(left=-0.11, right=0.11)
+    ax2.set_xlim(left=-0.72, right=0.42)
+    ax2.set_ylim(bottom=-300, top=300)
+
+    # metallicities is index 1 here
+    ax2.errorbar(ma.compressed(x_data[1]),
+                 ma.compressed(residuals),
+                 yerr=ma.compressed(err_array),
+                 color='Chocolate', linestyle='',
+                 markersize=10,
+                 marker='o', markeredgecolor='Black',
+                 capsize=7, elinewidth=2.5, capthick=2.5,
+                 ecolor='DarkOrange')
+
+    mtls = []
+    offsets = []
+    errors = []
+    for name, sep, err, mtl in zip(names, ma.compressed(residuals),
+                                   ma.compressed(err_array),
+                                   ma.compressed(x_data[1])):
+        if name in sp1_stars:
+            print(f'Found {name} in SP1.')
+            offsets.append(sep)
+            errors.append(err)
+            mtls.append(mtl)
+
+    print(f'Found {len(offsets)} solar twins.')
+
+    mtls = np.array(mtls)
+
+    ax1.errorbar(mtls, offsets, yerr=errors,
+                 color='MediumSeaGreen', linestyle='',
+                 marker='D', markeredgecolor='Black',
+                 markersize=10,
+                 capsize=7, elinewidth=2.5, capthick=2.5,
+                 ecolor='LightSeaGreen')
+
+    # Plot SP1 stars on whole sample.
+    ax2.errorbar(mtls, offsets, yerr=errors,
+                 color='MediumSeaGreen', linestyle='',
+                 marker='D', markeredgecolor='Black',
+                 markersize=10,
+                 capsize=7, elinewidth=2.5, capthick=2.5,
+                 ecolor='LightSeaGreen')
+
+    plt.show()
+
+
+def create_sigma_sys_hist():
+    """
+    Create a histogram of the systematic errors.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    data_dir = vcl.output_dir /\
+        'stellar_parameter_fits_pairs_4.0sigma_first_selection/quadratic'
+    data_file = data_dir / 'quadratic_pairs_fit_results.csv'
+
+    with open(data_file, newline='', mode='r') as f:
+        data_reader = csv.reader(f)
+        data_reader.__next__()
+        lines = [row for row in data_reader]
+
+    sigmas_sys = []
+    for line in lines:
+        sigmas_sys.append(float(line[3]))
+
+    sigmas_sys = np.array(sigmas_sys)
+    # print(sigmas_sys)
+    # print(np.mean(sigmas_sys))
+
+    fig = plt.figure(figsize=(8, 8), tight_layout=True)
+    ax = fig.add_subplot(1, 1, 1)
+    ax.set_xlabel(r'$\sigma_\mathrm{sys}$ (m/s)')
+
+    ax.axvline(x=np.mean(sigmas_sys), linestyle='--',
+               color='Gray', label='Mean')
+    ax.axvline(x=np.median(sigmas_sys), linestyle='-',
+               color='Gray', label='Median')
+    # ax.axvline(x=np.mode(sigmas_sys), linestyle=':',
+    #            color='Gray', label='Mode')
+
+    ax.hist(sigmas_sys, color='Black', histtype='step',
+            bins='fd')
+
+    ax.legend()
+
+    plt.show()
 
 
 parser = argparse.ArgumentParser(description='Create all the necessary figures'
@@ -32,7 +247,7 @@ parser = argparse.ArgumentParser(description='Create all the necessary figures'
 parser.add_argument('--tables', action='store_true',
                     help='Save out tables in LaTeX format to text files.')
 parser.add_argument('--figures', action='store_true',
-                     help='Create and save plots and figures.')
+                    help='Create and save plots and figures.')
 
 parser.add_argument('-v', '--verbose', action='store_true',
                     help="Print out more information about the script's"
@@ -45,6 +260,13 @@ vprint = vcl.verbose_print(args.verbose)
 output_dir = Path('/Users/dberke/Pictures/paper_plots_and_tables')
 if not output_dir.exists():
     os.mkdir(output_dir)
+
+db_file = vcl.databases_dir / 'stellar_db_uncorrected.hdf5'
+
+sp1_stars = ('HD138573', 'HD140538', 'HD146233', 'HD157347', 'HD171665',
+             'HD1835', 'HD183658', 'HD19467', 'HD20782', 'HD220507' 'HD222582',
+             'HD30495', 'HD45184', 'HD45289', 'HD76151', 'HD78429', 'HD78660',
+             'Vesta')
 
 if args.tables:
 
@@ -111,3 +333,7 @@ if args.tables:
         with open(transitions_table_file, 'w') as f:
             f.write(transitions_output)
 
+if args.figures:
+    # create_example_plots()
+
+    create_sigma_sys_hist()
