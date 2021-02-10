@@ -54,17 +54,17 @@ params_dict = {'temperature': 'Teff (K)',
 
 
 types_dict = {'#star_name': str,
-              'delta(v)_pair (m/s)': np.float,
-              'err_stat_pair (m/s)': np.float,
-              'err_sys_pair (m/s)': np.float,
-              'transition1 (m/s)': np.float,
-              't_stat_err1 (m/s)': np.float,
-              't_sys_err1 (m/s)': np.float,
-              'chi^2_nu1': np.float,
-              'transition2 (m/s)': np.float,
-              't_stat_err2 (m/s)': np.float,
-              't_sys_err2 (m/s)': np.float,
-              'chi^2_nu2': np.float}
+              'delta(v)_pair (m/s)': float,
+              'err_stat_pair (m/s)': float,
+              'err_sys_pair (m/s)': float,
+              'transition1 (m/s)': float,
+              't_stat_err1 (m/s)': float,
+              't_sys_err1 (m/s)': float,
+              'chi^2_nu1': float,
+              'transition2 (m/s)': float,
+              't_stat_err2 (m/s)': float,
+              't_sys_err2 (m/s)': float,
+              'chi^2_nu2': float}
 
 
 plot_axis_labels = {'temperature': r'$\mathrm{T}_\mathrm{eff}\,$(K)',
@@ -842,9 +842,6 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=4.0):
     ax_post = fig.add_subplot(gs[4, 0], sharex=ax_pre, sharey=ax_pre)
     ax_hist_pre = fig.add_subplot(gs[0, 1], sharey=ax_pre)
     ax_hist_post = fig.add_subplot(gs[4, 1], sharey=ax_post)
-    # ax_sigma_pre = fig.add_subplot(gs[1, 0], sharex=ax_pre)
-    # ax_sigma_post = fig.add_subplot(gs[4, 0], sharex=ax_pre,
-    #                                 sharey=ax_sigma_pre)
     ax_chi_pre = fig.add_subplot(gs[1, 0], sharex=ax_pre)
     ax_chi_post = fig.add_subplot(gs[5, 0], sharex=ax_post, sharey=ax_chi_pre)
     ax_wmean_pre = fig.add_subplot(gs[2, 0], sharex=ax_pre)
@@ -857,14 +854,6 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=4.0):
     ax_pre.set_xlim(left=0, right=805)
     ax_pre.set_ylim(bottom=-70, top=70)
     ax_sigma_hist_pre.set_ylim(bottom=-3, top=3)
-    # for ax in (ax_sigma_pre, ax_sigma_post,
-    #            ax_sigma_hist_pre, ax_sigma_hist_post):
-    #     ax.yaxis.grid(which='major', color='Gray', alpha=0.7,
-    #                   linestyle='-')
-    #     ax.yaxis.grid(which='minor', color='Gray', alpha=0.6,
-    #                   linestyle='--')
-    #     ax.yaxis.set_major_locator(ticker.AutoLocator())
-    #     ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
     for ax in (ax_pre, ax_post, ax_hist_pre, ax_hist_post,
                ax_chi_pre, ax_chi_post):
         plt.setp(ax.get_xticklabels(), visible=False)
@@ -878,7 +867,6 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=4.0):
     ax_sigma_hist_pre.set_ylabel('Significance')
     ax_sigma_hist_post.set_ylabel('Significance')
     for ax in (ax_pre, ax_post, ax_hist_pre, ax_hist_post,
-               # ax_sigma_pre, ax_sigma_post,
                ax_sigma_hist_pre, ax_sigma_hist_post,
                ax_wmean_pre, ax_wmean_post):
         ax.axhline(y=0, linestyle='--', color='Gray')
@@ -946,9 +934,9 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=4.0):
     # Add up the PDFs for each point.
     for x in tqdm(bins):
         if star.hasObsPre:
-            pdf_pre.append(np.sum([y.pdf(x) for y in gaussians_pre]))
+            pdf_pre.append(np.sum([g.pdf(x) for g in gaussians_pre]))
         if star.hasObsPost:
-            pdf_post.append(np.sum([y.pdf(x) for y in gaussians_post]))
+            pdf_post.append(np.sum([g.pdf(x) for g in gaussians_post]))
 
     if star.hasObsPre:
         ax_hist_pre.hist(model_offsets_pre, bins=bins, color='Black',
@@ -1006,12 +994,6 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=4.0):
 
             w_means.append(w_mean)
             eotwms.append(eotwm)
-            # ax_sigma_pre.annotate(f'{chisq:.2f}', (midpoints[i], w_means[i]),
-            #                       xytext=(i * 0.125 + 0.0625, -0.02),
-            #                       color='SaddleBrown',
-            #                       textcoords='axes fraction',
-            #                       horizontalalignment='center',
-            #                       verticalalignment='top')
 
         midpoints = np.array(midpoints)
         w_means = np.array(w_means)
@@ -1019,18 +1001,11 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=4.0):
 
         sigma_values = model_offsets_pre / full_errs_pre
 
-        # ax_sigma_pre.errorbar(average_separations_pre,
-        #                       sigma_values,
-        #                       color='Chocolate', linestyle='',
-        #                       marker='.')
         ax_wmean_pre.errorbar(midpoints, w_means, yerr=eotwms,
                               linestyle='-', color='Black',
                               marker='o')
         ax_chi_pre.plot(midpoints, chisq, linestyle='-',
                         color='SaddleBrown', marker='o')
-        # ax_sigma_pre.errorbar(midpoints, w_means / eotwms,
-        #                       linestyle=':', marker='o',
-        #                       color='ForestGreen')
         ax_sigma_hist_pre.hist(sigma_values,
                                bins=[x for x in np.linspace(-5, 5, num=50)],
                                color='Black', histtype='step',
@@ -1049,12 +1024,6 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=4.0):
                                              full_errs_post[mask], 1).value)
             w_means.append(w_mean)
             eotwms.append(eotwm)
-            # ax_sigma_post.annotate(f'{chisq:.2f}', (midpoints[i], w_means[i]),
-            #                        xytext=(i * 0.125 + 0.0625, -0.02),
-            #                        color='RoyalBlue',
-            #                        textcoords='axes fraction',
-            #                        horizontalalignment='center',
-            #                        verticalalignment='top')
 
             # if lims[0] == 500 and lims[1] == 600:
             #     print(w_mean)
@@ -1073,18 +1042,11 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=4.0):
 
         sigma_values = model_offsets_post / full_errs_post
 
-        # ax_sigma_post.errorbar(average_separations_post,
-        #                        sigma_values,
-        #                        color='DodgerBlue', linestyle='',
-        #                        marker='.')
         ax_wmean_post.errorbar(midpoints, w_means, yerr=eotwms,
                                linestyle='-', color='Black',
                                marker='o')
         ax_chi_post.plot(midpoints, chisq, linestyle='-',
                          color='RoyalBlue', marker='o')
-        # ax_sigma_post.errorbar(midpoints, w_means / eotwms,
-        #                        linestyle=':', marker='o',
-        #                        color='ForestGreen')
         ax_sigma_hist_post.hist(sigma_values,
                                 bins=[x for x in np.linspace(-5, 5, num=50)],
                                 color='Black', histtype='step',
