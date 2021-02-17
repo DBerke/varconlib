@@ -20,11 +20,8 @@ import varconlib as vcl
 from varconlib.exceptions import StarDirectoryNotFoundError
 from varconlib.star import Star
 
-# Tell pytest to ignore SerializedWarnings that pop up from storing bidicts
-# in an HDF5 file.
-pytestmark = pytest.mark.filterwarnings("ignore::hickle.hickle."
-                                        "SerializedWarning")
 
+pytestmark = pytest.mark.filterwarnings(("ignore::DeprecationWarning"))
 
 base_test_dir = vcl.data_dir / f'spectra/HD117618'
 
@@ -39,9 +36,9 @@ def test_dir():
 
 
 @pytest.fixture(scope='module')
-def tmp_dir(tmpdir_factory):
+def tmp_dir(tmp_path_factory):
 
-    tmpdir = Path(tmpdir_factory.mktemp('test_star').strpath)
+    tmpdir = Path(tmp_path_factory.mktemp('test_star'))
 
     return tmpdir
 
@@ -51,8 +48,8 @@ class TestStar(object):
     @pytest.fixture(scope='class')
     def test_star(self, test_dir):
         return Star('HD117618', star_dir=test_dir,
-                    load_data=False, init_params='Nordstrom2004',
-                    correction_model='quadratic')
+                    load_data=False, init_params="Casagrande2011",
+                    perform_model_correction=True)
 
     def testNonExistentDir(self):
         with pytest.raises(StarDirectoryNotFoundError):
@@ -82,20 +79,6 @@ class TestStar(object):
     def testFiberSplitIndex(self, test_star):
         assert test_star.fiberSplitIndex is None
 
-    def testArrayShapes(self, test_star):
-        assert test_star.fitMeansArray.shape == (3, 184)
-        assert test_star.fitErrorsArray.shape == (3, 184)
-        assert test_star.pairSeparationsArray.shape == (3, 284)
-        assert test_star.pairSepErrorsArray.shape == (3, 284)
-
-    def testPairBidict(self, test_star):
-        assert test_star.p_index('4217.791Fe1_4219.893V1_16') == 0
-        assert test_star.p_label(283) == '6774.190Ni1_6788.733Fe1_70'
-
-    def testTransitionBidict(self, test_star):
-        assert test_star.t_index('4217.791Fe1_16') == 0
-        assert test_star.t_label(183) == '6788.733Fe1_70'
-
     def testObsevationDateBidict(self, test_star):
         assert test_star.od_index('2005-05-02T03:49:08.735') == 0
         assert test_star.od_index(dt.datetime(year=2005, month=5,
@@ -119,15 +102,6 @@ class TestStar(object):
                                                         normalized=norm)[0])\
             == len(test_star._transition_bidict.keys())
 
-    def testTemperature(self, test_star):
-        assert test_star.temperature == pytest.approx(6026 * u.K, abs=10)
-
-    def testMetallicity(self, test_star):
-        assert test_star.metallicity == pytest.approx(0.07)
-
-    def testRadialVelocity(self, test_star):
-        assert test_star.radialVelocity == pytest.approx(1.1 * u.km / u.s)
-
     @pytest.mark.parametrize('obs_num,expected',
                              [(0, -0.13005375),
                               (1, 24.92201306),
@@ -138,11 +112,11 @@ class TestStar(object):
 
     def testSaveAndRestoreData(self, test_star, tmp_dir):
         star_name = test_star.name
-        tmp_file_path = tmp_dir / f'{star_name}_data.hdf5'
+        tmp_file_path = tmp_dir
         test_star.saveDataToDisk(tmp_file_path)
-        new_star = Star(star_name, tmp_dir, init_params='Nordstrom2004',
-                        load_data=True,
-                        correction_model='cross_term')
+        new_star = Star(star_name, star_dir=tmp_dir,
+                        init_params='Nordstrom2004',
+                        load_data=True)
 
         for name in test_star.unyt_arrays.values():
             if np.any(np.isnan(getattr(test_star, name))):
