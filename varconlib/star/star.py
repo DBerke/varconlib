@@ -29,8 +29,9 @@ import numpy.ma as ma
 from tqdm import tqdm, trange
 import unyt as u
 from unyt import accepts, returns
-from unyt.dimensions import length, temperature
-from unyt.dimensions import time as time_dim
+from unyt.dimensions import length as u_length
+from unyt.dimensions import temperature as u_temperature
+from unyt.dimensions import time as u_time
 
 import varconlib as vcl
 from varconlib.exceptions import (HDF5FileNotFoundError,
@@ -286,7 +287,8 @@ class Star(object):
     def __init__(self, name, star_dir=None, output_dir=None,
                  transitions_list=None, pairs_list=None,
                  load_data=None, init_params="Casagrande2011",
-                 correction_model='quadratic'):
+                 correction_model='quadratic',
+                 perform_model_correction=False):
         """Instantiate a `star.Star` object.
 
         Parameters
@@ -332,6 +334,10 @@ class Star(object):
                          Default : 'quadratic'
             The name of a correction model to apply to the transition offsets
             data to correct for stellar parameters.
+        perform_full_analysis : bool, Default : False
+            If True, will attempt to create model-corrected transition and pair-
+            wise separation arrays. Doing this requires external files to be in
+            place, so it is False by default.
 
         """
 
@@ -377,17 +383,10 @@ class Star(object):
             if load_data is False or\
                     (load_data is None and not self.hdf5file.exists()):
                 self.constructFromDir(star_dir)
-                # t_filename = vcl.output_dir /\
-                #     f'fit_params/{correction_model}_transitions_params.hdf5'
-                # if t_filename.is_file():
-                #     self.createTransitionModelCorrectedArrays(
-                #         filename=t_filename)
-                #     self.createPairSeparationArrays()
-                #     p_filename = vcl.output_dir /\
-                #         f'fit_params/{correction_model}_pairs_params.hdf5'
-                #     if p_filename.is_file():
-                #         self.createPairModelCorrectedArrays(
-                #             filename=p_filename)
+                if perform_model_correction is True:
+                    self.createTransitionModelCorrectedArrays()
+                    self.createPairSeparationArrays()
+                    self.createPairModelCorrectedArrays()
 
                 self.saveDataToDisk(output_dir)
                 self.specialAttributes.update(
@@ -455,13 +454,14 @@ class Star(object):
                                          np.nan, dtype=float)
         self.normalizedDepthArray = np.full((num_obs, num_cols),
                                             np.nan, dtype=float)
+        self.pixelArray = np.full((num_obs, num_cols), -1, dtype=int)
 
         # Now set up 1D arrays holding information for each observation.
         self.bervArray = np.full(num_obs,
                                  np.nan, dtype=float) * u.km / u.s
         self.airmassArray = np.full(num_obs, np.nan, dtype=float)
-        self.calSourceArray = ['' for _ in range(num_obs)]
-        self.calFileArray = ['' for _ in range(num_obs)]
+        self.calSourceArray = [''] * num_obs
+        self.calFileArray = [''] * num_obs
 
         # For each pickle file:
         for obs_num in tqdm(range(num_obs)):
@@ -568,6 +568,7 @@ class Star(object):
                     fit.chiSquaredNu
                 self.normalizedDepthArray[obs_num, col_num] =\
                     fit.normalizedLineDepth
+                self.pixelArray[obs_num, col_num] = fit.centralIndex
 
     def createTransitionModelCorrectedArrays(self, model_func='quadratic',
                                              filename=None, n_sigma=2.5):
@@ -1091,7 +1092,7 @@ class Star(object):
                     print(hickle.load(f, path=path_name))
                 pass
 
-    @returns(length/time_dim)
+    @returns(u_length/u_time)
     def _correctCCDSystematic(self, order, pixel):
         """Return the velocity correction for a given pixel and order number.
 
@@ -1247,7 +1248,7 @@ class Star(object):
                     self._pairs_list = pairs_list
 
     @property
-    @returns(length/time_dim)
+    @returns(u_length/u_time)
     def radialVelocity(self):
         """Return the radial velocity of this star."""
         if self._radialVelocity is None:
@@ -1266,12 +1267,12 @@ class Star(object):
         return self._radialVelocity
 
     @radialVelocity.setter
-    @accepts(new_RV=length/time_dim)
+    @accepts(new_RV=u_length/u_time)
     def radialVelocity(self, new_RV):
         self._radialVelocity = new_RV
 
     @property
-    @returns(temperature)
+    @returns(u_temperature)
     def temperature(self):
         """Return the temperature of this star."""
         if self._temperature is None:
@@ -1280,7 +1281,7 @@ class Star(object):
 
     @temperature.setter
     def temperature(self, new_T):
-        assert new_T.units.dimensions == temperature,\
+        assert new_T.units.dimensions == u_temperature,\
               f'New temperature has units {new_T.units}!'
         self._temperature = new_T
 
