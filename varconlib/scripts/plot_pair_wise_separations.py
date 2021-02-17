@@ -19,6 +19,7 @@ from pathlib import Path
 import pickle
 from pprint import pprint
 import sys
+import time
 
 from astropy.coordinates import SkyCoord
 import astropy.units as units
@@ -939,7 +940,8 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=4.0):
             pdf_post.append(np.sum([g.pdf(x) for g in gaussians_post]))
 
     if star.hasObsPre:
-        ax_hist_pre.hist(model_offsets_pre, bins=bins, color='Black',
+        ax_hist_pre.hist(np.array(model_offsets_pre), bins=bins,
+                         color='Black',
                          histtype='step', orientation='horizontal')
         ax_hist_pre.step(pdf_pre, bins, color='Green',
                          where='mid', linestyle='-')
@@ -955,7 +957,8 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=4.0):
                              horizontalalignment='right',
                              fontsize=20)
     if star.hasObsPost:
-        ax_hist_post.hist(model_offsets_post, bins=bins, color='Black',
+        ax_hist_post.hist(np.array(model_offsets_post), bins=bins,
+                          color='Black',
                           histtype='step', orientation='horizontal')
         ax_hist_post.step(pdf_post, bins, color='Green',
                           where='mid', linestyle='-')
@@ -1025,16 +1028,25 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=4.0):
             w_means.append(w_mean)
             eotwms.append(eotwm)
 
-            # if lims[0] == 500 and lims[1] == 600:
-            #     print(w_mean)
-            #     print(eotwm)
-                # outfile = plots_dir /\
-                #     f'{n_sigma}sigma_bin_values_{star.name}.csv'
-                # with open(outfile, 'w', newline='') as f:
-                #     datawriter = csv.writer(f)
-                #     for value, err in zip(model_offsets_post[mask],
-                #                           full_errs_post[mask].value):
-                #         datawriter.writerow((value, err))
+            # if lims[0] == 400 and lims[1] == 500:
+            #     outfile = plots_dir /\
+            #         f'{n_sigma}sigma_bin_values_{star.name}.csv'
+            #     print(outfile)
+            #     names = ma.array([k for k in star._pair_bidict.keys()])
+            #     with open(outfile, 'w', newline='') as f:
+            #         datawriter = csv.writer(f)
+            #         datawriter.writerow(('pair_label', 'value',
+            #                              'error', 'significance'))
+            #         for value, err, label in zip(model_offsets_post[mask],
+            #                                      full_errs_post[mask].value,
+            #                                      names[mask]):
+            #             datawriter.writerow((label, value, err, value/err))
+
+        for label, offset, err in zip(star._pair_bidict.keys(),
+                                      model_offsets_post,
+                                      full_errs_post):
+            if abs(offset/err).value > 3:
+                print(label, offset, err, offset/err.value)
 
         midpoints = np.array(midpoints)
         w_means = np.array(w_means)
@@ -1969,63 +1981,129 @@ def plot_vs_radial_velocity(star_list):
 
     """
 
+    plots_dir = Path('/Users/dberke/Pictures/sample_radial_velocity_dependence')
+
     pair_seps_pre, errors_pre, star_RVs_pre = [], [], []
     pair_seps_post, errors_post, star_RVs_post = [], [], []
+    BERV_ranges_pre, BERV_ranges_post = [], []
 
-    for pair in tqdm(pairs_list):
-        for order_num in pair.ordersToMeasureIn:
-            pair_label = '_'.join((pair.label, str(order_num)))
+    pairs_to_use = ('4652.593Cr1_4653.460Cr1_29',
+                    '4652.593Cr1_4653.460Cr1_30',
+                    '4759.449Ti1_4760.600Ti1_32',
+                    '4759.449Ti1_4760.600Ti1_33',
+                    '4799.873Ti2_4800.072Fe1_33',
+                    '4799.873Ti2_4800.072Fe1_34',
+                    '5138.510Ni1_5143.171Fe1_42',
+                    '5187.346Ti2_5200.158Fe1_43',
+                    '6123.910Ca1_6138.313Fe1_60',
+                    '6123.910Ca1_6139.390Fe1_60',
+                    '6138.313Fe1_6139.390Fe1_60',
+                    '6153.320Fe1_6155.928Na1_61',
+                    '6153.320Fe1_6162.452Na1_61',
+                    '6153.320Fe1_6168.150Ca1_61',
+                    '6155.928Na1_6162.452Na1_61',
+                    '6162.452Na1_6168.150Ca1_61',
+                    '6162.452Na1_6175.044Fe1_61',
+                    '6168.150Ca1_6175.044Fe1_61',
+                    '6192.900Ni1_6202.028Fe1_61',
+                    '6242.372Fe1_6244.834V1_62')
 
-            separations_pre, errs_pre, RVs_pre = [], [], []
-            separations_post, errs_post, RVs_post = [], [], []
-            for star in star_list:
+    # pairs_to_use = []
+    # for pair in tqdm(pairs_list):
+    #     for order_num in pair.ordersToMeasureIn:
+    #         pair_label = '_'.join((pair.label, str(order_num)))
+    #         pairs_to_use.append(pair_label)
 
-                pre_slice = slice(None, star.fiberSplitIndex)
-                post_slice = slice(star.fiberSplitIndex, None)
+    for pair_label in tqdm(pairs_to_use):
 
-                if star.hasObsPre:
+        separations_pre, errs_pre, RVs_pre = [], [], []
+        separations_post, errs_post, RVs_post = [], [], []
+        for star in star_list:
 
-                    mean, error = get_weighted_mean(star.pairModelOffsetsArray,
-                                                    star.pairModelErrorsArray,
-                                                    pre_slice,
-                                                    star.p_index(pair_label))
+            pre_slice = slice(None, star.fiberSplitIndex)
+            post_slice = slice(star.fiberSplitIndex, None)
 
-                    separations_pre.append(mean)
-                    errs_pre.append(error)
-                    if not np.isnan(mean):
-                        RVs_pre.append(star.radialVelocity.to(u.m/u.s))
-                    else:
-                        RVs_pre.append(np.nan * u.m/u.s)
+            berv_range = abs(star.bervArray.max() - star.bervArray.min()) / 2
+
+            if star.hasObsPre:
+
+                mean, error = get_weighted_mean(star.pairModelOffsetsArray,
+                                                star.pairModelErrorsArray,
+                                                pre_slice,
+                                                star.p_index(pair_label))
+
+                separations_pre.append(mean)
+                errs_pre.append(error)
+                if not np.isnan(mean):
+                    RVs_pre.append(star.radialVelocity.to(u.m/u.s))
+                    BERV_ranges_pre.append(berv_range)
                 else:
-                    separations_pre.append(np.nan * u.m/u.s)
-                    errs_pre.append(np.nan * u.m/u.s)
                     RVs_pre.append(np.nan * u.m/u.s)
+                    BERV_ranges_pre.append(np.nan * u.m/u.s)
+            else:
+                separations_pre.append(np.nan * u.m/u.s)
+                errs_pre.append(np.nan * u.m/u.s)
+                RVs_pre.append(np.nan * u.m/u.s)
+                BERV_ranges_pre.append(np.nan * u.m/u.s)
 
-                if star.hasObsPost:
+            if star.hasObsPost:
 
-                    mean, error = get_weighted_mean(star.pairModelOffsetsArray,
-                                                    star.pairModelErrorsArray,
-                                                    post_slice,
-                                                    star.p_index(pair_label))
+                mean, error = get_weighted_mean(star.pairModelOffsetsArray,
+                                                star.pairModelErrorsArray,
+                                                post_slice,
+                                                star.p_index(pair_label))
 
-                    separations_post.append(mean)
-                    errs_post.append(error)
-                    if not np.isnan(mean):
-                        RVs_post.append(star.radialVelocity.to(u.m/u.s))
-                    else:
-                        RVs_post.append(np.nan * u.m/u.s)
+                separations_post.append(mean)
+                errs_post.append(error)
+                if not np.isnan(mean):
+                    RVs_post.append(star.radialVelocity.to(u.m/u.s))
+                    BERV_ranges_post.append(berv_range)
                 else:
-                    separations_post.append(np.nan * u.m/u.s)
-                    errs_post.append(np.nan * u.m/u.s)
                     RVs_post.append(np.nan * u.m/u.s)
+                    BERV_ranges_post.append(np.nan * u.m/u.s)
+            else:
+                separations_post.append(np.nan * u.m/u.s)
+                errs_post.append(np.nan * u.m/u.s)
+                RVs_post.append(np.nan * u.m/u.s)
+                BERV_ranges_post.append(np.nan * u.m/u.s)
 
-            pair_seps_pre.append(separations_pre)
-            errors_pre.append(errs_pre)
-            star_RVs_pre.append(RVs_pre)
+        fig = plt.figure(figsize=(10, 8), tight_layout=True)
+        ax_pre = fig.add_subplot(2, 1, 1)
+        ax_post = fig.add_subplot(2, 1, 2)
 
-            pair_seps_post.append(separations_post)
-            errors_post.append(errs_post)
-            star_RVs_post.append(RVs_post)
+        for ax in (ax_pre, ax_post):
+            ax.set_xlim(left=-71, right=71)
+            ax.set_ylim(bottom=-200, top=200)
+            ax.axhline(y=0, linestyle='--', color='Gray')
+
+        ax_pre.set_ylabel('Pre model offset (m/s)')
+        ax_post.set_ylabel('Post model offset (m/s)')
+        ax_post.set_xlabel('Stellar radial velocity (km/s)')
+
+        ax_pre.errorbar(u.unyt_array(RVs_pre, units='m/s').to(u.km/u.s),
+                        separations_pre,
+                        yerr=errs_pre,
+                        xerr=BERV_ranges_pre,
+                        color='Chocolate', markeredgecolor='Black',
+                        linestyle='', marker='x')
+        ax_post.errorbar(u.unyt_array(RVs_post, units='m/s').to(u.km/u.s),
+                         separations_post,
+                         yerr=errs_post,
+                         xerr=BERV_ranges_post,
+                         color='DodgerBlue', markeredgecolor='Black',
+                         linestyle='', marker='x')
+
+        plot_name = plots_dir / f'{pair_label}_vs_RV.png'
+        fig.savefig(str(plot_name))
+        plt.close('all')
+
+        pair_seps_pre.append(separations_pre)
+        errors_pre.append(errs_pre)
+        star_RVs_pre.append(RVs_pre)
+
+        pair_seps_post.append(separations_post)
+        errors_post.append(errs_post)
+        star_RVs_post.append(RVs_post)
 
     pair_seps_pre = np.array(pair_seps_pre)
     errors_pre = np.array(errors_pre)
@@ -2528,6 +2606,8 @@ args = parser.parse_args()
 # Define vprint to only print when the verbose flag is given.
 vprint = vcl.verbose_print(args.verbose)
 
+start_time = time.time()
+
 # Get the star from the name.
 if len(args.stars) == 1:
     star = get_star(args.stars[0])
@@ -2545,7 +2625,7 @@ with open(vcl.final_pair_selection_file, 'r+b') as f:
     pairs_list = pickle.load(f)
 
 pairs_dict = {}
-for pair in tqdm(pairs_list):
+for pair in pairs_list:
     for order_num in pair.ordersToMeasureIn:
         pair_label = "_".join([pair.label, str(order_num)])
         pairs_dict[pair_label] = pair
@@ -2620,3 +2700,6 @@ if args.stars is not None and args.plot_vs_blendedness:
 
 if args.stars is not None and args.plot_vs_radial_velocity:
     plot_vs_radial_velocity(stars)
+
+duration = time.time() - start_time
+tqdm.write(f'Finished in {duration:.1f} seconds.')
