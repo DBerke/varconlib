@@ -288,6 +288,8 @@ parser.add_argument('--create-ccd-plots', action='store_true',
                     help='Create plots of the CCD positions of each transition'
                     ' for each observation.')
 
+parser.add_argument('-s', '--single-threaded', action='store_true',
+                    help="Don't use multi-processing for debugging.")
 parser.add_argument('-p', '--preview', action='store_true',
                     help='Show which observations will be selected to work on,'
                     ' then exit.')
@@ -399,8 +401,13 @@ elif args.pixel_positions and args.new_coefficients:
 
 total = len(data_files) - args.start
 
-# Use multiprocessing to look at multiple obserations in parallel.
-p_map(find_transitions_in_obs, files_to_work_on)
+if args.single_threaded:
+    for obs_path in tqdm(files_to_work_on) if\
+                len(files_to_work_on) > 1 else files_to_work_on:
+        find_transitions_in_obs(obs_path)
+else:
+    # Use multiprocessing to look at multiple obserations in parallel.
+    p_map(find_transitions_in_obs, files_to_work_on)
 
 # Create hard links to all the fit plots by transition (across star) in
 # their own directories, to make it easier to compare transitions
