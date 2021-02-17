@@ -287,7 +287,6 @@ class Star(object):
     def __init__(self, name, star_dir=None, output_dir=None,
                  transitions_list=None, pairs_list=None,
                  load_data=None, init_params="Casagrande2011",
-                 correction_model='quadratic',
                  perform_model_correction=False):
         """Instantiate a `star.Star` object.
 
@@ -329,11 +328,6 @@ class Star(object):
                     'Casagrande2011'
             Which paper's derivation of the stellar parameters for this star to
             use.
-        correction_model : str, ['linear', 'quadratic',
-                                 'cross_term', 'quadratic_mag'],
-                         Default : 'quadratic'
-            The name of a correction model to apply to the transition offsets
-            data to correct for stellar parameters.
         perform_full_analysis : bool, Default : False
             If True, will attempt to create model-corrected transition and pair-
             wise separation arrays. Doing this requires external files to be in
