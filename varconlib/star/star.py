@@ -265,6 +265,8 @@ class Star(object):
                             'calSourceArray',
                         '/arrays/calibration_files':
                             'calFileArray',
+                        '/arrays/pixel_measurement':
+                            'pixelArray',
                         '/bidicts/obs_date_bidict': '_obs_date_bidict',
                         '/bidicts/transition_bidict': '_transition_bidict',
                         '/bidicts/pair_bidict': '_pair_bidict',
@@ -1084,7 +1086,7 @@ class Star(object):
                 except TypeError:
                     print(attr_name)
                     print(hickle.load(f, path=path_name))
-                pass
+                    pass
 
     @returns(u_length/u_time)
     def _correctCCDSystematic(self, order, pixel):
