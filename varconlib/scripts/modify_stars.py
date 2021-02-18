@@ -5,15 +5,19 @@ Created on Tue Jan  5 11:58:04 2021
 
 @author: dberke
 
-Recreate all stars
+Make changes to the data in star.Star objects, up to rebuilding them entirely.
 """
 
 import argparse
+from glob import glob
 from json.decoder import JSONDecodeError
+import lzma
 from multiprocessing import Pool, RLock
 from pathlib import Path
+import pickle
 import time
 
+import numpy as np
 from p_tqdm import p_umap
 from tqdm import tqdm
 
@@ -123,13 +127,57 @@ def create_pair_model_corrected_arrays(star_dir):
     star.saveDataToDisk()
 
 
+def add_pixel_data_to_star(star_dir):
+    """
+    Add information about the pixel each transition was measured at to a star.
+
+    Parameters
+    ----------
+    star_dir : `pathlib.Path`
+        The directory containing the data for the star.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    tqdm.write(f'Working on {star_dir.stem}')
+    star = Star(star_dir.stem, star_dir, load_data=True)
+
+    # Find pickle files in directory
+    search_str = str(star_dir) + f'/HARPS*/pickles_int/*fits.lzma'
+    pickle_files = [Path(path) for path in sorted(glob(search_str))]
+
+    with open(vcl.final_selection_file, 'r+b') as f:
+        transitions_list = pickle.load(f)
+
+    num_obs = len(pickle_files)
+    num_cols = 0
+    for transition in transitions_list:
+        num_cols += len(transition.ordersToFitIn)
+
+    star.pixelArray = np.full((num_obs, num_cols), -1, dtype=int)
+
+    for obs_num, pickle_file in enumerate(tqdm(pickle_files)):
+        with lzma.open(pickle_file, 'rb') as f:
+            fits_list = pickle.loads(f.read())
+
+        for col_num, fit in enumerate(fits_list):
+            if fit is not None:
+                star.pixelArray[obs_num, col_num] = fit.centralIndex
+
+    star.saveDataToDisk()
+
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Automatically recreate all'
                                      ' stars whose names are given.')
     parser.add_argument('star_names', action='store', type=str, nargs='*',
                         help='The names of stars (directories) containing the'
-                        ' stars to be used in the plot.')
+                        ' stars to be used in the plot. If not given will'
+                        ' default to using all stars.')
     parser.add_argument('--recreate-stars', action='store_true',
                         help='Trigger a full rebuild of stars from the pickled'
                         ' results files (LENGTHY!).')
@@ -139,6 +187,9 @@ if __name__ == '__main__':
     parser.add_argument('--pairs', action='store_true',
                         help='Create the pair model-corrected arrays for'
                         ' stars.')
+    parser.add_argument('--pixel-positions', action='store_true',
+                        help='Read pickled fits to add pixel positions to'
+                        ' star.')
 
     args = parser.parse_args()
 
@@ -161,5 +212,8 @@ if __name__ == '__main__':
     if args.pairs:
         p_umap(create_pair_model_corrected_arrays, star_dirs)
 
+    if args.pixel_positions:
+        p_umap(add_pixel_data_to_star, star_dirs)
+
     duration = time.time() - start_time
-    print(f'Finished recreating stars in {duration:.2f} seconds.')
+    print(f'Finished in {duration:.2f} seconds.')
