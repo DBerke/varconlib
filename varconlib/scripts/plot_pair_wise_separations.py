@@ -1983,10 +1983,6 @@ def plot_vs_radial_velocity(star_list):
 
     plots_dir = Path('/Users/dberke/Pictures/sample_radial_velocity_dependence')
 
-    pair_seps_pre, errors_pre, star_RVs_pre = [], [], []
-    pair_seps_post, errors_post, star_RVs_post = [], [], []
-    BERV_ranges_pre, BERV_ranges_post = [], []
-
     pairs_to_use = ('4652.593Cr1_4653.460Cr1_29',
                     '4652.593Cr1_4653.460Cr1_30',
                     '4759.449Ti1_4760.600Ti1_32',
@@ -2008,6 +2004,28 @@ def plot_vs_radial_velocity(star_list):
                     '6192.900Ni1_6202.028Fe1_61',
                     '6242.372Fe1_6244.834V1_62')
 
+    pairs_to_use = ('4575.498Fe1_4576.000Fe1_27',
+                    '4652.593Cr1_4653.460Cr1_30',
+                    '6138.313Fe1_6139.390Fe1_60',
+                    '5589.125Fe1_5589.410Ni1_50')
+    # pairs_to_use = ('5589.125Fe1_5589.410Ni1_50',)
+    x_limits = {'4575.498Fe1_4576.000Fe1_27': (2380, 2650),
+                '4652.593Cr1_4653.460Cr1_30': (330, 560),
+                '5589.125Fe1_5589.410Ni1_50': (3490, 3780),
+                '6138.313Fe1_6139.390Fe1_60': (2870, 3140)}
+    y_limits = {'4575.498Fe1_4576.000Fe1_27': (-150, 150),
+                '4652.593Cr1_4653.460Cr1_30': (-100, 100),
+                '5589.125Fe1_5589.410Ni1_50': (-200, 200),
+                '6138.313Fe1_6139.390Fe1_60': (-75, 75)}
+    boundaries = {'4575.498Fe1_4576.000Fe1_27': 2560,
+                  '4652.593Cr1_4653.460Cr1_30': 512,
+                  '5589.125Fe1_5589.410Ni1_50': 3584,
+                  '6138.313Fe1_6139.390Fe1_60': 3072}
+    bin_limits = {'4575.498Fe1_4576.000Fe1_27': (2385, 2660),
+                  '4652.593Cr1_4653.460Cr1_30': (287, 587),
+                  '5589.125Fe1_5589.410Ni1_50': (3484, 3809),
+                  '6138.313Fe1_6139.390Fe1_60': (2872, 3172)}
+
     # pairs_to_use = []
     # for pair in tqdm(pairs_list):
     #     for order_num in pair.ordersToMeasureIn:
@@ -2016,196 +2034,168 @@ def plot_vs_radial_velocity(star_list):
 
     for pair_label in tqdm(pairs_to_use):
 
-        separations_pre, errs_pre, RVs_pre = [], [], []
-        separations_post, errs_post, RVs_post = [], [], []
-        for star in star_list:
+        pair_seps_pre, offsets_pre = [], []
+        errors_pre, pixels_pre = [], []
+        pair_seps_post, offsets_post = [], []
+        errors_post, pixels_post = [], []
+
+        parts = pair_label.split('_')
+        blue_label = '_'.join((parts[0], parts[2]))
+        red_label = '_'.join((parts[1], parts[2]))
+
+        for star in tqdm(star_list):
 
             pre_slice = slice(None, star.fiberSplitIndex)
             post_slice = slice(star.fiberSplitIndex, None)
 
-            berv_range = abs(star.bervArray.max() - star.bervArray.min()) / 2
+            col_index = star.p_index(pair_label)
 
             if star.hasObsPre:
 
-                mean, error = get_weighted_mean(star.pairModelOffsetsArray,
-                                                star.pairModelErrorsArray,
-                                                pre_slice,
-                                                star.p_index(pair_label))
-
-                separations_pre.append(mean)
-                errs_pre.append(error)
-                if not np.isnan(mean):
-                    RVs_pre.append(star.radialVelocity.to(u.m/u.s))
-                    BERV_ranges_pre.append(berv_range)
-                else:
-                    RVs_pre.append(np.nan * u.m/u.s)
-                    BERV_ranges_pre.append(np.nan * u.m/u.s)
-            else:
-                separations_pre.append(np.nan * u.m/u.s)
-                errs_pre.append(np.nan * u.m/u.s)
-                RVs_pre.append(np.nan * u.m/u.s)
-                BERV_ranges_pre.append(np.nan * u.m/u.s)
+                pair_seps_pre.extend(star.pairSeparationsArray[
+                    pre_slice, col_index].to(u.km/u.s))
+                offsets_pre.extend(star.pairModelOffsetsArray[
+                    pre_slice, col_index].to(u.m/u.s))
+                errors_pre.extend(star.pairModelErrorsArray[pre_slice,
+                                                            col_index])
+                pixels_pre.extend(star.pixelArray[
+                    pre_slice, star.t_index(blue_label)])
 
             if star.hasObsPost:
 
-                mean, error = get_weighted_mean(star.pairModelOffsetsArray,
-                                                star.pairModelErrorsArray,
-                                                post_slice,
-                                                star.p_index(pair_label))
+                pair_seps_post.extend(star.pairSeparationsArray[
+                    post_slice, col_index].to(u.km/u.s))
+                offsets_post.extend(star.pairModelOffsetsArray[
+                    post_slice, col_index].to(u.m/u.s))
+                errors_post.extend(star.pairModelErrorsArray[post_slice,
+                                                             col_index])
+                pixels_post.extend(star.pixelArray[
+                    post_slice, star.t_index(blue_label)])
 
-                separations_post.append(mean)
-                errs_post.append(error)
-                if not np.isnan(mean):
-                    RVs_post.append(star.radialVelocity.to(u.m/u.s))
-                    BERV_ranges_post.append(berv_range)
-                else:
-                    RVs_post.append(np.nan * u.m/u.s)
-                    BERV_ranges_post.append(np.nan * u.m/u.s)
-            else:
-                separations_post.append(np.nan * u.m/u.s)
-                errs_post.append(np.nan * u.m/u.s)
-                RVs_post.append(np.nan * u.m/u.s)
-                BERV_ranges_post.append(np.nan * u.m/u.s)
+            if (len(offsets_pre) != len(pixels_pre)) or\
+               (len(offsets_pre) != len(pair_seps_pre)):
+                print(star.name)
+                exit(1)
+
+        offsets_pre, mask_pre = remove_nans(np.array(offsets_pre),
+                                            return_mask=True)
+        offsets_post, mask_post = remove_nans(np.array(offsets_post),
+                                              return_mask=True)
+        errors_pre = np.array(errors_pre)[mask_pre]
+        errors_post = np.array(errors_post)[mask_post]
+        pixels_pre = np.array(pixels_pre)[mask_pre]
+        pixels_post = np.array(pixels_post)[mask_post]
+        pair_seps_pre = np.array(pair_seps_pre)[mask_pre]
+        pair_seps_post = np.array(pair_seps_post)[mask_post]
+        mean_sep_pre = np.mean(pair_seps_pre)
+        mean_sep_post = np.mean(pair_seps_post)
+        # print(mean_sep_pre)
+        # print(mean_sep_post)
 
         fig = plt.figure(figsize=(10, 8), tight_layout=True)
-        ax_pre = fig.add_subplot(2, 1, 1)
-        ax_post = fig.add_subplot(2, 1, 2)
+        gs = GridSpec(nrows=5, ncols=1, figure=fig,
+                      height_ratios=(1, 0.3, 0.1, 1, 0.3), hspace=0)
+        ax_pre = fig.add_subplot(gs[0, 0])
+        ax_post = fig.add_subplot(gs[3, 0])
+        ax_mean_pre = fig.add_subplot(gs[1, 0], sharex=ax_pre)
+        ax_mean_post = fig.add_subplot(gs[4, 0], sharex=ax_post,
+                                       sharey=ax_mean_pre)
+
+        x_lims = x_limits[pair_label]
+        y_lims = y_limits[pair_label]
+        boundary_pix = boundaries[pair_label]
 
         for ax in (ax_pre, ax_post):
-            ax.set_xlim(left=-71, right=71)
-            ax.set_ylim(bottom=-200, top=200)
+            ax.set_xlim(left=x_lims[0], right=x_lims[1])
+            ax.set_ylim(bottom=y_lims[0], top=y_lims[1])
+            ax.axvline(x=boundary_pix, linestyle='--', color='CadetBlue',
+                       label='Blue crosses')
+
+        for ax in (ax_pre, ax_post, ax_mean_pre, ax_mean_post):
             ax.axhline(y=0, linestyle='--', color='Gray')
+
+        # for ax in (ax_mean_pre, ax_mean_post):
+        #     ax.set_ylim(bottom=-7, top=7)
+
+        ax_pre.axvline(boundary_pix - np.round(mean_sep_pre / 0.829),
+                       linestyle=':', color='IndianRed',
+                       label='Red crosses')
+        ax_post.axvline(boundary_pix - np.round(mean_sep_post / 0.829),
+                        linestyle=':', color='IndianRed',
+                        label='Red crosses')
 
         ax_pre.set_ylabel('Pre model offset (m/s)')
         ax_post.set_ylabel('Post model offset (m/s)')
-        ax_post.set_xlabel('Stellar radial velocity (km/s)')
+        ax_mean_pre.set_ylabel(r'$\mu$')
+        ax_mean_post.set_ylabel(r'$\mu$')
+        ax_post.set_xlabel('Pixel of blue transitions')
 
-        ax_pre.errorbar(u.unyt_array(RVs_pre, units='m/s').to(u.km/u.s),
-                        separations_pre,
-                        yerr=errs_pre,
-                        xerr=BERV_ranges_pre,
-                        color='Chocolate', markeredgecolor='Black',
-                        linestyle='', marker='x')
-        ax_post.errorbar(u.unyt_array(RVs_post, units='m/s').to(u.km/u.s),
-                         separations_post,
-                         yerr=errs_post,
-                         xerr=BERV_ranges_post,
-                         color='DodgerBlue', markeredgecolor='Black',
-                         linestyle='', marker='x')
+        ax_pre.errorbar(pixels_pre, offsets_pre,
+                        # yerr=errors_pre,
+                        linestyle='',
+                        markeredgecolor=None,
+                        marker='.', color='Chocolate',
+                        alpha=0.4)
+        ax_post.errorbar(pixels_post, offsets_post,
+                         # yerr=errors_post,
+                         linestyle='',
+                         markeredgecolor=None,
+                         marker='.', color='DodgerBlue',
+                         alpha=0.4)
 
-        plot_name = plots_dir / f'{pair_label}_vs_RV.png'
+        # ax_pre.legend(loc='lower left')
+        # ax_post.legend(loc='lower left')
+
+        # Create some bins to measure in:
+        midpoints = []
+        means_pre, eotms_pre = [], []
+        means_post, eotms_post = [], []
+        print(bin_limits[pair_label])
+        bin_lims = [i for i in range(bin_limits[pair_label][0],
+                                     bin_limits[pair_label][1], 25)]
+        for lims in tqdm(pairwise(bin_lims)):
+            mask_pre = np.where((pixels_pre > lims[0]) &
+                                (pixels_pre < lims[1]))
+            mask_post = np.where((pixels_post > lims[0]) &
+                                 (pixels_post < lims[1]))
+
+            midpoints.append((lims[0] + lims[1])/2)
+
+            num_pre = len(offsets_pre[mask_pre])
+            num_post = len(offsets_post[mask_post])
+
+            if num_pre > 1:
+                means_pre.append(np.mean(offsets_pre[mask_pre]))
+                eotms_pre.append(np.std(offsets_pre[mask_pre]) /
+                                 np.sqrt(len(offsets_pre[mask_pre])))
+            elif num_pre == 1:
+                means_pre.append(offsets_pre[mask_pre][0])
+                eotms_pre.append(errors_pre[mask_pre][0])
+            else:
+                means_pre.append(np.nan)
+                eotms_pre.append(np.nan)
+
+            if num_post > 1:
+                means_post.append(np.mean(offsets_post[mask_post]))
+                eotms_post.append(np.std(offsets_post[mask_post]) /
+                                  np.sqrt(len(offsets_post[mask_post])))
+            elif num_post == 1:
+                means_post.append(offsets_post[mask_post][0])
+                eotms_post.append(errors_post[mask_post][0])
+            else:
+                means_post.append(np.nan)
+                eotms_post.append(np.nan)
+
+        ax_mean_pre.errorbar(midpoints, means_pre,
+                             yerr=eotms_pre,
+                             color='Black', marker='x')
+        ax_mean_post.errorbar(midpoints, means_post,
+                              yerr=eotms_post,
+                              color='Black', marker='x')
+
+        plot_name = plots_dir / f'{pair_label}_vs_pixel.png'
         fig.savefig(str(plot_name))
         plt.close('all')
-
-        pair_seps_pre.append(separations_pre)
-        errors_pre.append(errs_pre)
-        star_RVs_pre.append(RVs_pre)
-
-        pair_seps_post.append(separations_post)
-        errors_post.append(errs_post)
-        star_RVs_post.append(RVs_post)
-
-    pair_seps_pre = np.array(pair_seps_pre)
-    errors_pre = np.array(errors_pre)
-    star_RVs_pre = np.array(star_RVs_pre)
-    pair_seps_post = np.array(pair_seps_post)
-    errors_post = np.array(errors_post)
-    star_RVs_post = np.array(star_RVs_post)
-
-    def linear_model(x, slope, intercept):
-        """
-        Return the value of a line at X with given slope and intercept.
-
-        Parameters
-        ----------
-        x : int, float, or iterable
-            The value(s) to evaluate the function at.
-        slope : float
-            The slope of the line.
-        intercept : float
-            The y-intercept of the line.
-
-        Returns
-        -------
-        float
-            The value of the line evaluated at the given x value(s).
-
-        """
-
-        return intercept + slope * x
-
-    slopes_pre = []
-    slopes_post = []
-    for pair_row, err_row, rv_row in tqdm(zip(pair_seps_pre, errors_pre,
-                                              star_RVs_pre)):
-        if not np.isnan(rv_row).all():
-            try:
-                popt, pcov = curve_fit(linear_model, remove_nans(rv_row),
-                                       remove_nans(pair_row),
-                                       sigma=remove_nans(err_row),
-                                       p0=(0, 0),
-                                       absolute_sigma=True, method='lm',
-                                       maxfev=1000)
-                slopes_pre.append(popt[0])
-            except ValueError:
-                print('='*10)
-                print(rv_row)
-                print(pair_row)
-                print(err_row)
-                print('='*10)
-                raise
-
-    for pair_row, err_row, rv_row in tqdm(zip(pair_seps_post, errors_post,
-                                              star_RVs_post)):
-        if not np.isnan(pair_row).all():
-            try:
-                popt, pcov = curve_fit(linear_model, remove_nans(rv_row),
-                                       remove_nans(pair_row),
-                                       sigma=remove_nans(err_row),
-                                       p0=(0, 0),
-                                       absolute_sigma=True, method='lm',
-                                       maxfev=1000)
-                slopes_post.append(popt[0])
-
-            except ValueError:
-                print('='*10)
-                print(rv_row)
-                print(pair_row)
-                print(err_row)
-                print('='*10)
-                raise
-
-    # Create the figure to plot these values.
-    fig = plt.figure(figsize=(9, 9), tight_layout=True)
-    gs = GridSpec(ncols=1, nrows=2, figure=fig,
-                  height_ratios=(1, 1))
-    ax_pre = fig.add_subplot(gs[0, 0])
-    ax_post = fig.add_subplot(gs[1, 0])
-
-    ax_pre.set_ylabel('Pre-change')
-    ax_post.set_ylabel('Post-change')
-    ax_post.set_xlabel('Slopes of line fits.')
-
-    ax_pre.hist(slopes_pre, bins='fd',
-                histtype='step', color='Black',
-                label=f'Mean: {np.mean(slopes_pre):.3e}\n'
-                fr'$\sigma$: {np.std(slopes_pre):.3e}')
-    ax_post.hist(slopes_post, bins='fd',
-                 histtype='step', color='Black',
-                 label=f'Mean: {np.mean(slopes_post):.3e}\n'
-                 fr'$\sigma$: {np.std(slopes_post):.3e}')
-
-    ax_pre.legend(loc='upper left')
-    ax_post.legend(loc='upper left')
-
-    plots_dir = Path('/Users/dberke/Pictures')
-    filename = plots_dir / f'Pair_separation_vs_radial_velocity.png'
-    if not plots_dir.exists():
-        os.mkdir(plots_dir)
-    fig.savefig(str(filename))
-    plt.close('all')
-
-    # plt.show(fig)
 
 
 def get_weighted_mean(values_array, errs_array, time_slice, col_index):
