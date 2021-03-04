@@ -32,7 +32,7 @@ import varconlib.fitting as fit
 from varconlib.transition_line import roman_numerals
 
 
-def create_example_plots():
+def create_example_pair_sep_plots():
     """Create example plots for talks.
 
     Returns
@@ -50,6 +50,9 @@ def create_example_plots():
         db_file, dataset_name='star_pair_separations_EotM')
     star_temperatures = u.unyt_array.from_hdf5(
         db_file, dataset_name='star_temperatures')
+    print(star_pair_separations.units)
+    print(star_pair_separations_EotWM.units)
+    print(star_pair_separations_EotM.units)
 
     with h5py.File(db_file, mode='r') as f:
 
@@ -62,7 +65,7 @@ def create_example_plots():
         star_names = hickle.load(f, path='/star_row_index')
 
     label = '4492.660Fe2_4503.480Mn1_25'
-    label = '4588.413Fe1_4599.405Fe1_28'
+    # label = '4588.413Fe1_4599.405Fe1_28'
     # label = '4637.144Fe1_4638.802Fe1_29'
     # label = '4652.593Cr1_4653.460Cr1_29'
     # label = '4683.218Ti1_4684.870Fe1_30'
@@ -70,23 +73,28 @@ def create_example_plots():
     col = pair_column_dict[label]
 
     # Just use the pre-change era (0) for these plots for simplicity.
-    mean = np.nanmean(star_pair_separations[0, :, col])
+    mean = np.nanmean(star_pair_separations[0, :, col]).to(u.m/u.s)
     print(f'mean is {mean}')
 
     # First, create a masked version to catch any missing
     # entries:
+    print(star_pair_separations[0, 0, col])
     m_seps = ma.masked_invalid(star_pair_separations[0, :, col])
     m_seps = m_seps.reshape([len(m_seps), 1])
+    print(m_seps[0])
 
     # Then create a new array from the non-masked data:
     separations = u.unyt_array(m_seps[~m_seps.mask], units=u.km/u.s).to(u.m/u.s)
+    print(separations[0:10])
 
     m_eotwms = ma.masked_invalid(star_pair_separations_EotWM[0, :, col])
+    print(m_eotwms.units)
     m_eotwms = m_eotwms.reshape([len(m_eotwms), 1])
     eotwms = u.unyt_array(m_eotwms[~m_seps.mask], units=u.m/u.s)
 
     m_eotms = ma.masked_invalid(star_pair_separations_EotM[0, :, col])
     m_eotms = m_eotms.reshape([len(m_eotms), 1])
+    print(m_eotms.units)
     # Use the same mask as for the offsets.
     eotms = u.unyt_array(m_eotms[~m_seps.mask],
                          units=u.m/u.s)
@@ -119,13 +127,14 @@ def create_example_plots():
 
     results = fit.find_sys_scatter(fit.constant_model,
                                    x_data,
-                                   ma.array(separations.value),
+                                   ma.array(separations.to(u.km/u.s).value),
                                    err_array, (mean,),
                                    n_sigma=10,
-                                   tolerance=0.01)
+                                   tolerance=0.001)
 
     mask = results['mask_list'][-1]
     residuals = ma.array(results['residuals'], mask=mask)
+    print(residuals[0:10])
     x_data.mask = mask
     err_array.mask = mask
     names.mask = mask
@@ -138,25 +147,28 @@ def create_example_plots():
 
     # for fig in (fig1, fig2):
     #     fig.suptitle(r'$\lambda$4588.413 Fe I - $\lambda$4599.405 Fe I')
+    fig2.suptitle(r'$\lambda4492.660\,\textrm{Fe\,II}-'
+                  r'\lambda4503.480\,\textrm{Mn\,I}$')
 
     for ax in (ax1, ax2):
-        ax.set_ylabel('Normalized pair\nseparation (m/s)')
+        ax.set_ylabel('Normalized pair separation (m/s)')
         ax.set_xlabel('[Fe/H]')
 
     ax1.xaxis.set_minor_locator(ticker.AutoMinorLocator())
-    # ax2.xaxis.set_major_locator(ticker.MultipleLocator(base=0.1))
+    ax2.xaxis.set_major_locator(ticker.MultipleLocator(base=0.2))
     ax2.xaxis.set_minor_locator(ticker.AutoMinorLocator())
 
     ax1.set_xlim(left=-0.11, right=0.11)
-    ax2.set_xlim(left=-0.72, right=0.42)
-    ax2.set_ylim(bottom=-300, top=300)
+    ax2.set_xlim(left=-0.75, right=0.42)
+    # ax2.set_ylim(bottom=-300, top=300)
 
     # metallicities is index 1 here
     ax2.errorbar(ma.compressed(x_data[1]),
                  ma.compressed(residuals),
                  yerr=ma.compressed(err_array),
-                 color='Chocolate', linestyle='',
-                 markersize=10,
+                 color='Chocolate',
+                 linestyle='',
+                 markersize=8, markeredgewidth=1.5,
                  marker='o', markeredgecolor='Black',
                  capsize=7, elinewidth=2.5, capthick=2.5,
                  ecolor='DarkOrange')
@@ -168,7 +180,7 @@ def create_example_plots():
                                    ma.compressed(err_array),
                                    ma.compressed(x_data[1])):
         if name in sp1_stars:
-            print(f'Found {name} in SP1.')
+            # print(f'Found {name} in SP1.')
             offsets.append(sep)
             errors.append(err)
             mtls.append(mtl)
@@ -180,19 +192,24 @@ def create_example_plots():
     ax1.errorbar(mtls, offsets, yerr=errors,
                  color='MediumSeaGreen', linestyle='',
                  marker='D', markeredgecolor='Black',
-                 markersize=10,
+                 markersize=8, markeredgewidth=1.5,
                  capsize=7, elinewidth=2.5, capthick=2.5,
                  ecolor='LightSeaGreen')
 
     # Plot SP1 stars on whole sample.
     ax2.errorbar(mtls, offsets, yerr=errors,
-                 color='MediumSeaGreen', linestyle='',
+                 color='MediumSeaGreen',
+                 linestyle='',
                  marker='D', markeredgecolor='Black',
-                 markersize=10,
+                 markersize=7, markeredgewidth=2,
                  capsize=7, elinewidth=2.5, capthick=2.5,
                  ecolor='LightSeaGreen')
 
-    plt.show()
+    plot_dir = Path('/Users/dberke/Pictures/paper_plots_and_tables/plots')
+    fig1.savefig(str(plot_dir / f'{label}_SP1.png'))
+    fig2.savefig(str(plot_dir / f'{label}_sample.png'))
+
+    # plt.show()
 
 
 def create_sigma_sys_hist():
@@ -334,6 +351,6 @@ if args.tables:
             f.write(transitions_output)
 
 if args.figures:
-    # create_example_plots()
+    create_example_pair_sep_plots()
 
-    create_sigma_sys_hist()
+    # create_sigma_sys_hist()
