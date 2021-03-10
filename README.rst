@@ -12,10 +12,10 @@ in pursuit of my PhD.
 Within the ``varconlib`` folder, there are:
 
 * ``config``: contains a config file for defining the paths of various
-   frequently-used directories.
+  frequently-used directories.
 
 * ``conversion``: library model containing functions for converting between air
-   and vacuum wavelengths.
+  and vacuum wavelengths.
 
 * ``data``: various files containing data used by other functions.
 
