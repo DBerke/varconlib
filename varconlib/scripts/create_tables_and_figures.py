@@ -21,6 +21,7 @@ import h5py
 import hickle
 import numpy as np
 import numpy.ma as ma
+from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from tabulate import tabulate
@@ -50,9 +51,6 @@ def create_example_pair_sep_plots():
         db_file, dataset_name='star_pair_separations_EotM')
     star_temperatures = u.unyt_array.from_hdf5(
         db_file, dataset_name='star_temperatures')
-    print(star_pair_separations.units)
-    print(star_pair_separations_EotWM.units)
-    print(star_pair_separations_EotM.units)
 
     with h5py.File(db_file, mode='r') as f:
 
@@ -78,23 +76,18 @@ def create_example_pair_sep_plots():
 
     # First, create a masked version to catch any missing
     # entries:
-    print(star_pair_separations[0, 0, col])
     m_seps = ma.masked_invalid(star_pair_separations[0, :, col])
     m_seps = m_seps.reshape([len(m_seps), 1])
-    print(m_seps[0])
 
     # Then create a new array from the non-masked data:
     separations = u.unyt_array(m_seps[~m_seps.mask], units=u.km/u.s).to(u.m/u.s)
-    print(separations[0:10])
 
     m_eotwms = ma.masked_invalid(star_pair_separations_EotWM[0, :, col])
-    print(m_eotwms.units)
     m_eotwms = m_eotwms.reshape([len(m_eotwms), 1])
     eotwms = u.unyt_array(m_eotwms[~m_seps.mask], units=u.m/u.s)
 
     m_eotms = ma.masked_invalid(star_pair_separations_EotM[0, :, col])
     m_eotms = m_eotms.reshape([len(m_eotms), 1])
-    print(m_eotms.units)
     # Use the same mask as for the offsets.
     eotms = u.unyt_array(m_eotms[~m_seps.mask],
                          units=u.m/u.s)
@@ -115,60 +108,71 @@ def create_example_pair_sep_plots():
     stars = ma.masked_array([key for key in
                              star_names.keys()]).reshape(
                                   len(star_names.keys()), 1)
-    print(len(stars))
     # stars = ma.masked_array([key for key in star_names.keys()])
 
     names = stars[~m_seps.mask]
-    print(len(names))
 
     x_data = ma.array(np.stack((temps, metals, loggs), axis=0))
 
     # separations -= weighted_mean
 
-    results = fit.find_sys_scatter(fit.constant_model,
-                                   x_data,
-                                   ma.array(separations.to(u.km/u.s).value),
-                                   err_array, (mean,),
-                                   n_sigma=10,
-                                   tolerance=0.001)
+    results_const = fit.find_sys_scatter(fit.constant_model,
+                                         x_data,
+                                         ma.array(separations
+                                                  .to(u.km/u.s).value),
+                                         err_array, (mean,),
+                                         n_sigma=4.0,
+                                         tolerance=0.001)
 
-    mask = results['mask_list'][-1]
-    residuals = ma.array(results['residuals'], mask=mask)
-    print(residuals[0:10])
-    x_data.mask = mask
-    err_array.mask = mask
-    names.mask = mask
-    print(len(names))
+    mask_const = results_const['mask_list'][-1]
+    residuals_const = ma.array(results_const['residuals'], mask=mask_const)
+    x_data.mask = mask_const
+    err_array.mask = mask_const
+    names.mask = mask_const
 
     fig1 = plt.figure(figsize=(6, 6), tight_layout=True)
-    fig2 = plt.figure(figsize=(6, 6), tight_layout=True)
+    fig2 = plt.figure(figsize=(6, 7), tight_layout=True)
+    gs = GridSpec(nrows=2, ncols=1, figure=fig2,
+                  height_ratios=(1, 1), hspace=0)
     ax1 = fig1.add_subplot(1, 1, 1)
-    ax2 = fig2.add_subplot(1, 1, 1)
+    ax2 = fig2.add_subplot(gs[0, 0])
+    ax3 = fig2.add_subplot(gs[1, 0], sharex=ax2)
 
-    # for fig in (fig1, fig2):
-    #     fig.suptitle(r'$\lambda$4588.413 Fe I - $\lambda$4599.405 Fe I')
-    fig2.suptitle(r'$\lambda4492.660\,\textrm{Fe\,II}-'
-                  r'\lambda4503.480\,\textrm{Mn\,I}$')
+    ax2.annotate(r'$\lambda4492.660\,\textrm{Fe\,II}-'
+                 r'\lambda4503.480\,\textrm{Mn\,I}$',
+                 xy=(0, 0), xytext=(0.03, 0.02),
+                 textcoords='axes fraction', size=19,
+                 horizontalalignment='left', verticalalignment='bottom')
+
+    ax3.set_xlabel('[Fe/H]')
 
     for ax in (ax1, ax2):
-        ax.set_ylabel('Normalized pair separation (m/s)')
-        ax.set_xlabel('[Fe/H]')
+        ax.set_ylabel('Normalized pair\nseparation (m/s)')
+    ax3.set_ylabel('Residuals (m/s)')
 
     ax1.xaxis.set_minor_locator(ticker.AutoMinorLocator())
-    ax2.xaxis.set_major_locator(ticker.MultipleLocator(base=0.2))
-    ax2.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+    for ax in (ax2, ax3):
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(base=0.2))
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+
+    ax2.tick_params(labelbottom=False)
 
     ax1.set_xlim(left=-0.11, right=0.11)
-    ax2.set_xlim(left=-0.75, right=0.42)
-    # ax2.set_ylim(bottom=-300, top=300)
+    ax3.set_xlim(left=-0.73, right=0.44)
+    ax3.set_ylim(bottom=-110, top=110)
+    ax2.set_ylim(bottom=-270, top=270)
+
+    ax3.axhline(y=0, linestyle='--',
+                color='DarkCyan')
 
     # metallicities is index 1 here
     ax2.errorbar(ma.compressed(x_data[1]),
-                 ma.compressed(residuals),
+                 ma.compressed(residuals_const),
                  yerr=ma.compressed(err_array),
                  color='Chocolate',
                  linestyle='',
-                 markersize=8, markeredgewidth=1.5,
+                 markersize=5, markeredgewidth=1.2,
                  marker='o', markeredgecolor='Black',
                  capsize=7, elinewidth=2.5, capthick=2.5,
                  ecolor='DarkOrange')
@@ -176,7 +180,7 @@ def create_example_pair_sep_plots():
     mtls = []
     offsets = []
     errors = []
-    for name, sep, err, mtl in zip(names, ma.compressed(residuals),
+    for name, sep, err, mtl in zip(names, ma.compressed(residuals_const),
                                    ma.compressed(err_array),
                                    ma.compressed(x_data[1])):
         if name in sp1_stars:
@@ -197,13 +201,46 @@ def create_example_pair_sep_plots():
                  ecolor='LightSeaGreen')
 
     # Plot SP1 stars on whole sample.
-    ax2.errorbar(mtls, offsets, yerr=errors,
-                 color='MediumSeaGreen',
+    # ax2.errorbar(mtls, offsets, yerr=errors,
+    #              color='SeaGreen',
+    #              linestyle='',
+    #              marker='D', markeredgecolor='Black',
+    #              markersize=5, markeredgewidth=1.5,
+    #              capsize=7, elinewidth=2.5, capthick=2.5,
+    #              ecolor='OliveDrab')
+
+    # Now plot the same tranition's residuals after being corrected.
+    results_quad = fit.find_sys_scatter(fit.quadratic_model,
+                                        x_data,
+                                        ma.array(separations
+                                                 .to(u.km/u.s).value),
+                                        err_array, (mean, 1, 1, 1, 1, 1, 1),
+                                        n_sigma=4.0,
+                                        tolerance=0.001)
+
+    mask_quad = results_quad['mask_list'][-1]
+    residuals_quad = ma.array(results_quad['residuals'], mask=mask_quad)
+    sigma_s2s = results_quad['sys_err_list'][-1] * u.m/u.s
+    x_data.mask = mask_quad
+    err_array.mask = mask_quad
+    names.mask = mask_quad
+
+    ax3.annotate(r'$\sigma_\mathrm{2s2}=\,$'
+                 f'{sigma_s2s:.2f}',
+                 xy=(0, 0), xytext=(0.02, 0.04),
+                 textcoords='axes fraction', size=17,
+                 horizontalalignment='left', verticalalignment='bottom')
+
+    # metallicities is index 1 here
+    ax3.errorbar(ma.compressed(x_data[1]),
+                 ma.compressed(residuals_quad),
+                 yerr=ma.compressed(err_array),
+                 color='Chocolate',
                  linestyle='',
-                 marker='D', markeredgecolor='Black',
-                 markersize=7, markeredgewidth=2,
+                 markersize=5, markeredgewidth=1.2,
+                 marker='o', markeredgecolor='Black',
                  capsize=7, elinewidth=2.5, capthick=2.5,
-                 ecolor='LightSeaGreen')
+                 ecolor='DarkOrange')
 
     plot_dir = Path('/Users/dberke/Pictures/paper_plots_and_tables/plots')
     fig1.savefig(str(plot_dir / f'{label}_SP1.png'))
