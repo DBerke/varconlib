@@ -255,7 +255,7 @@ parser.add_argument('object_name', action='store',
 
 parser.add_argument('--output_dir', action='store',
                     help='Directory in which to store output. Defaults to'
-                    f""" "{vcl.config['PATHS']['output_dir']}" if not"""
+                    f""" "{vcl.output_dir}" if not"""
                     ' specified.')
 
 parser.add_argument('--start', type=int, action='store', default=0,
