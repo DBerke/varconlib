@@ -252,7 +252,7 @@ def main():
                 star.getStellarParameters('Casagrande2011')
             elif args.nordstrom2004:
                 star.getStellarParameters('Nordstrom2004')
-            if args.exclude_hot_stars:
+            if not args.include_hot_stars:
                 if star.temperature > 6077 * u.K:
                     # Don't add this star to the database.
                     vprint(f'Found {star.name} to be too hot'
@@ -264,7 +264,7 @@ def main():
             vprint(f'Added {star.name}')
 
     tqdm.write(f'Found {len(star_list)} usable stars in total.')
-    if args.exclude_hot_stars:
+    if args.include_hot_stars:
         tqdm.write(f'{excluded_hot_stars} stars were too hot'
                    f' ({excluded_obs} observations in total).')
 
@@ -456,8 +456,8 @@ if __name__ == '__main__':
                         ' observations.')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help="Print more output about what's happening.")
-    parser.add_argument('--exclude-hot-stars', action='store_true',
-                        help="Exclude stars hotter than solar + 300 K from the"
+    parser.add_argument('--include-hot-stars', action='store_true',
+                        help="Include stars hotter than solar + 300 K in the"
                         " database.")
     parser.add_argument('--transitions-only', action='store_true',
                         help='Exclude information on pair measurements.')
