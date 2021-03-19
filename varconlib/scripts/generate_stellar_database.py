@@ -264,7 +264,7 @@ def main():
             vprint(f'Added {star.name}')
 
     tqdm.write(f'Found {len(star_list)} usable stars in total.')
-    if args.include_hot_stars:
+    if not args.include_hot_stars:
         tqdm.write(f'{excluded_hot_stars} stars were too hot'
                    f' ({excluded_obs} observations in total).')
 
@@ -402,6 +402,8 @@ def main():
         os.mkdir(vcl.databases_dir)
 
     db_file = vcl.databases_dir / 'stellar_db_uncorrected.hdf5'
+    if args.include_hot_stars:
+        db_file = vcl.databases_dir / 'stellar_db_uncorrected_hot_stars.hdf5'
 
     tqdm.write(f'Writing output to {str(db_file)}')
     if db_file.exists():
