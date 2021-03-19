@@ -12,13 +12,13 @@ not.
 
 import argparse
 from inspect import signature
+from itertools import tee
 from pathlib import Path
 import pickle
 import sys
 
 import h5py
 import hickle
-from itertools import tee
 from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -157,7 +157,7 @@ def main():
     mtl_lims = (-0.75, 0.45)
     logg_lims = (4.1, 4.6)
 
-    tqdm.write('Unpickling transitions list..')
+    tqdm.write('Unpickling transitions list...')
     with open(vcl.final_selection_file, 'r+b') as f:
         transitions_list = pickle.load(f)
     vprint(f'Found {len(transitions_list)} transitions.')
