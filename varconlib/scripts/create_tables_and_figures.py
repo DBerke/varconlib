@@ -356,10 +356,17 @@ def create_sigma_sys_hist():
     plt.show()
 
 
-def create_parameter_dependence_plot():
+def create_parameter_dependence_plot(use_cached=False):
     """
     Create a plot showing the change in sigma_s2s as a function of stellar
     parameters.
+
+    Parameters
+    ----------
+    use_cached : bool, Default: False
+        If False, will rerun entire binning and fitting procedure, which is very
+        slow. (Though it must be done at least once first.) If True, will
+        instead used saved values from running full procedure.
 
     Returns
     -------
@@ -430,13 +437,6 @@ def create_parameter_dependence_plot():
     bin_dict['logg'] = [4.04, 4.14, 4.24,
                         4.34, 4.44, 4.54, 4.64]
 
-    # for plot_type, lims in zip(plot_types,
-    #                            (temp_lims, mtl_lims, logg_lims)):
-    #     ax = axes_dict[f'{plot_type}_pre']
-    #     for limit in bin_dict[plot_type]:
-    #         ax.axvline(x=limit, color='Green',
-    #                    alpha=0.6, zorder=1)
-
     # Create an array to store all the individual sigma_sys values in in order
     # to get the means and STDs for each bin.
     row_len = len(labels)
@@ -459,6 +459,8 @@ def create_parameter_dependence_plot():
     ax2 = fig.add_subplot(gs[0, 1], sharey=ax1)
     ax3 = fig.add_subplot(gs[0, 2], sharey=ax1)
 
+    ax1.set_ylim(bottom=0, top=200)
+
     ax1.set_xlabel(r'$T_\mathrm{eff}$')
     ax1.set_ylabel(r'$\sigma_\mathrm{s2s}$ (m/s)')
     ax2.set_xlabel('[Fe/H]')
@@ -471,195 +473,209 @@ def create_parameter_dependence_plot():
         ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
 
-    for label_num, label in tqdm(enumerate(labels[:]), total=len(labels[:])):
+    for plot_type, lims, ax in zip(plot_types,
+                                   (temp_lims, mtl_lims, logg_lims),
+                                   (ax1, ax2, ax3)):
+        for limit in bin_dict[plot_type]:
+            ax.axvline(x=limit, color='MediumSeaGreen', linestyle='--',
+                       alpha=0.3, zorder=1)
 
-        vprint(f'Analyzing {label}...')
-        # The column number to use for this transition:
-        try:
-            col = column_dict[label]
-        except KeyError:
-            print(f'Incorrect key given: {label}')
-            sys.exit(1)
+    data_file = vcl.output_dir / 'stellar_parameter_dependence_data.h5py'
+    if not use_cached:
+        for label_num, label in tqdm(enumerate(labels[3:9]),
+                                     total=len(labels[3:9])):
 
-        vprint(20 * '=')
-        vprint(f'Working on pre-change era.')
-        mean = np.nanmean(star_transition_offsets[eras['pre'], :, col])
+            vprint(f'Analyzing {label}...')
+            # The column number to use for this transition:
+            try:
+                col = column_dict[label]
+            except KeyError:
+                print(f'Incorrect key given: {label}')
+                sys.exit(1)
 
-        # First, create a masked version to catch any missing entries:
-        m_offsets = ma.masked_invalid(star_transition_offsets[
+            vprint(20 * '=')
+            vprint(f'Working on pre-change era.')
+            mean = np.nanmean(star_transition_offsets[eras['pre'], :, col])
+
+            # First, create a masked version to catch any missing entries:
+            m_offsets = ma.masked_invalid(star_transition_offsets[
+                        eras['pre'], :, col])
+            m_offsets = m_offsets.reshape([len(m_offsets), 1])
+            # Then create a new array from the non-masked data:
+            offsets = u.unyt_array(m_offsets[~m_offsets.mask],
+                                   units=u.m/u.s)
+            vprint(f'Median of offsets is {np.nanmedian(offsets)}')
+
+            m_eotwms = ma.masked_invalid(star_transition_offsets_EotWM[
                     eras['pre'], :, col])
-        m_offsets = m_offsets.reshape([len(m_offsets), 1])
-        # Then create a new array from the non-masked data:
-        offsets = u.unyt_array(m_offsets[~m_offsets.mask],
-                               units=u.m/u.s)
-        vprint(f'Median of offsets is {np.nanmedian(offsets)}')
+            m_eotwms = m_eotwms.reshape([len(m_eotwms), 1])
+            eotwms = u.unyt_array(m_eotwms[~m_eotwms.mask],
+                                  units=u.m/u.s)
 
-        m_eotwms = ma.masked_invalid(star_transition_offsets_EotWM[
-                eras['pre'], :, col])
-        m_eotwms = m_eotwms.reshape([len(m_eotwms), 1])
-        eotwms = u.unyt_array(m_eotwms[~m_eotwms.mask],
-                              units=u.m/u.s)
+            m_eotms = ma.masked_invalid(star_transition_offsets_EotM[
+                    eras['pre'], :, col])
+            m_eotms = m_eotms.reshape([len(m_eotms), 1])
+            # Use the same mask as for the offsets.
+            eotms = u.unyt_array(m_eotms[~m_offsets.mask],
+                                 units=u.m/u.s)
+            # Create an error array which uses the greater of the error on
+            # the mean or the error on the weighted mean.
+            err_array = np.maximum(eotwms, eotms)
 
-        m_eotms = ma.masked_invalid(star_transition_offsets_EotM[
-                eras['pre'], :, col])
-        m_eotms = m_eotms.reshape([len(m_eotms), 1])
-        # Use the same mask as for the offsets.
-        eotms = u.unyt_array(m_eotms[~m_offsets.mask],
-                             units=u.m/u.s)
-        # Create an error array which uses the greater of the error on
-        # the mean or the error on the weighted mean.
-        err_array = np.maximum(eotwms, eotms)
+            vprint(f'Mean is {np.mean(offsets)}')
+            weighted_mean = np.average(offsets, weights=err_array**-2)
+            vprint(f'Weighted mean is {weighted_mean}')
 
-        vprint(f'Mean is {np.mean(offsets)}')
-        weighted_mean = np.average(offsets, weights=err_array**-2)
-        vprint(f'Weighted mean is {weighted_mean}')
+            # Mask the various stellar parameter arrays with the same mask
+            # so that everything stays in sync.
+            temperatures = ma.masked_array(star_temperatures)
+            temps = temperatures[~m_offsets.mask]
+            metallicities = ma.masked_array(star_metallicities)
+            metals = metallicities[~m_offsets.mask]
+            magnitudes = ma.masked_array(star_magnitudes)
+            mags = magnitudes[~m_offsets.mask]
+            gravities = ma.masked_array(star_gravities)
+            loggs = gravities[~m_offsets.mask]
 
-        # Mask the various stellar parameter arrays with the same mask
-        # so that everything stays in sync.
-        temperatures = ma.masked_array(star_temperatures)
-        temps = temperatures[~m_offsets.mask]
-        metallicities = ma.masked_array(star_metallicities)
-        metals = metallicities[~m_offsets.mask]
-        magnitudes = ma.masked_array(star_magnitudes)
-        mags = magnitudes[~m_offsets.mask]
-        gravities = ma.masked_array(star_gravities)
-        loggs = gravities[~m_offsets.mask]
+            stars = ma.masked_array([key for key in
+                                     star_names.keys()]).reshape(
+                                         len(star_names.keys()), 1)
+            names = stars[~m_offsets.mask]
 
-        stars = ma.masked_array([key for key in
-                                 star_names.keys()]).reshape(
-                                     len(star_names.keys()), 1)
-        names = stars[~m_offsets.mask]
+            # Stack the stellar parameters into vertical slices
+            # for passing to model functions.
+            x_data = np.stack((temps, metals, loggs), axis=0)
 
-        # Stack the stellar parameters into vertical slices
-        # for passing to model functions.
-        x_data = np.stack((temps, metals, loggs), axis=0)
+            # Create the parameter list for this run of fitting.
+            params_list[0] = float(mean)
 
-        # Create the parameter list for this run of fitting.
-        params_list[0] = float(mean)
+            beta0 = tuple(params_list)
+            vprint(beta0)
 
-        beta0 = tuple(params_list)
-        vprint(beta0)
+            # Iterate over binned segments of the data to find what additional
+            # systematic error is needed to get a chi^2 of ~1.
+            arrays_dict = {name: array for name, array in
+                           zip(plot_types,
+                               (temps, metals, loggs))}
 
-        # Iterate over binned segments of the data to find what additional
-        # systematic error is needed to get a chi^2 of ~1.
-        arrays_dict = {name: array for name, array in
-                       zip(plot_types,
-                           (temps, metals, loggs))}
+            popt, pcov = curve_fit(model_func, x_data, offsets.value,
+                                   sigma=err_array.value,
+                                   p0=beta0,
+                                   absolute_sigma=True,
+                                   method='lm', maxfev=10000)
 
-        popt, pcov = curve_fit(model_func, x_data, offsets.value,
-                               sigma=err_array.value,
-                               p0=beta0,
-                               absolute_sigma=True,
-                               method='lm', maxfev=10000)
+            model_values = model_func(x_data, *popt)
+            residuals = offsets.value - model_values
 
-        model_values = model_func(x_data, *popt)
-        residuals = offsets.value - model_values
+            # if args.nbins:
+            #     nbins = int(args.nbins)
+            #     # Use quantiles to get bins with the same number of elements
+            #     # in them.
+            #     vprint(f'Generating {args.nbins} bins.')
+            #     bins = np.quantile(arrays_dict[name],
+            #                        np.linspace(0, 1, nbins+1),
+            #                        interpolation='nearest')
+            #     bin_dict[name] = bins
 
-        # if args.nbins:
-        #     nbins = int(args.nbins)
-        #     # Use quantiles to get bins with the same number of elements
-        #     # in them.
-        #     vprint(f'Generating {args.nbins} bins.')
-        #     bins = np.quantile(arrays_dict[name],
-        #                        np.linspace(0, 1, nbins+1),
-        #                        interpolation='nearest')
-        #     bin_dict[name] = bins
+            min_bin_size = 5  # 5 is maximum before losing stars in current bins
+            sigma_sys_dict = {}
+            num_params = 1
+            for name in tqdm(plot_types):
+                sigma_sys_list = []
+                sigma_list = []
+                bin_mid_list = []
+                bin_num = -1
+                for bin_lims in pairwise(bin_dict[name]):
+                    bin_num += 1
+                    lower, upper = bin_lims
+                    bin_mid_list.append((lower + upper) / 2)
+                    mask_array = ma.masked_outside(arrays_dict[name], *bin_lims)
+                    num_points = mask_array.count()
+                    vprint(f'{num_points} values in bin ({lower},{upper})')
+                    if num_points < min_bin_size:
+                        vprint('Skipping this bin!')
+                        sigma_list.append(np.nan)
+                        sigma_sys_list.append(np.nan)
+                        continue
+                    temps_copy = temps[~mask_array.mask]
+                    metals_copy = metals[~mask_array.mask]
+                    mags_copy = mags[~mask_array.mask]
+                    residuals_copy = residuals[~mask_array.mask]
+                    errs_copy = err_array[~mask_array.mask].value
+                    x_data_copy = np.stack((temps_copy, metals_copy, mags_copy),
+                                           axis=0)
 
-        min_bin_size = 5  # 5 is maximum before losing stars in current bins
-        sigma_sys_dict = {}
-        num_params = 1
-        for name in tqdm(plot_types):
-            sigma_sys_list = []
-            sigma_list = []
-            bin_mid_list = []
-            bin_num = -1
-            for bin_lims in pairwise(bin_dict[name]):
-                bin_num += 1
-                lower, upper = bin_lims
-                bin_mid_list.append((lower + upper) / 2)
-                mask_array = ma.masked_outside(arrays_dict[name], *bin_lims)
-                num_points = mask_array.count()
-                vprint(f'{num_points} values in bin ({lower},{upper})')
-                if num_points < min_bin_size:
-                    vprint('Skipping this bin!')
-                    sigma_list.append(np.nan)
-                    sigma_sys_list.append(np.nan)
-                    continue
-                temps_copy = temps[~mask_array.mask]
-                metals_copy = metals[~mask_array.mask]
-                mags_copy = mags[~mask_array.mask]
-                residuals_copy = residuals[~mask_array.mask]
-                errs_copy = err_array[~mask_array.mask].value
-                x_data_copy = np.stack((temps_copy, metals_copy, mags_copy),
-                                       axis=0)
+                    chi_squared_nu = fit.calc_chi_squared_nu(residuals_copy,
+                                                             errs_copy,
+                                                             num_params)
+                    sigma_sys_delta = 0.01
+                    sigma_sys = -sigma_sys_delta
+                    chi_squared_nu = np.inf
+                    variances = np.square(errs_copy)
+                    while chi_squared_nu > 1.0:
+                        sigma_sys += sigma_sys_delta
+                        variance_sys = np.square(sigma_sys)
+                        variances_iter = variances + variance_sys
+                        # err_iter = np.sqrt(np.square(errs_copy) +
+                        #                    np.square(sigma_sys))
+                        weights = 1 / variances_iter
+                        wmean, sum_weights = np.average(residuals_copy,
+                                                        weights=weights,
+                                                        returned=True)
 
-                chi_squared_nu = fit.calc_chi_squared_nu(residuals_copy,
-                                                         errs_copy,
-                                                         num_params)
-                sigma_sys_delta = 0.01
-                sigma_sys = -sigma_sys_delta
-                chi_squared_nu = np.inf
-                variances = np.square(errs_copy)
-                while chi_squared_nu > 1.0:
-                    sigma_sys += sigma_sys_delta
-                    variance_sys = np.square(sigma_sys)
-                    variances_iter = variances + variance_sys
-                    # err_iter = np.sqrt(np.square(errs_copy) +
-                    #                    np.square(sigma_sys))
-                    weights = 1 / variances_iter
-                    wmean, sum_weights = np.average(residuals_copy,
-                                                    weights=weights,
-                                                    returned=True)
+                        chi_squared_nu = fit.calc_chi_squared_nu(
+                            residuals_copy - wmean, np.sqrt(variances_iter),
+                            num_params)
 
-                    chi_squared_nu = fit.calc_chi_squared_nu(
-                        residuals_copy - wmean, np.sqrt(variances_iter),
-                        num_params)
+                    sigma_sys_list.append(sigma_sys)
+                    sigma = np.std(residuals_copy)
+                    sigma_list.append(sigma)
+                    vprint(f'sigma_sys is {sigma_sys:.3f}')
+                    vprint(f'chi^2_nu is {chi_squared_nu}')
+                    if sigma_sys / sigma > 1.2:
+                        print('---')
+                        print(bin_lims)
+                        print(mask_array)
+                        print(metals)
+                        print(residuals)
+                        print(n_params)
+                        print(num_params)
+                        print(residuals_copy)
+                        print(errs_copy)
+                        print(sigma)
+                        print(sigma_sys)
+                        sys.exit()
 
-                sigma_sys_list.append(sigma_sys)
-                sigma = np.std(residuals_copy)
-                sigma_list.append(sigma)
-                vprint(f'sigma_sys is {sigma_sys:.3f}')
-                vprint(f'chi^2_nu is {chi_squared_nu}')
-                if sigma_sys / sigma > 1.2:
-                    print('---')
-                    print(bin_lims)
-                    print(mask_array)
-                    print(metals)
-                    print(residuals)
-                    print(n_params)
-                    print(num_params)
-                    print(residuals_copy)
-                    print(errs_copy)
-                    print(sigma)
-                    print(sigma_sys)
-                    sys.exit()
+                    # Store the result in the appropriate full array.
+                    full_arrays_dict[name][label_num, bin_num] = sigma_sys
 
-                # Store the result in the appropriate full array.
-                full_arrays_dict[name][label_num, bin_num] = sigma_sys
+                sigma_sys_dict[f'{name}_sigma_sys'] = sigma_sys_list
+                sigma_sys_dict[f'{name}_sigma'] = sigma_list
+                sigma_sys_dict[f'{name}_bin_mids'] = bin_mid_list
 
-            sigma_sys_dict[f'{name}_sigma_sys'] = sigma_sys_list
-            sigma_sys_dict[f'{name}_sigma'] = sigma_list
-            sigma_sys_dict[f'{name}_bin_mids'] = bin_mid_list
+        with h5py.File(data_file, mode='a') as f:
+            hickle.dump(sigma_sys_dict, f, path='/sigma_sys_dict')
+            hickle.dump(full_arrays_dict, f, path='/full_arrays_dict')
 
-        for plot_type, lims, ax in zip(plot_types,
-                                       (temp_lims, mtl_lims, logg_lims),
-                                       (ax1, ax2, ax3)):
-            ax.plot(sigma_sys_dict[f'{plot_type}_bin_mids'],
-                    sigma_sys_dict[f'{plot_type}_sigma_sys'],
-                    color='Black', alpha=0.1,
-                    zorder=2)
+    elif use_cached:
+        with h5py.File(data_file, mode='r') as f:
+            sigma_sys_dict = hickle.load(f, path='/sigma_sys_dict')
+            full_arrays_dict = hickle.load(f, path='/full_arrays_dict')
 
     for name, ax in zip(plot_types, (ax1, ax2, ax3)):
         means = []
         stds = []
         arr = full_arrays_dict[name]
-        for i in range(0, np.size(arr, 1)):
-            means.append(np.nanmean(arr[:, i]))
-            stds.append(np.nanstd(arr[:, i]))
+        for i in range(0, np.size(arr, 0)):
+            ax.plot(sigma_sys_dict[f'{name}_bin_mids'], arr[i],
+                    color='Black', alpha=0.1, zorder=2)
+        for j in range(0, np.size(arr, 1)):
+            means.append(np.nanmean(arr[:, j]))
+            stds.append(np.nanstd(arr[:, j]))
         ax.errorbar(sigma_sys_dict[f'{name}_bin_mids'], means,
-                    yerr=stds, color='Red', alpha=1,
+                    yerr=stds, color='IndianRed', alpha=1,
                     marker='o', markersize=4, capsize=4,
-                    elinewidth=2, zorder=3,
+                    elinewidth=2, zorder=3, linestyle='-',
                     label='Mean and RMS')
         ax.legend()
 
@@ -950,6 +966,6 @@ if __name__ == '__main__':
         # create_sigma_sys_hist()
 
         vprint('Creating parameter dependence plot.')
-        create_parameter_dependence_plot()
+        create_parameter_dependence_plot(use_cached=False)
 
         # plot_duplicate_pairs(Star('Vesta', '/Users/dberke/data_output/Vesta'))
