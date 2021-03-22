@@ -1056,8 +1056,8 @@ class Star(object):
         Loads data previously saved to disc into an initialized `Star` object,
         ready for use without needing to create or collate it again.
 
-        Paramters
-        ---------
+        Parameters
+        ----------
         filename : `pathlib.Path` or `str`
             An HDF5 file name to retrieve previously-saved data from.
 
