@@ -39,7 +39,7 @@ def get_star_info(star):
     return [star.name, str(star.temperature.value),
             str(star.metallicity), str(star.logg),
             str(star.absoluteMagnitude), str(star.apparentMagnitude),
-            str(star.numObsPre), str(star.numObsPost)]
+            str(star.color), str(star.numObsPre), str(star.numObsPost)]
 
 
 # Get star directories starting with H or V.
@@ -61,7 +61,7 @@ solar = {'temperature': 5772 * u.K,
          'metallicity': 0.0,
          'logg': 4.44}
 
-header = ['name', 'T_eff', '[Fe/H]', 'logg', 'absMag', 'appMag',
+header = ['name', 'T_eff', '[Fe/H]', 'logg', 'absMag', 'appMag', '(b-y)',
           'NObsPre', 'NObsPost']
 
 for level in ('SP1', 'SP2', 'SP3'):
