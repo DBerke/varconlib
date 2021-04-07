@@ -176,6 +176,8 @@ class Star(object):
         The absolute V-band magnitude of the star.
     apparentMagnitude : float
         The apparent V-band magnitude of the star.
+    color : float
+        The (b-y) color of the star.
     logg : float
         The logarithm of the surface gravity of the star. Technicallly in units
         of cm / s / s but unitless in code.
@@ -275,6 +277,7 @@ class Star(object):
                         '/data/metallicity': 'metallicity',
                         '/data/absolute_magnitude': 'absoluteMagnitude',
                         '/data/apparent_magnitude': 'apparentMagnitude',
+                        '/data/color': 'color',
                         '/data/logg': 'logg'}
 
     # Define some custom namedbidict objects.
@@ -362,6 +365,7 @@ class Star(object):
         self._metallicity = None
         self._absoluteMagnitude = None
         self._apparentMagnitude = None
+        self._color = None
         self._logg = None
         self._parallax = None
         self.specialAttributes = {}
@@ -1305,7 +1309,7 @@ class Star(object):
 
     @absoluteMagnitude.setter
     def absoluteMagnitude(self, new_mag):
-        if not isinstance(new_mag, (float)):
+        if not isinstance(new_mag, float):
             new_mag = float(new_mag)
         self._absoluteMagnitude = new_mag
 
@@ -1319,9 +1323,22 @@ class Star(object):
 
     @apparentMagnitude.setter
     def apparentMagnitude(self, new_mag):
-        if not isinstance(new_mag, (float)):
+        if not isinstance(new_mag, float):
             new_mag = float(new_mag)
         self._apparentMagnitude = new_mag
+
+    @property
+    def color(self):
+        """Return the (b-y) color of the star."""
+        if self._color is None:
+            self._color = self._getStellarProperty('b-y')
+        return self._color
+
+    @color.setter
+    def color(self, new_color):
+        if not isinstance(new_color, float):
+            new_color = float(new_color)
+        self._color = new_color
 
     @property
     def logg(self):
@@ -1515,7 +1532,7 @@ class Star(object):
 
         row_values = {'temperature': 3, 'metallicity': 4,
                       'absoluteMagnitude': 5, 'apparentMagnitude': 6,
-                      'logg': 9}
+                      'b-y': 7, 'logg': 9}
 
         if value not in row_values.keys():
             raise RuntimeError('Improper value for keyword "value"!')
