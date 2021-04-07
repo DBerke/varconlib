@@ -193,7 +193,7 @@
 ## The font.size property is the default font size for text, given in pts.
 ## 10 pt is the standard value.
 
-font.family         : sans-serif
+font.family         : serif
 #font.style          : normal
 #font.variant        : normal
 #font.weight         : normal
@@ -204,7 +204,7 @@ font.family         : sans-serif
 ## relative to font.size, using the following values: xx-small, x-small,
 ## small, medium, large, x-large, xx-large, larger, or smaller
 #font.size           : 10.0
-font.serif          : cm10
+font.serif          : stix, cm10
 #font.sans-serif     : DejaVu Sans, Bitstream Vera Sans, Computer Modern Sans Serif, Lucida Grande, Verdana, Geneva, Lucid, Arial, Helvetica, Avant Garde, sans-serif
 #font.cursive        : Apple Chancery, Textile, Zapf Chancery, Sand, Script MT, Felipa, cursive
 #font.fantasy        : Comic Sans MS, Chicago, Charcoal, ImpactWestern, Humor Sans, xkcd, fantasy
