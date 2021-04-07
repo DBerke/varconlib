@@ -9,6 +9,7 @@ Make changes to the data in star.Star objects, up to rebuilding them entirely.
 """
 
 import argparse
+from functools import partial
 from glob import glob
 from json.decoder import JSONDecodeError
 import lzma
@@ -18,7 +19,7 @@ import pickle
 import time
 
 import numpy as np
-from p_tqdm import p_umap
+from p_tqdm import p_map, p_umap
 from tqdm import tqdm
 
 import varconlib as vcl
@@ -170,6 +171,30 @@ def add_pixel_data_to_star(star_dir):
     star.saveDataToDisk()
 
 
+def update_stellar_property(star_dir, property_name=None):
+    """
+    Force an update of the given property for the given star, and save it out.
+
+    Parameters
+    ----------
+    star_dir : `pathlib.Path`
+        The directory containing the data for the star.
+    property_name : str
+        The name of the property to be updated for the star.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    star = Star(star_dir.stem, star_dir, load_data=True)
+    # Call the star.property name to force it to updates its value.
+    tqdm.write(f'Value of {property_name} for {star_dir.stem}'
+               f' is {getattr(star, property_name)}')
+    star.saveDataToDisk()
+
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Automatically recreate all'
@@ -190,6 +215,8 @@ if __name__ == '__main__':
     parser.add_argument('--pixel-positions', action='store_true',
                         help='Read pickled fits to add pixel positions to'
                         ' star.')
+    parser.add_argument('--update-property', action='store', type=str,
+                        help='Update the property with the given name.')
 
     args = parser.parse_args()
 
@@ -214,6 +241,10 @@ if __name__ == '__main__':
 
     if args.pixel_positions:
         p_umap(add_pixel_data_to_star, star_dirs)
+
+    if args.update_property:
+        p_map(partial(update_stellar_property,
+                      property_name=args.update_property), star_dirs)
 
     duration = time.time() - start_time
     print(f'Finished in {duration:.2f} seconds.')
