@@ -14,16 +14,21 @@ import argparse
 import csv
 from inspect import signature
 from itertools import tee
+from glob import glob
 from math import ceil
 import os
 from pathlib import Path
 import pickle
 
+from adjustText import adjust_text
+import cmasher as cmr
 import h5py
 import hickle
 import numpy as np
 import numpy.ma as ma
 from matplotlib.gridspec import GridSpec
+import matplotlib.lines as mlines
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from scipy.optimize import curve_fit
@@ -33,7 +38,8 @@ import unyt as u
 
 import varconlib as vcl
 import varconlib.fitting as fit
-from varconlib.miscellaneous import remove_nans, weighted_mean_and_error
+from varconlib.miscellaneous import (remove_nans, weighted_mean_and_error,
+                                     get_params_file)
 from varconlib.star import Star
 from varconlib.transition_line import roman_numerals
 
@@ -92,6 +98,61 @@ def get_weighted_mean(values_array, errs_array, time_slice, col_index):
         return weighted_mean_and_error(values, errs)
     except ZeroDivisionError:
         return (np.nan * values.units, np.nan * values.units)
+
+
+def create_HR_diagram_plot():
+    """
+    Create an HR diagram of the stars in our sample.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    star_names = [d.split('/')[-1] for d in
+                  glob('/Users/dberke/data_output/[H]*')]
+
+    star_list = []
+    temp_lim = 6077 * u.K
+    metal_lim = -0.45
+    tqdm.write('Gathering stars...')
+    for star_name in tqdm(star_names):
+        star = Star(star_name, vcl.output_dir / star_name)
+        if star.temperature > temp_lim:
+            del star
+        elif star.metallicity < metal_lim:
+            del star
+        else:
+            star_list.append(star)
+
+    colors, mags = [], []
+    for star in tqdm(star_list):
+        colors.append(star.color)
+        mags.append(star.absoluteMagnitude)
+
+    vesta = Star('Vesta', '/Users/dberke/data_output/Vesta')
+
+    fig = plt.figure(figsize=(5, 5), tight_layout=True)
+    ax = fig.add_subplot(1, 1, 1)
+
+    ax.set_xlabel(r'$(b-y)$ color')
+    ax.set_ylabel(r'M$_\mathrm{V}$')
+    ax.set_ylim(bottom=5.8, top=3.87)
+    ax.set_xlim(left=0.34, right=0.49)
+
+    ax.plot(colors, mags,
+            color='LemonChiffon',
+            markeredgecolor='Black', marker='o', markersize=6,
+            linestyle='')
+
+    ax.plot(vesta.color, vesta.absoluteMagnitude,
+            color='Gold', marker='D', markersize=8,
+            markeredgecolor='Black',
+            linestyle='')
+
+    filename = output_dir / 'plots/Sample_HR_diagram.png'
+    fig.savefig(str(filename))
 
 
 def create_example_pair_sep_plots():
@@ -356,7 +417,7 @@ def create_sigma_sys_hist():
     plt.show()
 
 
-def create_parameter_dependence_plot(use_cached=False):
+def create_parameter_dependence_plot(use_cached=False, min_bin_size=5):
     """
     Create a plot showing the change in sigma_s2s as a function of stellar
     parameters.
@@ -367,6 +428,9 @@ def create_parameter_dependence_plot(use_cached=False):
         If False, will rerun entire binning and fitting procedure, which is very
         slow. (Though it must be done at least once first.) If True, will
         instead used saved values from running full procedure.
+    min_bin_size : int
+        The lower limit on the number of stars in a bin to proceed with finding
+        a sigma_s2s value for it.
 
     Returns
     -------
@@ -374,15 +438,14 @@ def create_parameter_dependence_plot(use_cached=False):
 
     """
 
-    # Define the limits to plot in the various stellar parameters.
-    temp_lims = (5400, 6300) * u.K
-    mtl_lims = (-0.75, 0.45)
-    logg_lims = (4.1, 4.6)
+    # tqdm.write('Unpickling transitions list...')
+    # with open(vcl.final_selection_file, 'r+b') as f:
+    #     transitions_list = pickle.load(f)
+    # vprint(f'Found {len(transitions_list)} transitions.')
 
-    tqdm.write('Unpickling transitions list...')
-    with open(vcl.final_selection_file, 'r+b') as f:
-        transitions_list = pickle.load(f)
-    vprint(f'Found {len(transitions_list)} transitions.')
+    tqdm.write('Unpickling pairs list...')
+    with open(vcl.final_pair_selection_file, 'r+b') as f:
+        pairs_list = pickle.load(f)
 
     model_func = fit.quadratic_model
 
@@ -390,12 +453,19 @@ def create_parameter_dependence_plot(use_cached=False):
     db_file = vcl.databases_dir / 'stellar_db_uncorrected_hot_stars.hdf5'
 
     tqdm.write('Reading data from stellar database file...')
-    star_transition_offsets = u.unyt_array.from_hdf5(
-            db_file, dataset_name='star_transition_offsets')
-    star_transition_offsets_EotWM = u.unyt_array.from_hdf5(
-            db_file, dataset_name='star_transition_offsets_EotWM')
-    star_transition_offsets_EotM = u.unyt_array.from_hdf5(
-            db_file, dataset_name='star_transition_offsets_EotM')
+    # star_transition_offsets = u.unyt_array.from_hdf5(
+    #         db_file, dataset_name='star_transition_offsets')
+    # star_transition_offsets_EotWM = u.unyt_array.from_hdf5(
+    #         db_file, dataset_name='star_transition_offsets_EotWM')
+    # star_transition_offsets_EotM = u.unyt_array.from_hdf5(
+    #         db_file, dataset_name='star_transition_offsets_EotM')
+
+    star_pair_separations = u.unyt_array.from_hdf5(
+            db_file, dataset_name='star_pair_separations')
+    star_pair_separations_EotWM = u.unyt_array.from_hdf5(
+            db_file, dataset_name='star_pair_separations_EotWM')
+    star_pair_separations_EotM = u.unyt_array.from_hdf5(
+            db_file, dataset_name='star_pair_separations_EotM')
     star_temperatures = u.unyt_array.from_hdf5(
             db_file, dataset_name='star_temperatures')
 
@@ -404,7 +474,7 @@ def create_parameter_dependence_plot(use_cached=False):
         star_metallicities = hickle.load(f, path='/star_metallicities')
         star_magnitudes = hickle.load(f, path='/star_magnitudes')
         star_gravities = hickle.load(f, path='/star_gravities')
-        column_dict = hickle.load(f, path='/transition_column_index')
+        column_dict = hickle.load(f, path='/pair_column_index')
         star_names = hickle.load(f, path='/star_row_index')
 
     # Handle various fitting and plotting setup:
@@ -421,11 +491,17 @@ def create_parameter_dependence_plot(use_cached=False):
 
     # Collect a list of the labels to use.
     labels = []
-    for transition in tqdm(transitions_list):
-        if transition.blendedness < 3:
-            for order_num in transition.ordersToFitIn:
-                label = '_'.join([transition.label, str(order_num)])
-                labels.append(label)
+    # for transition in tqdm(transitions_list):
+    #     if transition.blendedness < 3:
+    #         for order_num in transition.ordersToFitIn:
+    #             label = '_'.join([transition.label, str(order_num)])
+    #             labels.append(label)
+
+    blends = set([(0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2)])
+    for pair in tqdm(pairs_list):
+        if pair.blendTuple in blends:
+            for order_num in pair.ordersToMeasureIn:
+                labels.append('_'.join([pair.label, str(order_num)]))
 
     bin_dict = {}
     # Set bins manually.
@@ -434,8 +510,7 @@ def create_parameter_dependence_plot(use_cached=False):
                         6177, 6277]
     bin_dict['mtl'] = [-0.75, -0.6, -0.45, -0.3,
                        -0.15, 0, 0.15, 0.3, 0.45]
-    bin_dict['logg'] = [4.04, 4.14, 4.24,
-                        4.34, 4.44, 4.54, 4.64]
+    bin_dict['logg'] = [4.14, 4.24, 4.34, 4.44, 4.54, 4.64]
 
     # Create an array to store all the individual sigma_sys values in in order
     # to get the means and STDs for each bin.
@@ -453,18 +528,26 @@ def create_parameter_dependence_plot(use_cached=False):
                                                           metal_array,
                                                           logg_array))}
 
-    fig = plt.figure(figsize=(12, 6), tight_layout=True)
+    fig = plt.figure(figsize=(12, 4.5), tight_layout=True)
     gs = GridSpec(1, 3, figure=fig, wspace=0)
     ax1 = fig.add_subplot(gs[0, 0])
     ax2 = fig.add_subplot(gs[0, 1], sharey=ax1)
     ax3 = fig.add_subplot(gs[0, 2], sharey=ax1)
 
-    ax1.set_ylim(bottom=0, top=200)
+    ax1.set_ylim(bottom=-3, top=120)
+    ax1.set_xlim(left=bin_dict['temp'][0], right=bin_dict['temp'][-1])
+    ax2.set_xlim(left=bin_dict['mtl'][0], right=bin_dict['mtl'][-1])
+    ax3.set_xlim(left=bin_dict['logg'][0], right=bin_dict['logg'][-1])
 
-    ax1.set_xlabel(r'$T_\mathrm{eff}$')
+    ax1.set_xlabel(r'$T_\mathrm{eff}$ (K)')
     ax1.set_ylabel(r'$\sigma_\mathrm{s2s}$ (m/s)')
     ax2.set_xlabel('[Fe/H]')
-    ax3.set_xlabel(r'$\log{g}$')
+    ax3.set_xlabel(r'$\log{g}\,(\mathrm{cm\,s}^{-2})$')
+
+    ax1.xaxis.set_major_locator(ticker.FixedLocator([5477, 5777, 6077]))
+    ax2.xaxis.set_major_locator(ticker.MultipleLocator(base=0.3))
+    ax3.xaxis.set_major_locator(ticker.FixedLocator([4.24, 4.34, 4.44,
+                                                     4.54]))
 
     ax2.tick_params(labelleft=False)
     ax3.tick_params(labelleft=False)
@@ -473,17 +556,16 @@ def create_parameter_dependence_plot(use_cached=False):
         ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
 
-    for plot_type, lims, ax in zip(plot_types,
-                                   (temp_lims, mtl_lims, logg_lims),
-                                   (ax1, ax2, ax3)):
+    for plot_type, ax in zip(plot_types, (ax1, ax2, ax3)):
         for limit in bin_dict[plot_type]:
-            ax.axvline(x=limit, color='MediumSeaGreen', linestyle='--',
-                       alpha=0.3, zorder=1)
+            ax.axvline(x=limit, color='SeaGreen', linestyle='--',
+                       alpha=0.8, zorder=5)
 
-    data_file = vcl.output_dir / 'stellar_parameter_dependence_data.h5py'
+    data_file = vcl.output_dir /\
+        f'stellar_parameter_dependence_data_bin_{min_bin_size}.h5py'
     if not use_cached:
-        for label_num, label in tqdm(enumerate(labels[3:9]),
-                                     total=len(labels[3:9])):
+        for label_num, label in tqdm(enumerate(labels[:]),
+                                     total=len(labels[:])):
 
             vprint(f'Analyzing {label}...')
             # The column number to use for this transition:
@@ -495,52 +577,52 @@ def create_parameter_dependence_plot(use_cached=False):
 
             vprint(20 * '=')
             vprint(f'Working on pre-change era.')
-            mean = np.nanmean(star_transition_offsets[eras['pre'], :, col])
+            mean = np.nanmean(star_pair_separations[eras['pre'], :, col])
 
             # First, create a masked version to catch any missing entries:
-            m_offsets = ma.masked_invalid(star_transition_offsets[
+            m_seps = ma.masked_invalid(star_pair_separations[
                         eras['pre'], :, col])
-            m_offsets = m_offsets.reshape([len(m_offsets), 1])
+            m_seps = m_seps.reshape([len(m_seps), 1])
             # Then create a new array from the non-masked data:
-            offsets = u.unyt_array(m_offsets[~m_offsets.mask],
-                                   units=u.m/u.s)
-            vprint(f'Median of offsets is {np.nanmedian(offsets)}')
+            separations = u.unyt_array(m_seps[~m_seps.mask],
+                                       units=u.m/u.s)
+            vprint(f'Median of separations is {np.nanmedian(separations)}')
 
-            m_eotwms = ma.masked_invalid(star_transition_offsets_EotWM[
+            m_eotwms = ma.masked_invalid(star_pair_separations_EotWM[
                     eras['pre'], :, col])
             m_eotwms = m_eotwms.reshape([len(m_eotwms), 1])
             eotwms = u.unyt_array(m_eotwms[~m_eotwms.mask],
                                   units=u.m/u.s)
 
-            m_eotms = ma.masked_invalid(star_transition_offsets_EotM[
+            m_eotms = ma.masked_invalid(star_pair_separations_EotM[
                     eras['pre'], :, col])
             m_eotms = m_eotms.reshape([len(m_eotms), 1])
-            # Use the same mask as for the offsets.
-            eotms = u.unyt_array(m_eotms[~m_offsets.mask],
+            # Use the same mask as for the separations.
+            eotms = u.unyt_array(m_eotms[~m_seps.mask],
                                  units=u.m/u.s)
             # Create an error array which uses the greater of the error on
             # the mean or the error on the weighted mean.
             err_array = np.maximum(eotwms, eotms)
 
-            vprint(f'Mean is {np.mean(offsets)}')
-            weighted_mean = np.average(offsets, weights=err_array**-2)
+            vprint(f'Mean is {np.mean(separations)}')
+            weighted_mean = np.average(separations, weights=err_array**-2)
             vprint(f'Weighted mean is {weighted_mean}')
 
             # Mask the various stellar parameter arrays with the same mask
             # so that everything stays in sync.
             temperatures = ma.masked_array(star_temperatures)
-            temps = temperatures[~m_offsets.mask]
+            temps = temperatures[~m_seps.mask]
             metallicities = ma.masked_array(star_metallicities)
-            metals = metallicities[~m_offsets.mask]
+            metals = metallicities[~m_seps.mask]
             magnitudes = ma.masked_array(star_magnitudes)
-            mags = magnitudes[~m_offsets.mask]
+            mags = magnitudes[~m_seps.mask]
             gravities = ma.masked_array(star_gravities)
-            loggs = gravities[~m_offsets.mask]
+            loggs = gravities[~m_seps.mask]
 
-            stars = ma.masked_array([key for key in
-                                     star_names.keys()]).reshape(
-                                         len(star_names.keys()), 1)
-            names = stars[~m_offsets.mask]
+            # stars = ma.masked_array([key for key in
+            #                          star_names.keys()]).reshape(
+            #                              len(star_names.keys()), 1)
+            # names = stars[~m_seps.mask]
 
             # Stack the stellar parameters into vertical slices
             # for passing to model functions.
@@ -558,14 +640,14 @@ def create_parameter_dependence_plot(use_cached=False):
                            zip(plot_types,
                                (temps, metals, loggs))}
 
-            popt, pcov = curve_fit(model_func, x_data, offsets.value,
+            popt, pcov = curve_fit(model_func, x_data, separations.value,
                                    sigma=err_array.value,
                                    p0=beta0,
                                    absolute_sigma=True,
                                    method='lm', maxfev=10000)
 
             model_values = model_func(x_data, *popt)
-            residuals = offsets.value - model_values
+            residuals = separations.value - model_values
 
             # if args.nbins:
             #     nbins = int(args.nbins)
@@ -577,20 +659,23 @@ def create_parameter_dependence_plot(use_cached=False):
             #                        interpolation='nearest')
             #     bin_dict[name] = bins
 
-            min_bin_size = 5  # 5 is maximum before losing stars in current bins
+            min_bin_size = min_bin_size
             sigma_sys_dict = {}
+            star_bins_dict = {}
             num_params = 1
             for name in tqdm(plot_types):
                 sigma_sys_list = []
                 sigma_list = []
                 bin_mid_list = []
                 bin_num = -1
+                star_bins_dict[name] = []
                 for bin_lims in pairwise(bin_dict[name]):
                     bin_num += 1
                     lower, upper = bin_lims
                     bin_mid_list.append((lower + upper) / 2)
                     mask_array = ma.masked_outside(arrays_dict[name], *bin_lims)
                     num_points = mask_array.count()
+                    star_bins_dict[name].append(num_points)
                     vprint(f'{num_points} values in bin ({lower},{upper})')
                     if num_points < min_bin_size:
                         vprint('Skipping this bin!')
@@ -653,14 +738,16 @@ def create_parameter_dependence_plot(use_cached=False):
                 sigma_sys_dict[f'{name}_sigma'] = sigma_list
                 sigma_sys_dict[f'{name}_bin_mids'] = bin_mid_list
 
-        with h5py.File(data_file, mode='a') as f:
+        with h5py.File(data_file, mode='w') as f:
             hickle.dump(sigma_sys_dict, f, path='/sigma_sys_dict')
             hickle.dump(full_arrays_dict, f, path='/full_arrays_dict')
+            hickle.dump(star_bins_dict, f, path='/star_bins_dict')
 
     elif use_cached:
         with h5py.File(data_file, mode='r') as f:
             sigma_sys_dict = hickle.load(f, path='/sigma_sys_dict')
             full_arrays_dict = hickle.load(f, path='/full_arrays_dict')
+            star_bins_dict = hickle.load(f, path='/star_bins_dict')
 
     for name, ax in zip(plot_types, (ax1, ax2, ax3)):
         means = []
@@ -668,20 +755,29 @@ def create_parameter_dependence_plot(use_cached=False):
         arr = full_arrays_dict[name]
         for i in range(0, np.size(arr, 0)):
             ax.plot(sigma_sys_dict[f'{name}_bin_mids'], arr[i],
-                    color='Black', alpha=0.1, zorder=2)
+                    color='Black', alpha=0.05, zorder=1)
         for j in range(0, np.size(arr, 1)):
             means.append(np.nanmean(arr[:, j]))
             stds.append(np.nanstd(arr[:, j]))
         ax.errorbar(sigma_sys_dict[f'{name}_bin_mids'], means,
-                    yerr=stds, color='IndianRed', alpha=1,
+                    yerr=stds, color='Red', alpha=1,
                     marker='o', markersize=4, capsize=4,
-                    elinewidth=2, zorder=3, linestyle='-',
+                    elinewidth=2, zorder=10, linestyle='-',
                     label='Mean and RMS')
-        ax.legend()
+        # Annotate with the number of stars in each bin.
+        for i in range(len(sigma_sys_dict[f'{name}_bin_mids'])):
+            ax.annotate(fr'${star_bins_dict[name][i]}$',
+                        (float(sigma_sys_dict[f'{name}_bin_mids'][i]), 110),
+                        xytext=(float(sigma_sys_dict[f'{name}_bin_mids'][i]),
+                                110),
+                        textcoords='data',
+                        verticalalignment='top', horizontalalignment='center',
+                        fontsize=18, zorder=15)
 
     plot_path = Path('/Users/dberke/Pictures/paper_plots_and_tables/plots')
 
-    filename = plot_path / 'Stellar_parameter_dependence.png'
+    filename = plot_path /\
+        f'Stellar_parameter_dependence_bin_{min_bin_size}.png'
     fig.savefig(str(filename))
 
 
@@ -771,15 +867,17 @@ def plot_duplicate_pairs(star):
 
     # Plot the results
 
-    fig = plt.figure(figsize=(6, 8), tight_layout=True)
-    gs = GridSpec(2, 1, figure=fig, hspace=0)
+    fig = plt.figure(figsize=(10, 4.5), tight_layout=True)
+    gs = GridSpec(1, 2, figure=fig, wspace=0)
     ax_measured = fig.add_subplot(gs[0, 0])
-    ax_corrected = fig.add_subplot(gs[1, 0])
+    ax_corrected = fig.add_subplot(gs[0, 1])
 
-    ax_measured.set_ylabel('Measured')
-    ax_corrected.set_ylabel('Corrected')
+    ax_measured.set_title(r'$\mathrm{Raw}$', fontsize=18)
+    ax_corrected.set_title(r'$\mathrm{Corrected}$', fontsize=18)
+    ax_measured.set_xlabel(r'$\Delta v_\mathrm{\,instance\ 2}-'
+                           r'\Delta v_\mathrm{\,instance\ 1}\ \mathrm{(m/s)}$')
     ax_corrected.set_xlabel(r'$\Delta v_\mathrm{\,instance\ 2}-'
-                            r'\Delta v_\mathrm{\,instance\ 1}$ (m/s)')
+                            r'\Delta v_\mathrm{\,instance\ 1}\ \mathrm{(m/s)}$')
 
     order_boundaries = []
     for i in range(len(pair_order_numbers)):
@@ -788,7 +886,7 @@ def plot_duplicate_pairs(star):
         if pair_order_numbers[i-1] != pair_order_numbers[i]:
             order_boundaries.append(i - 0.5)
 
-    ax_measured.tick_params(labelbottom=False)
+    # ax_measured.tick_params(labelbottom=False)
 
     for ax in (ax_measured, ax_corrected):
         # ax.yaxis.grid(which='major', color='Gray', alpha=0.7,
@@ -796,10 +894,11 @@ def plot_duplicate_pairs(star):
         # ax.yaxis.grid(which='minor', color='Gray', alpha=0.6,
         #               linestyle='--')
         ax.axvline(x=0, linestyle='-', color='Gray')
-        ax.set_xlim(left=-55, right=55)
+        ax.set_xlim(left=-60, right=60)
         ax.set_ylim(bottom=-1, top=55)
-        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
-        ax.tick_params(labelleft=False)
+        # ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.tick_params(left=False, right=False, labelleft=False)
+        # ax.tick_params(labelleft=False)
         for b in order_boundaries:
             ax.axhline(y=b, linestyle='--', color='DimGray', alpha=1)
 
@@ -832,14 +931,17 @@ def plot_duplicate_pairs(star):
                              linestyle='', marker='o',
                              label=r'Pair $\chi^2_\nu$:'
                              f' {pairs_chisq:.2f}, RMS: {pairs_sigma:.2f}')
-        ax_measured.annotate(r'$\chi^2_\nu$:'
-                             f' {pairs_chisq:.2f}\n'
-                             f'RMS: {pairs_sigma:.2f} m/s',
-                             xy=(0, 0), xytext=(-52, 26),
+        ax_measured.annotate(r'$\chi^2_\nu:'
+                             fr' {pairs_chisq:.2f}$'
+                             '\n'
+                             r'$\mathrm{RMS:}'
+                             fr'\ {pairs_sigma:.2f}'
+                             r'\,\mathrm{m/s}$',
+                             xy=(0, 0), xytext=(-56, 28),
                              textcoords='data', size=19,
                              horizontalalignment='left',
                              verticalalignment='bottom')
-        ax_corrected.errorbar(model_diffs, model_pair_indices,
+        ax_corrected.errorbar(model_diffs, pair_indices,
                               xerr=model_errs,
                               color='DodgerBlue', capsize=2, capthick=2,
                               elinewidth=2,
@@ -847,10 +949,13 @@ def plot_duplicate_pairs(star):
                               linestyle='', marker='D',
                               label=r'Model $\chi^2_\nu$:'
                               f' {model_chisq:.2f}, RMS: {model_sigma:.2f}')
-        ax_corrected.annotate(r'$\chi^2_\nu$:'
-                              f' {model_chisq:.2f}\n'
-                              f'RMS: {model_sigma:.2f} m/s',
-                              xy=(0, 0), xytext=(-52, 26),
+        ax_corrected.annotate(r'$\chi^2_\nu:'
+                              fr' {model_chisq:.2f}$'
+                              '\n'
+                              r'$\mathrm{RMS:}'
+                              fr'\ {model_sigma:.2f}'
+                              r'\,\mathrm{m/s}$',
+                              xy=(0, 0), xytext=(-56, 28),
                               textcoords='data', size=19,
                               horizontalalignment='left',
                               verticalalignment='bottom')
@@ -860,6 +965,455 @@ def plot_duplicate_pairs(star):
     output_dir = Path('/Users/dberke/Pictures/paper_plots_and_tables/plots')
     outfile = output_dir /\
         f'{star.name}_duplicate_pairs.png'
+    fig.savefig(str(outfile))
+    plt.close('all')
+
+
+def create_radial_velocity_plot():
+    """
+    Create a plot showing the effect of radial velocity on a specific pair.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    pair_label = '6138.313Fe1_6139.390Fe1_60'
+
+    boundary_pix = 3072
+
+    pair_seps_pre, offsets_pre = [], []
+    errors_pre, pixels_pre = [], []
+
+    parts = pair_label.split('_')
+    blue_label = '_'.join((parts[0], parts[2]))
+    red_label = '_'.join((parts[1], parts[2]))
+
+    star_names = [d.split('/')[-1] for d in
+                  glob('/Users/dberke/data_output/[HV]*')]
+
+    star_list = []
+    temp_lim = 6077 * u.K
+    metal_lim = -0.45
+    tqdm.write('Gathering stars...')
+    for star_name in tqdm(star_names):
+        star = Star(star_name, vcl.output_dir / star_name)
+        if star.temperature > temp_lim:
+            del star
+        elif star.metallicity < metal_lim:
+            del star
+        else:
+            star_list.append(star)
+
+    for star in tqdm(star_list):
+
+        pre_slice = slice(None, star.fiberSplitIndex)
+        post_slice = slice(star.fiberSplitIndex, None)
+
+        col_index = star.p_index(pair_label)
+
+        if star.hasObsPre:
+
+            pair_seps_pre.extend(star.pairSeparationsArray[
+                pre_slice, col_index].to(u.km/u.s))
+            offsets_pre.extend(star.pairModelOffsetsArray[
+                pre_slice, col_index].to(u.m/u.s))
+            errors_pre.extend(star.pairModelErrorsArray[pre_slice,
+                                                        col_index])
+            pixels_pre.extend(star.pixelArray[
+                pre_slice, star.t_index(blue_label)])
+
+        if (len(offsets_pre) != len(pixels_pre)) or\
+           (len(offsets_pre) != len(pair_seps_pre)):
+            print(star.name)
+            exit(1)
+
+    offsets_pre, mask_pre = remove_nans(np.array(offsets_pre),
+                                        return_mask=True)
+    errors_pre = np.array(errors_pre)[mask_pre]
+    pixels_pre = np.array(pixels_pre)[mask_pre]
+    pair_seps_pre = np.array(pair_seps_pre)[mask_pre]
+    mean_sep_pre = np.mean(pair_seps_pre)
+
+    fig = plt.figure(figsize=(5, 6), tight_layout=True)
+    gs = GridSpec(nrows=2, ncols=1, figure=fig,
+                  height_ratios=(1, 0.4), hspace=0)
+    ax = fig.add_subplot(gs[0, 0])
+    ax_mean = fig.add_subplot(gs[1, 0], sharex=ax)
+
+    ax.set_xlim(left=2870, right=3140)
+    ax.set_ylim(bottom=-90, top=90)
+    # Denote the CCD sub-boundary in pixels.
+    ax.axvline(x=boundary_pix, linestyle='--', color='Blue',
+               label='Blue crossing', zorder=5)
+
+    for axis in (ax, ax_mean):
+        axis.axhline(y=0, linestyle='--', color='Gray', zorder=1)
+
+    ax_mean.set_ylim(bottom=-8, top=8)
+    ax.tick_params(labelbottom=False)
+    ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+    ax_mean.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+    ax_mean.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+
+    harps_pix_width = 0.829  # km/s
+    ax.axvline(boundary_pix - np.round(mean_sep_pre / harps_pix_width),
+               linestyle='-.', color='Red',
+               label='Red crossing', zorder=5)
+
+    ax.set_ylabel('Model offset (m/s)')
+    ax_mean.set_ylabel('Mean (m/s)')
+    ax_mean.set_xlabel('Pixel number')
+
+    ax.errorbar(pixels_pre, offsets_pre,
+                linestyle='',
+                markeredgecolor=None,
+                marker='.', color='Chocolate',
+                alpha=0.3, zorder=2)
+
+    # Create some bins to measure in:
+    midpoints = []
+    means_pre, eotms_pre = [], []
+    bin_lims = [i for i in range(2872, 3172, 15)]
+    for lims in tqdm(pairwise(bin_lims)):
+        mask_pre = np.where((pixels_pre > lims[0]) &
+                            (pixels_pre < lims[1]))
+
+        midpoints.append((lims[0] + lims[1])/2)
+
+        num_pre = len(offsets_pre[mask_pre])
+
+        if num_pre > 1:
+            means_pre.append(np.mean(offsets_pre[mask_pre]))
+            eotms_pre.append(np.std(offsets_pre[mask_pre]) /
+                             np.sqrt(len(offsets_pre[mask_pre])))
+        elif num_pre == 1:
+            means_pre.append(offsets_pre[mask_pre][0])
+            eotms_pre.append(errors_pre[mask_pre][0])
+        else:
+            means_pre.append(np.nan)
+            eotms_pre.append(np.nan)
+
+    ax_mean.errorbar(midpoints, means_pre,
+                     yerr=eotms_pre,
+                     color='Black', marker='o',
+                     markerfacecolor='White',
+                     markersize=4, capsize=2)
+
+    # ax.legend(loc='upper left')
+    plot_name = output_dir / f'plots/{pair_label}_vs_pixel.png'
+    fig.savefig(str(plot_name))
+    plt.close('all')
+
+
+def plot_vs_pair_blendedness(star):
+    """
+    Create a plot for a star of its pair model-corrected values by blendedness.
+
+    Parameters
+    ----------
+    star : `varconlib.star.Star`
+        The star to create the plot using.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    # tqdm.write(f'Plotting {star.name}...')
+    plots_dir = Path('/Users/dberke/Pictures/paper_plots_and_tables/plots')
+
+    sorted_blend_tuples = ((0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5),
+                           (1, 1), (1, 2), (1, 3), (1, 4), (1, 5),
+                           (2, 2), (2, 3), (2, 4), (2, 5),
+                           (3, 3), (3, 4), (3, 5),
+                           (4, 4), (4, 5),
+                           (5, 5))
+
+    pre_slice = slice(None, star.fiberSplitIndex)
+
+    pair_blends_dict = {}
+    total_pairs = 0
+    for pair in star.pairsList:
+        for order_num in pair.ordersToMeasureIn:
+            total_pairs += 1
+            pair_label = '_'.join((pair.label, str(order_num)))
+            pair_blends_dict[pair_label] = pair.blendTuple
+
+    sorted_means_pre, sorted_errs_pre = [], []
+    sigmas_pre = []
+    mean_errs_pre = []
+    total = 0
+    per_bin_wmeans_pre = []
+    per_bin_errs_pre = []
+
+    for blend_tuple in sorted_blend_tuples:
+        bin_means_pre, bin_errs_pre = [], []
+        bin_means_pre_nn, bin_errors_pre_nn = [], []
+        for pair_label, value in pair_blends_dict.items():
+            col_index = star.p_index(pair_label)
+            if blend_tuple == value:
+                total += 1
+                w_mean, eotwm = get_weighted_mean(
+                    star.pairModelOffsetsArray,
+                    star.pairModelErrorsArray,
+                    pre_slice, star._pair_bidict[pair_label])
+                bin_means_pre.append(w_mean)
+                bin_errs_pre.append(
+                    np.sqrt(eotwm**2 +
+                            star.pairSysErrorsArray[0, col_index]**2))
+
+        bin_means_pre_nn, mask_pre = remove_nans(np.array(bin_means_pre),
+                                                 return_mask=True)
+        bin_errs_pre_nn = np.array(bin_errs_pre)[mask_pre]
+
+        if len(bin_means_pre_nn) > 1:
+
+            sigmas_pre.append(np.nanstd(bin_means_pre))
+            wmean, eotwm = weighted_mean_and_error(bin_means_pre_nn,
+                                                   bin_errs_pre_nn)
+            per_bin_wmeans_pre.append(wmean)
+            per_bin_errs_pre.append(eotwm)
+            mean_errs_pre.append(np.mean(bin_errs_pre_nn))
+        else:
+            sigmas_pre.append(np.nan)
+            per_bin_wmeans_pre.append(np.nan)
+            per_bin_errs_pre.append(np.nan)
+            mean_errs_pre.append(np.nan)
+
+        sorted_means_pre.extend(bin_means_pre)
+        sorted_errs_pre.extend(bin_errs_pre)
+
+    sorted_means_pre = np.array(sorted_means_pre)
+    sorted_errs_pre = np.array(sorted_errs_pre)
+
+    # Plot the results.
+    fig = plt.figure(figsize=(5, 4.2), tight_layout=True)
+    gs = GridSpec(ncols=1, nrows=1, figure=fig)
+    ax = fig.add_subplot(gs[0, 0])
+
+    ax.set_xlabel('RMS (m/s)')
+    ax.set_ylabel('Mean error (m/s)')
+
+    # ax.tick_params(bottom=False, labelbottom=False)
+    ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+    ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+
+    num_divisions = len(sigmas_pre)
+    indices = [i for i in range(num_divisions)]
+    ax.set_xlim(left=-1, right=46)
+    ax.set_ylim(bottom=0, top=95)
+
+    colors = cmr.take_cmap_colors('cmr.ember_r', 3,
+                                  cmap_range=(0.1, 0.6), return_fmt='hex')
+
+    five_patch = mlines.Line2D([], [], color=colors[2], marker='h',
+                               markersize=10, linestyle='',
+                               markeredgecolor='Black',
+                               label=r'$(M, 5)$')
+    four_patch = mlines.Line2D([], [], color=colors[1], marker='D',
+                               markersize=8, linestyle='',
+                               markeredgecolor='Black',
+                               label=r'$(M, 4)$')
+    other_patch = mlines.Line2D([], [], color=colors[0], marker='o',
+                                markersize=9, linestyle='',
+                                markeredgecolor='Black',
+                                label=r'$(\leq3, \leq3)$')
+
+    for sigma, mean_err, blend_tuple in zip(sigmas_pre, mean_errs_pre,
+                                            sorted_blend_tuples):
+        if blend_tuple[1] == 5:
+            ax.plot(sigma, mean_err,
+                    color=colors[2], marker='h', markersize=10,
+                    markeredgecolor='Black', linestyle='',
+                    alpha=0.7)
+
+        elif blend_tuple[1] == 4:
+            ax.plot(sigma, mean_err,
+                    color=colors[1], marker='D', markersize=8,
+                    markeredgecolor='Black', linestyle='',
+                    alpha=0.7)
+
+        else:
+            ax.plot(sigma, mean_err,
+                    color=colors[0], marker='o', markersize=9,
+                    markeredgecolor='Black', linestyle='',
+                    alpha=0.7)
+
+    ax.legend(handles=[five_patch, four_patch, other_patch],
+              loc='upper left')
+
+    ax.annotate('(0, 0)', xy=(3, 9), xytext=(1, 22),
+                arrowprops={'arrowstyle': '-', 'color': 'Black'},
+                horizontalalignment='left',
+                verticalalignment='bottom',
+                fontsize=20, weight='bold')
+    # strings = [str(blend_tuple) for blend_tuple in sorted_blend_tuples]
+    # texts = [plt.text(sigmas_pre[i], mean_errs_pre[i], strings[i],
+    #                   ha='center', va='center', fontsize=20)
+    #          for i in range(len(strings))]
+
+    # adjust_text(texts,
+    #             force_text=(0.2, 0.35),
+    #             arrowprops=dict(arrowstyle='-', color='Black'),
+    #             lim=1000)
+
+    filename = plots_dir / f'{star.name}_by_blendedness_(5,5).png'
+    if not plots_dir.exists():
+        os.mkdir(plots_dir)
+    fig.savefig(str(filename))
+    plt.close('all')
+
+
+def plot_pair_depth_differences(star):
+    """
+    Create a plot to investigate pair depth differences for systematics.
+
+    Parameters
+    ----------
+    star : `varconlib.star.Star`
+        The star to plot the differences for.
+
+    Returns
+    -------
+    None.
+
+    """
+
+    tqdm.write(f'{star.name} has {star.numObs} observations'
+               f' ({star.numObsPre} pre, {star.numObsPost} post)')
+
+    plots_dir = Path('/Users/dberke/Pictures/paper_plots_and_tables/plots')
+
+    filename = vcl.output_dir /\
+        f'fit_params/quadratic_pairs_4.0sigma_params.hdf5'
+    fit_results_dict = get_params_file(filename)
+    sigma_sys_dict = fit_results_dict['sigmas_sys']
+
+    pair_depth_diffs = []
+    pair_depth_means = []
+    pair_model_sep_pre = []
+    pair_model_err_pre = []
+
+    sigmas_sys_pre = []
+
+    pre_slice = slice(None, star.fiberSplitIndex)
+
+    blends_to_use = set(((0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2)))
+
+    for pair in tqdm(star.pairsList):
+        if pair.blendTuple in blends_to_use:
+            for order_num in pair.ordersToMeasureIn:
+                pair_label = '_'.join([pair.label, str(order_num)])
+                col_index = star._pair_bidict[pair_label]
+                label_high = '_'.join([pair._higherEnergyTransition.label,
+                                      str(order_num)])
+                label_low = '_'.join([pair._lowerEnergyTransition.label,
+                                     str(order_num)])
+                col_high = star._transition_bidict[label_high]
+                col_low = star._transition_bidict[label_low]
+                depths_high = remove_nans(star.normalizedDepthArray[:,
+                                                                    col_high])
+                depths_low = remove_nans(star.normalizedDepthArray[:, col_low])
+                mean_high = np.nanmean(depths_high)
+                mean_low = np.nanmean(depths_low)
+                # h_d = pair._higherEnergyTransition.normalizedDepth
+                # l_d = pair._lowerEnergyTransition.normalizedDepth
+                # depth_diff = l_d - h_d
+                pair_depth_means.append((mean_high + mean_low) / 2)
+                pair_depth_diffs.append(abs(mean_low - mean_high))
+
+                w_mean, eotwm = get_weighted_mean(star.pairModelOffsetsArray,
+                                                  star.pairModelErrorsArray,
+                                                  pre_slice, col_index)
+                pair_model_sep_pre.append(w_mean)
+                pair_model_err_pre.append(eotwm)
+                sigmas_sys_pre.append(
+                    sigma_sys_dict[pair_label + '_pre'].value)
+
+    pair_depth_diffs = np.array(pair_depth_diffs)
+    pair_depth_means = np.array(pair_depth_means)
+    pair_model_sep_pre = np.array(pair_model_sep_pre)
+    pair_model_err_pre = np.array(pair_model_err_pre)
+    sigmas_sys_pre = np.array(sigmas_sys_pre)
+
+    # Plot as a function of mean pair depth.
+    fig = plt.figure(figsize=(5, 7), tight_layout=True)
+    gs = GridSpec(ncols=2, nrows=1, figure=fig,
+                  width_ratios=(2, 1),
+                  wspace=0)
+    ax_pre = fig.add_subplot(gs[0, 0])
+    ax_pre_wmean = fig.add_subplot(gs[0, 1], sharey=ax_pre)
+    # ax_clb_pre = fig.add_subplot(gs[0, 1])
+
+    ax_pre.set_xlabel('Model offset (m/s)')
+    ax_pre_wmean.set_xlabel('Weighted\nmean (m/s)', fontsize=18)
+    ax_pre.set_ylabel('Normalized mean depth of pair')
+
+    ax_pre_wmean.tick_params(labelleft=False)
+
+    ax_pre.set_xlim(left=-45, right=45)
+    ax_pre.set_ylim(top=0.14, bottom=1)
+    ax_pre.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+    ax_pre_wmean.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+    ax_pre_wmean.xaxis.set_major_locator(ticker.FixedLocator([-2, 0, 2]))
+    grid_keywords = {'which': 'major', 'linestyle': '--',
+                     'color': 'SeaGreen', 'alpha': 0.8,
+                     'linewidth': 1.5}
+    ax_pre.yaxis.grid(**grid_keywords)
+    ax_pre_wmean.yaxis.grid(**grid_keywords)
+    ax_pre_wmean.set_xlim(left=-3.5, right=3.5)
+    for ax in (ax_pre, ax_pre_wmean):
+        ax.axvline(x=0, color='Gray', linestyle='--', zorder=0)
+        # ax.xaxis.set_major_locator(ticker.AutoLocator())
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+        # ax.xaxis.grid(which='major', color='Gray',
+        #               linestyle=':', alpha=0.65)
+        # ax.xaxis.grid(which='minor', color='Gray',
+        #               linestyle=':', alpha=0.5)
+
+    full_errs_pre = np.sqrt(pair_model_err_pre ** 2 +
+                            sigmas_sys_pre ** 2)
+    values, mask = remove_nans(pair_model_sep_pre, return_mask=True)
+    # chisq = calc_chi_squared_nu(values,
+    #                             full_errs_pre[mask], 1)
+    ax_pre.errorbar(pair_model_sep_pre, pair_depth_means,
+                    xerr=full_errs_pre,
+                    # xerr=pair_model_err_pre,
+                    linestyle='', marker='o', markersize=5,
+                    markerfacecolor='Chocolate',
+                    markeredgecolor='Black', ecolor='Peru',
+                    zorder=5, capsize=0, capthick=0)
+
+    # Get results for bins.
+    bin_lims = np.linspace(0, 1, 11)
+
+    midpoints, w_means, eotwms, chisq = [], [], [], []
+    for i, lims in zip(range(len(bin_lims)), pairwise(bin_lims)):
+        midpoints.append((lims[1] + lims[0]) / 2)
+        mask = np.where((pair_depth_means > lims[0]) &
+                        (pair_depth_means < lims[1]))
+        values, nan_mask = remove_nans(pair_model_sep_pre[mask],
+                                       return_mask=True)
+        errs = full_errs_pre[mask][nan_mask]
+        # errs = pair_model_err_pre[mask][nan_mask]
+        try:
+            w_mean, eotwm = weighted_mean_and_error(values, errs)
+        except ZeroDivisionError:
+            w_mean, eotwm = np.nan, np.nan
+        w_means.append(w_mean)
+        eotwms.append(eotwm)
+
+        # chisq.append(calc_chi_squared_nu(values, errs, 1))
+    ax_pre_wmean.errorbar(w_means, midpoints, xerr=eotwms,
+                          color='Black', marker='o',
+                          markerfacecolor='White',
+                          capsize=3, capthick=2,
+                          zorder=5)
+
+    outfile = plots_dir / f'{star.name}_obs_by_mean_depth.png'
     fig.savefig(str(outfile))
     plt.close('all')
 
@@ -961,11 +1515,25 @@ if __name__ == '__main__':
                 f.write(transitions_output)
 
     if args.figures:
+        hd146233 = Star('HD146233', '/Users/dberke/data_output/HD146233')
+
+        create_HR_diagram_plot()
+
         # create_example_pair_sep_plots()
 
         # create_sigma_sys_hist()
 
-        vprint('Creating parameter dependence plot.')
-        create_parameter_dependence_plot(use_cached=False)
+        # create_parameter_dependence_plot(use_cached=True, min_bin_size=5)
 
         # plot_duplicate_pairs(Star('Vesta', '/Users/dberke/data_output/Vesta'))
+        # plot_duplicate_pairs(hd146233)
+
+        # create_radial_velocity_plot()
+
+        # plot_vs_pair_blendedness(hd146233)
+
+        # plot_pair_depth_differences(hd146233)
+        # plot_pair_depth_differences(Star('HD72769',
+        #                                  '/Users/dberke/data_output/HD72769'))
+        # plot_pair_depth_differences(Star('HD98281',
+        #                                  '/Users/dberke/data_output/HD98281'))
