@@ -1968,7 +1968,7 @@ def plot_vs_pair_blendedness(star):
 
 def plot_vs_radial_velocity(star_list):
     """
-    Plot a histogram of the slopes of lines fitted to pairs vs. star RV.
+    Plot pair offsets vs. radial velocity.
 
     Parameters
     ----------
