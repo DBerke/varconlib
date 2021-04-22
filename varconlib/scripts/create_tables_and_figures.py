@@ -20,7 +20,6 @@ import os
 from pathlib import Path
 import pickle
 
-from adjustText import adjust_text
 import cmasher as cmr
 import h5py
 import hickle
@@ -28,7 +27,6 @@ import numpy as np
 import numpy.ma as ma
 from matplotlib.gridspec import GridSpec
 import matplotlib.lines as mlines
-import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from scipy.optimize import curve_fit
@@ -100,6 +98,53 @@ def get_weighted_mean(values_array, errs_array, time_slice, col_index):
         return (np.nan * values.units, np.nan * values.units)
 
 
+def find_star_category(star):
+    """
+    Return the category (SP1, 2, 3, or other) that a star belongs to.
+
+    Parameters
+    ----------
+    star : `varconlib.star.Star`
+        A star object to test the membership of.
+
+    Returns
+    -------
+    str
+        Either 'SP1', 'SP2', 'SP3', or 'Other'.
+
+    """
+
+    categories = {1: 'SP1', 2: 'SP2', 3: 'SP3'}
+
+    temp_increment = 100 * u.K
+    mtl_increment = 0.1
+    logg_increment = 0.1
+    solar_teff = 5777 * u.K
+    solar_feh = 0.
+    solar_logg = 4.44
+
+    teff = star.temperature
+    feh = star.metallicity
+    logg = star.logg
+
+    for i in range(1, 4):
+        teff_low = solar_teff - i * temp_increment
+        teff_high = solar_teff + i * temp_increment
+        feh_low = solar_feh - i * mtl_increment
+        feh_high = solar_feh + i * mtl_increment
+        logg_low = solar_logg - i * logg_increment - 0.1
+        logg_high = solar_logg + i * logg_increment + 0.1
+
+        if (teff_low <= teff <= teff_high) and\
+           (feh_low <= feh <= feh_high) and\
+           (logg_low <= logg <= logg_high):
+            # tqdm.write(f'{star.name:>8}: {teff} {feh} {logg} {categories[i]}')
+            return categories[i]
+
+    # tqdm.write(f'{star.name:>8}: {teff} {feh} {logg}')
+    return 'Other'
+
+
 def create_HR_diagram_plot():
     """
     Create an HR diagram of the stars in our sample.
@@ -110,49 +155,102 @@ def create_HR_diagram_plot():
 
     """
 
+    nordstrom_stellar_sample_file = vcl.data_dir / "StellarSampleData_full.csv"
+    star_mags, star_colors = np.loadtxt(nordstrom_stellar_sample_file,
+                                        dtype=str, unpack=True,
+                                        delimiter=',', usecols=(5, 7))
+
+    star_mags = [float(x) for x in star_mags]
+    star_colors = [float(x) for x in star_colors]
+
     star_names = [d.split('/')[-1] for d in
                   glob('/Users/dberke/data_output/[H]*')]
 
-    star_list = []
+    sp1_list, sp3_list, remainder_list = [], [], []
     temp_lim = 6077 * u.K
     metal_lim = -0.45
     tqdm.write('Gathering stars...')
     for star_name in tqdm(star_names):
         star = Star(star_name, vcl.output_dir / star_name)
+        # category = find_star_category(star)
+        # tqdm.write(f'{star_name} is in {category}')
         if star.temperature > temp_lim:
             del star
         elif star.metallicity < metal_lim:
             del star
         else:
-            star_list.append(star)
+            category = find_star_category(star)
+            if category == 'SP1':
+                sp1_list.append(star)
+            elif (category == 'SP32') or (category == 'SP3'):
+                sp3_list.append(star)
+            else:
+                remainder_list.append(star)
+            try:
+                num_planets = star.specialAttributes['has_planets']
+                tqdm.write(f'{star_name}: {num_planets} planets')
+            except KeyError:
+                pass
 
-    colors, mags = [], []
-    for star in tqdm(star_list):
-        colors.append(star.color)
-        mags.append(star.absoluteMagnitude)
+    sp1_colors, sp1_mags = [], []
+    sp3_colors, sp3_mags = [], []
+    other_colors, other_mags = [], []
+    for star in tqdm(sp1_list):
+        sp1_colors.append(star.color)
+        sp1_mags.append(star.absoluteMagnitude)
+    for star in tqdm(sp3_list):
+        sp3_colors.append(star.color)
+        sp3_mags.append(star.absoluteMagnitude)
+    for star in tqdm(remainder_list):
+        other_colors.append(star.color)
+        other_mags.append(star.absoluteMagnitude)
 
     vesta = Star('Vesta', '/Users/dberke/data_output/Vesta')
+
+    colors = cmr.take_cmap_colors('cmr.chroma', 3,
+                                  cmap_range=(0.45, 0.95), return_fmt='hex')
 
     fig = plt.figure(figsize=(5, 5), tight_layout=True)
     ax = fig.add_subplot(1, 1, 1)
 
-    ax.set_xlabel(r'$(b-y)$ color')
-    ax.set_ylabel(r'M$_\mathrm{V}$')
-    ax.set_ylim(bottom=5.8, top=3.87)
-    ax.set_xlim(left=0.34, right=0.49)
+    ax.set_xlabel(r'Color, $b-y$')
+    ax.set_ylabel(r'Absolute magnitude, M$_\mathrm{V}$')
+    ax.set_ylim(bottom=5.9, top=3.9)
+    ax.set_xlim(left=0.25, right=0.53)
 
-    ax.plot(colors, mags,
-            color='LemonChiffon',
+    # Plot all the stars in the GCS survey.
+    ax.plot(star_colors, star_mags,
+            color='Black', marker='.', markersize=1,
+            linestyle='', zorder=1)
+
+    ax.plot(sp1_colors, sp1_mags,
+            color=colors[0],
             markeredgecolor='Black', marker='o', markersize=6,
-            linestyle='')
+            linestyle='', alpha=0.6,
+            label='Solar twins', zorder=4)
+    ax.plot(sp3_colors, sp3_mags,
+            color=colors[1],
+            markeredgecolor='Black', marker='s', markersize=5,
+            linestyle='', alpha=0.6,
+            label='Solar analogs', zorder=3)
+    ax.plot(other_colors, other_mags,
+            color=colors[2],
+            markeredgecolor='Black', marker='h', markersize=6,
+            linestyle='', alpha=0.6,
+            label='Other stars', zorder=2)
 
     ax.plot(vesta.color, vesta.absoluteMagnitude,
-            color='Gold', marker='D', markersize=8,
+            color='Gold', marker='*', markersize=12,
             markeredgecolor='Black',
-            linestyle='')
+            linestyle='', zorder=5, alpha=0.8,
+            label='Sun')
 
-    filename = output_dir / 'plots/Sample_HR_diagram.png'
-    fig.savefig(str(filename))
+    ax.legend(loc='lower left', fontsize=17,
+              handletextpad=0.1, handlelength=0.8,
+              borderpad=0.2)
+
+    filename = output_dir / 'plots/Sample_HR_diagram.pdf'
+    fig.savefig(str(filename), bbox_inches='tight', pad_inches=0.01)
 
 
 def create_example_pair_sep_plots():
@@ -179,7 +277,6 @@ def create_example_pair_sep_plots():
         star_metallicities = hickle.load(f, path='/star_metallicities')
         # star_magnitudes = hickle.load(f, path='/star_magnitudes')
         star_gravities = hickle.load(f, path='/star_gravities')
-        transition_column_dict = hickle.load(f, path='/transition_column_index')
         pair_column_dict = hickle.load(f, path='/pair_column_index')
 
         star_names = hickle.load(f, path='/star_row_index')
@@ -475,11 +572,9 @@ def create_parameter_dependence_plot(use_cached=False, min_bin_size=5):
         star_magnitudes = hickle.load(f, path='/star_magnitudes')
         star_gravities = hickle.load(f, path='/star_gravities')
         column_dict = hickle.load(f, path='/pair_column_index')
-        star_names = hickle.load(f, path='/star_row_index')
 
     # Handle various fitting and plotting setup:
     eras = {'pre': 0, 'post': 1}
-    param_dict = {'temp': 0, 'mtl': 1, 'logg': 2}
     plot_types = ('temp', 'mtl', 'logg')
 
     params_list = []
@@ -576,7 +671,6 @@ def create_parameter_dependence_plot(use_cached=False, min_bin_size=5):
                 sys.exit(1)
 
             vprint(20 * '=')
-            vprint(f'Working on pre-change era.')
             mean = np.nanmean(star_pair_separations[eras['pre'], :, col])
 
             # First, create a masked version to catch any missing entries:
@@ -824,7 +918,8 @@ def plot_duplicate_pairs(star):
                     p_index1)
                 pair_sep_pre1.append(w_mean)
                 pair_sep_err_pre1.append(
-                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0, p_index1]**2))
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0,
+                                                               p_index1]**2))
                 w_mean, eotwm = get_weighted_mean(
                     star.pairModelOffsetsArray,
                     star.pairModelErrorsArray,
@@ -832,7 +927,8 @@ def plot_duplicate_pairs(star):
                     p_index1)
                 pair_model_pre1.append(w_mean)
                 pair_model_err_pre1.append(
-                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0, p_index1]**2))
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0,
+                                                               p_index1]**2))
 
                 # Get the values for the second duplicate
                 time_slice = slice(None, star.fiberSplitIndex)
@@ -843,7 +939,8 @@ def plot_duplicate_pairs(star):
                     p_index2)
                 pair_sep_pre2.append(w_mean)
                 pair_sep_err_pre2.append(
-                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0, p_index2]**2))
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0,
+                                                               p_index2]**2))
                 w_mean, eotwm = get_weighted_mean(
                     star.pairModelOffsetsArray,
                     star.pairModelErrorsArray,
@@ -851,7 +948,8 @@ def plot_duplicate_pairs(star):
                     p_index2)
                 pair_model_pre2.append(w_mean)
                 pair_model_err_pre2.append(
-                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0, p_index2]**2))
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0,
+                                                               p_index2]**2))
 
     # pprint(pair_order_numbers)
 
@@ -1151,7 +1249,7 @@ def plot_vs_pair_blendedness(star):
 
     for blend_tuple in sorted_blend_tuples:
         bin_means_pre, bin_errs_pre = [], []
-        bin_means_pre_nn, bin_errors_pre_nn = [], []
+        bin_means_pre_nn = []
         for pair_label, value in pair_blends_dict.items():
             col_index = star.p_index(pair_label)
             if blend_tuple == value:
@@ -1190,37 +1288,37 @@ def plot_vs_pair_blendedness(star):
     sorted_errs_pre = np.array(sorted_errs_pre)
 
     # Plot the results.
-    fig = plt.figure(figsize=(5, 4.2), tight_layout=True)
+    fig = plt.figure(figsize=(4.5, 3.8), tight_layout=True)
     gs = GridSpec(ncols=1, nrows=1, figure=fig)
     ax = fig.add_subplot(gs[0, 0])
 
-    ax.set_xlabel('RMS (m/s)')
-    ax.set_ylabel('Mean error (m/s)')
+    ax.set_xlabel('RMS (m/s)', fontsize=18)
+    ax.set_ylabel('Mean error (m/s)', fontsize=18)
 
     # ax.tick_params(bottom=False, labelbottom=False)
     ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
     ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+    # Customize tick label font size.
+    ax.tick_params(labelsize=18)
 
-    num_divisions = len(sigmas_pre)
-    indices = [i for i in range(num_divisions)]
-    ax.set_xlim(left=-1, right=46)
-    ax.set_ylim(bottom=0, top=95)
+    ax.set_xlim(left=-1, right=45)
+    ax.set_ylim(bottom=0, top=82)
 
-    colors = cmr.take_cmap_colors('cmr.ember_r', 3,
-                                  cmap_range=(0.1, 0.6), return_fmt='hex')
+    colors = cmr.take_cmap_colors('cmr.neon_r', 3,
+                                  cmap_range=(0, 1), return_fmt='hex')
 
     five_patch = mlines.Line2D([], [], color=colors[2], marker='h',
                                markersize=10, linestyle='',
-                               markeredgecolor='Black',
-                               label=r'$(M, 5)$')
+                               markeredgecolor='Black', alpha=0.7,
+                               label='5')
     four_patch = mlines.Line2D([], [], color=colors[1], marker='D',
                                markersize=8, linestyle='',
-                               markeredgecolor='Black',
-                               label=r'$(M, 4)$')
+                               markeredgecolor='Black', alpha=0.7,
+                               label='4')
     other_patch = mlines.Line2D([], [], color=colors[0], marker='o',
                                 markersize=9, linestyle='',
-                                markeredgecolor='Black',
-                                label=r'$(\leq3, \leq3)$')
+                                markeredgecolor='Black', alpha=0.7,
+                                label=r'$\leq\!3$')
 
     for sigma, mean_err, blend_tuple in zip(sigmas_pre, mean_errs_pre,
                                             sorted_blend_tuples):
@@ -1242,14 +1340,20 @@ def plot_vs_pair_blendedness(star):
                     markeredgecolor='Black', linestyle='',
                     alpha=0.7)
 
-    ax.legend(handles=[five_patch, four_patch, other_patch],
-              loc='upper left')
+    ax.legend(handles=[other_patch, four_patch, five_patch],
+              loc='upper left', fontsize=18, ncol=3,
+              shadow=True,
+              title='Maximum blendedness',
+              handlelength=1.3,
+              handletextpad=0.0,
+              columnspacing=1.3,
+              title_fontsize=18)
 
-    ax.annotate('(0, 0)', xy=(3, 9), xytext=(1, 22),
-                arrowprops={'arrowstyle': '-', 'color': 'Black'},
-                horizontalalignment='left',
-                verticalalignment='bottom',
-                fontsize=20, weight='bold')
+#    ax.annotate('(0, 0)', xy=(3, 9), xytext=(1, 22),
+#                arrowprops={'arrowstyle': '-', 'color': 'Black'},
+#                horizontalalignment='left',
+#                verticalalignment='bottom',
+#                fontsize=20, weight='bold')
     # strings = [str(blend_tuple) for blend_tuple in sorted_blend_tuples]
     # texts = [plt.text(sigmas_pre[i], mean_errs_pre[i], strings[i],
     #                   ha='center', va='center', fontsize=20)
@@ -1260,10 +1364,11 @@ def plot_vs_pair_blendedness(star):
     #             arrowprops=dict(arrowstyle='-', color='Black'),
     #             lim=1000)
 
-    filename = plots_dir / f'{star.name}_by_blendedness_(5,5).png'
+    filename = plots_dir / f'{star.name}_by_blendedness_(5,5).pdf'
     if not plots_dir.exists():
         os.mkdir(plots_dir)
-    fig.savefig(str(filename))
+    ax.margins(0, 0)
+    fig.savefig(str(filename), bbox_inches='tight', pad_inches=0.01)
     plt.close('all')
 
 
@@ -1385,7 +1490,10 @@ def plot_pair_depth_differences(star):
                     linestyle='', marker='o', markersize=5,
                     markerfacecolor='Chocolate',
                     markeredgecolor='Black', ecolor='Peru',
-                    zorder=5, capsize=0, capthick=0)
+                    zorder=5, capsize=0, capthick=0,
+                    label=f'Teff: {star.temperature}\n'
+                    f'[Fe/H]: {star.metallicity}\n'
+                    f'log g: {star.logg}')
 
     # Get results for bins.
     bin_lims = np.linspace(0, 1, 11)
@@ -1413,7 +1521,9 @@ def plot_pair_depth_differences(star):
                           capsize=3, capthick=2,
                           zorder=5)
 
-    outfile = plots_dir / f'{star.name}_obs_by_mean_depth.png'
+    ax_pre.legend(loc='lower left', fontsize=14)
+    category = find_star_category(star)
+    outfile = plots_dir / f'{star.name}_obs_by_mean_depth_{category}.png'
     fig.savefig(str(outfile))
     plt.close('all')
 
@@ -1530,10 +1640,34 @@ if __name__ == '__main__':
 
         # create_radial_velocity_plot()
 
-        # plot_vs_pair_blendedness(hd146233)
+#        plot_vs_pair_blendedness(hd146233)
 
-        # plot_pair_depth_differences(hd146233)
+#        plot_pair_depth_differences(hd146233)
         # plot_pair_depth_differences(Star('HD72769',
-        #                                  '/Users/dberke/data_output/HD72769'))
+        #                             '/Users/dberke/data_output/HD72769'))
         # plot_pair_depth_differences(Star('HD98281',
-        #                                  '/Users/dberke/data_output/HD98281'))
+        #                             '/Users/dberke/data_output/HD98281'))
+        # plot_pair_depth_differences(Star('HD97343',
+        #                             '/Users/dberke/data_output/HD97343'))
+        # plot_pair_depth_differences(Star('HD144585',
+        #                             '/Users/dberke/data_output/HD144585'))
+        # plot_pair_depth_differences(Star('HD82943',
+        #                             '/Users/dberke/data_output/HD82943'))
+        # plot_pair_depth_differences(Star('Vesta',
+        #                             '/Users/dberke/data_output/Vesta'))
+        # plot_pair_depth_differences(Star('HD96700',
+        #                             '/Users/dberke/data_output/HD96700'))
+        # plot_pair_depth_differences(Star('HD114853',
+        #                             '/Users/dberke/data_output/HD114853'))
+        # plot_pair_depth_differences(Star('HD134060',
+        #                             '/Users/dberke/data_output/HD134060'))
+        # plot_pair_depth_differences(Star('HD1388',
+        #                             '/Users/dberke/data_output/HD1388'))
+        # plot_pair_depth_differences(Star('HD140901',
+        #                             '/Users/dberke/data_output/HD140901'))
+        # plot_pair_depth_differences(Star('HD45184',
+        #                             '/Users/dberke/data_output/HD45184'))
+        # plot_pair_depth_differences(Star('HD20807',
+        #                             '/Users/dberke/data_output/HD20807'))
+#        plot_pair_depth_differences(Star('HD78429',
+#                                    '/Users/dberke/data_output/HD78429'))
