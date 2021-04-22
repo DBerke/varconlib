@@ -12,13 +12,10 @@ tansitions by various parameters.
 
 import argparse
 import csv
-from inspect import signature
 from itertools import tee
 import os
 from pathlib import Path
 import pickle
-from pprint import pprint
-import sys
 import time
 
 from astropy.coordinates import SkyCoord
@@ -27,14 +24,11 @@ import cmasher as cmr
 import matplotlib
 from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 import matplotlib.ticker as ticker
 import numpy as np
 import numpy.ma as ma
-from numpy import cos, sin
-from p_tqdm import p_map
+from p_tqdm import p_map, t_map
 import pandas as pd
-from scipy.optimize import curve_fit
 from scipy.stats import norm
 from tqdm import tqdm
 import unyt as u
@@ -106,24 +100,6 @@ def read_csv_file(pair_label, csv_dir, era):
 
     infile = csv_dir / f'{era}/{pair_label}_pair_separations_{era}.csv'
     return pd.read_csv(infile)
-
-
-def parameter_plot(parameter, passed_ax):
-    """
-    Plot pairs for a given parameter upon a given axis.
-
-    Parameters
-    ----------
-    parameter : str, ('temperature', 'metallicity', 'logg')
-        The parameter to plot against
-    passed_ax : `matplotlib.axis.Axes`
-        An `Axes` object on which to plot the values.
-
-    Returns
-    -------
-    None.
-
-    """
 
 
 def plot_vs(parameter):
@@ -1343,7 +1319,7 @@ def plot_pair_depth_differences(star):
         os.mkdir(plots_dir)
 
     filename = vcl.output_dir /\
-        f'fit_params/quadratic_pairs_4.0sigma_params.hdf5'
+        'fit_params/quadratic_pairs_4.0sigma_params.hdf5'
     fit_results_dict = get_params_file(filename)
     sigma_sys_dict = fit_results_dict['sigmas_sys']
 
@@ -1451,7 +1427,7 @@ def plot_pair_depth_differences(star):
         ax.set_xlim(left=-0.001, right=0.35)
     for ax in (ax_pre_chi, ax_post_chi):
         ax.axhline(y=1, color='Black', linestyle='--')
-        ax.set_ylim(bottom=0, top=2)
+        ax.set_ylim(bottom=0, top=3)
 
     if star.hasObsPre:
         full_errs_pre = np.sqrt(pair_model_err_pre ** 2 +
@@ -1499,7 +1475,7 @@ def plot_pair_depth_differences(star):
                      label='Mean pair depth')
         ax_post.legend()
 
-    add_star_information(star, ax_pre_wmean, (0.1, 0.5))
+    add_star_information(star, ax_pre_wmean, (0.1, 0.51))
 
     # Get results for bins.
     bin_lims = np.linspace(0, 0.35, 15)
@@ -1524,7 +1500,7 @@ def plot_pair_depth_differences(star):
         ax_pre_wmean.errorbar(midpoints, w_means, yerr=eotwms,
                               color='Green')
         ax_pre_chi.plot(midpoints, chisq, color='SaddleBrown',
-                        marker='.')
+                        marker='o', markersize=5)
 
     if star.hasObsPost:
         midpoints, w_means, eotwms, chisq = [], [], [], []
@@ -1546,7 +1522,7 @@ def plot_pair_depth_differences(star):
         ax_post_wmean.errorbar(midpoints, w_means, yerr=eotwms,
                                color='Green')
         ax_post_chi.plot(midpoints, chisq, color='RoyalBlue',
-                         marker='.')
+                         marker='o', markersize=5)
     # plt.show(fig)
     outfile = plots_dir /\
         f'{star.name}_{star.numObs}_obs_by_depth_difference.png'
@@ -2641,8 +2617,8 @@ if args.stars is not None and args.sigma_sys_vs_pair_separations:
     plot_sigma_sys_vs_pair_separation(star)
 
 # Create plots as a function of pair separation distance.
-if args.stars is not None and args.model is not None and args.sigma is not None\
-        and args.model_diff_vs_pair_separations:
+if args.stars is not None and args.model is not None\
+        and args.sigma is not None and args.model_diff_vs_pair_separations:
     if len(args.stars) == 1:
         plot_model_diff_vs_pair_separation(star, args.model.replace('-', '_'),
                                            n_sigma=args.sigma)
@@ -2676,7 +2652,7 @@ if args.stars is not None and args.plot_depth_differences:
     if len(args.stars) == 1:
         plot_pair_depth_differences(star)
     if len(args.stars) > 1:
-        p_map(plot_pair_depth_differences, stars)
+        t_map(plot_pair_depth_differences, stars)
         # for star_name in tqdm(args.stars):
         #     plot_pair_depth_differences(get_star(star_name))
 
