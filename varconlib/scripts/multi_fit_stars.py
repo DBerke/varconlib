@@ -562,8 +562,8 @@ def main():
                         points = residuals.count()
                         outliers = total_stars - points
                         ax.annotate(f'Blendedness: {transition.blendedness}\n'
-                                    f'#Stars: {points}\n'
-                                    f'#Outliers: {outliers}',
+                                    f'Stars: {points}\n'
+                                    f'Outliers: {outliers}',
                                     (0.01, 0.99),
                                     xycoords='axes fraction',
                                     verticalalignment='top')
@@ -762,8 +762,8 @@ def main():
                         points = residuals.count()
                         outliers = total_stars - points
                         ax.annotate(f'Blend tuple: {pair.blendTuple}\n'
-                                    f'#Stars: {points}\n'
-                                    f'#Outliers: {outliers}',
+                                    f'Stars: {points}\n'
+                                    f'Outliers: {outliers}',
                                     (0.01, 0.99),
                                     xycoords='axes fraction',
                                     verticalalignment='top')
