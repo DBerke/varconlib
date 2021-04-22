@@ -14,21 +14,18 @@ from json.decoder import JSONDecodeError
 import os
 from pathlib import Path
 import pickle
-import sys
 import time
 
 from bidict import bidict
 import h5py
 import hickle
 import numpy as np
-import numpy.ma as ma
 from tqdm import tqdm
 import unyt as u
 
 import varconlib as vcl
 from varconlib.exceptions import (HDF5FileNotFoundError,
                                   PickleFilesNotFoundError)
-from varconlib.miscellaneous import get_params_file
 from varconlib.star import Star
 
 
@@ -237,6 +234,7 @@ def main():
         vprint('Applying values from Nordstrom et al. 2004.')
 
     excluded_hot_stars = 0
+    excluded_metal_poor_stars = 0
     excluded_obs = 0
 
     for star_dir in tqdm(args.star_names):
@@ -253,13 +251,19 @@ def main():
             elif args.nordstrom2004:
                 star.getStellarParameters('Nordstrom2004')
             if not args.include_hot_stars:
-                if star.temperature > 6077 * u.K:
+                if star.temperature > 6072 * u.K:
                     # Don't add this star to the database.
-                    vprint(f'Found {star.name} to be too hot'
+                    vprint(f'{star.name} was too hot'
                            f' ({star.temperature}).')
                     excluded_hot_stars += 1
                     excluded_obs += star.getNumObs()
                     continue
+            if star.metallicity < -0.45:
+                vprint(f'{star.name} was too metal-poor'
+                       f' ({star.metallicity}).')
+                excluded_metal_poor_stars += 1
+                excluded_obs += star.getNumObs()
+                continue
             star_list.append(star)
             vprint(f'Added {star.name}')
 
@@ -267,6 +271,8 @@ def main():
     if not args.include_hot_stars:
         tqdm.write(f'{excluded_hot_stars} stars were too hot'
                    f' ({excluded_obs} observations in total).')
+
+    vprint(f'{excluded_metal_poor_stars} were too metal-poor.')
 
     tqdm.write('Unpickling transitions list..')
     with open(vcl.final_selection_file, 'r+b') as f:
