@@ -1435,13 +1435,13 @@ class Star(object):
     @property
     def obsBaseline(self):
         """
-        Return the period between first and last observations for this star.
+        Return the time between first and last observations for this star.
 
         Returns
         -------
         `datetime.timedelta`
-            A `timedelta` object represting the time period between the first
-            and the last observations of this star.
+            A `timedelta` object denoting the time period between the first
+            and last observations of this star.
 
         """
         obs_dates = [dt.datetime.fromisoformat(x) for x
