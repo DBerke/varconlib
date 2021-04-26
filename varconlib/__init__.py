@@ -47,6 +47,10 @@ config = configparser.ConfigParser(interpolation=configparser.
                                    ExtendedInterpolation())
 config.read(config_file)
 
+# Directory where data from HARPS is located.
+harps_dir = Path(config['PATHS']['harps_dir'])
+
+# Directory where most data output from analysis goes.
 output_dir = Path(config['PATHS']['output_dir'])
 
 # The directory to store generated stellar databases in.
