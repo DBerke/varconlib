@@ -9,7 +9,6 @@ This library contains functions to deal with opening 2D HARPS extracted e2ds
 files.
 """
 
-import configparser
 from copy import copy
 import datetime as dt
 from math import isnan
