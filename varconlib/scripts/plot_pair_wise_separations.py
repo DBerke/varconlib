@@ -188,7 +188,7 @@ def plot_distance():
             vprint(f'Collecting data for {pair_label}.')
 
             pair_plots_dir = vcl.output_dir /\
-                f'pair_result_plots/heliocentric_distance'
+                'pair_result_plots/heliocentric_distance'
             if not pair_plots_dir.exists():
                 os.mkdir(pair_plots_dir)
             data_pre = read_csv_file(pair_label, csv_dir, 'pre')
@@ -244,7 +244,8 @@ def plot_distance():
 
 
 def plot_galactic_distance():
-    """Plot pair separations as a function of distance from the Galactic center.
+    """
+    Plot pair separations as a function of distance from the Galactic center.
 
 
     Returns
@@ -282,7 +283,7 @@ def plot_galactic_distance():
             vprint(f'Collecting data for {pair_label}.')
 
             pair_plots_dir = vcl.output_dir /\
-                f'pair_result_plots/galactocentric_distance'
+                'pair_result_plots/galactocentric_distance'
             if not pair_plots_dir.exists():
                 os.mkdir(pair_plots_dir)
             data_pre = read_csv_file(pair_label, csv_dir, 'pre')
@@ -399,7 +400,8 @@ def plot_pair_stability(star, pair_label):
     ax_pre = fig.add_subplot(gs[0, 0])
     ax_post = fig.add_subplot(gs[3, 0], sharex=ax_pre, sharey=ax_pre)
     ax_bins_pre = fig.add_subplot(gs[1, 0], sharex=ax_pre)
-    ax_bins_post = fig.add_subplot(gs[4, 0], sharex=ax_post, sharey=ax_bins_pre)
+    ax_bins_post = fig.add_subplot(gs[4, 0], sharex=ax_post,
+                                   sharey=ax_bins_pre)
     for ax in (ax_pre, ax_post, ax_bins_pre, ax_bins_post):
         ax.axhline(y=0, color='Gray', linestyle=':', alpha=0.9)
         ax.xaxis.set_major_locator(ticker.MultipleLocator(base=5))
@@ -465,8 +467,8 @@ def plot_pair_stability(star, pair_label):
             midpoints.append((lims[1] + lims[0]) / 2)
             w_mean, eotwm = weighted_mean_and_error(m_diffs[mask],
                                                     m_errs[mask])
-            chisq = calc_chi_squared_nu(m_diffs[mask],
-                                        m_errs[mask], 1)
+#            chisq = calc_chi_squared_nu(m_diffs[mask],
+#                                        m_errs[mask], 1)
             w_means.append(w_mean)
             eotwms.append(eotwm)
 
@@ -545,8 +547,8 @@ def plot_pair_stability(star, pair_label):
             midpoints.append((lims[1] + lims[0]) / 2)
             w_mean, eotwm = weighted_mean_and_error(m_diffs[mask],
                                                     m_errs[mask])
-            chisq = calc_chi_squared_nu(m_diffs[mask],
-                                        m_errs[mask], 1)
+#            chisq = calc_chi_squared_nu(m_diffs[mask],
+#                                        m_errs[mask], 1)
             w_means.append(w_mean)
             eotwms.append(eotwm)
 
@@ -598,9 +600,9 @@ def plot_sigma_sys_vs_pair_separation(star):
                      'pair_separation_investigation/vs_sigma_sys')
 
     average_seps_pre = []
-    average_seps_post = []
+#    average_seps_post = []
     sigma_sys_list_pre = []
-    sigma_sys_list_post = []
+#    sigma_sys_list_post = []
 
     model_seps = []
     model_sigma_sys = []
@@ -617,7 +619,7 @@ def plot_sigma_sys_vs_pair_separation(star):
 
         weighted_mean = np.average(m_seps, weights=m_errs**-2)
 
-        sigma = np.std(seps_no_nans).to(u.m/u.s)
+#        sigma = np.std(seps_no_nans).to(u.m/u.s)
 
         results = find_sys_scatter(constant_model, x,
                                    m_seps,
@@ -743,8 +745,9 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=4.0):
             m_errs = ma.array(errs_stat[mask].value)
 
             try:
-                weighted_mean, error_on_weighted_mean = weighted_mean_and_error(
-                    m_seps, m_errs)
+                weighted_mean,\
+                    error_on_weighted_mean = weighted_mean_and_error(
+                            m_seps, m_errs)
             except ZeroDivisionError:
                 print(separations)
                 print(errs_stat)
@@ -760,9 +763,10 @@ def plot_model_diff_vs_pair_separation(star, model, n_sigma=4.0):
             m_c_errs = ma.array(errs_stat[mask].value)
 
             try:
-                weighted_c_mean, weight_c_sum = np.average(m_c_seps,
-                                                           weights=m_c_errs**-2,
-                                                           returned=True)
+                weighted_c_mean,\
+                    weight_c_sum = np.average(m_c_seps,
+                                              weights=m_c_errs**-2,
+                                              returned=True)
             except ZeroDivisionError:
                 print(separations, errs_stat)
                 print(corrected_separations, corrected_errs_stat)
@@ -1099,7 +1103,8 @@ def plot_duplicate_pairs(star):
                     p_index1)
                 pair_sep_pre1.append(w_mean)
                 pair_sep_err_pre1.append(
-                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0, p_index1]**2))
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0,
+                                                               p_index1]**2))
                 w_mean, eotwm = get_weighted_mean(
                     star.pairModelOffsetsArray,
                     star.pairModelErrorsArray,
@@ -1107,7 +1112,8 @@ def plot_duplicate_pairs(star):
                     p_index1)
                 pair_model_pre1.append(w_mean)
                 pair_model_err_pre1.append(
-                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0, p_index1]**2))
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0,
+                                                               p_index1]**2))
 
                 # Get the values for the second duplicate
                 time_slice = slice(None, star.fiberSplitIndex)
@@ -1118,7 +1124,8 @@ def plot_duplicate_pairs(star):
                     p_index2)
                 pair_sep_pre2.append(w_mean)
                 pair_sep_err_pre2.append(
-                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0, p_index2]**2))
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0,
+                                                               p_index2]**2))
                 w_mean, eotwm = get_weighted_mean(
                     star.pairModelOffsetsArray,
                     star.pairModelErrorsArray,
@@ -1126,7 +1133,8 @@ def plot_duplicate_pairs(star):
                     p_index2)
                 pair_model_pre2.append(w_mean)
                 pair_model_err_pre2.append(
-                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0, p_index2]**2))
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[0,
+                                                               p_index2]**2))
 
             if star.hasObsPost:
                 # Get the values for the first instance.
@@ -1138,7 +1146,8 @@ def plot_duplicate_pairs(star):
                     p_index1)
                 pair_sep_post1.append(w_mean)
                 pair_sep_err_post1.append(
-                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[1, p_index1]**2))
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[1,
+                                                               p_index1]**2))
                 w_mean, eotwm = get_weighted_mean(
                     star.pairModelOffsetsArray,
                     star.pairModelErrorsArray,
@@ -1146,7 +1155,8 @@ def plot_duplicate_pairs(star):
                     p_index1)
                 pair_model_post1.append(w_mean)
                 pair_model_err_post1.append(
-                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[1, p_index1]**2))
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[1,
+                                                               p_index1]**2))
 
                 # Get the values for the second instance.
                 time_slice = slice(star.fiberSplitIndex, None)
@@ -1157,7 +1167,8 @@ def plot_duplicate_pairs(star):
                     p_index2)
                 pair_sep_post2.append(w_mean)
                 pair_sep_err_post2.append(
-                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[1, p_index2]**2))
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[1,
+                                                               p_index2]**2))
                 w_mean, eotwm = get_weighted_mean(
                     star.pairModelOffsetsArray,
                     star.pairModelErrorsArray,
@@ -1165,7 +1176,8 @@ def plot_duplicate_pairs(star):
                     p_index2)
                 pair_model_post2.append(w_mean)
                 pair_model_err_post2.append(
-                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[1, p_index2]**2))
+                    np.sqrt(eotwm**2 + star.pairSysErrorsArray[1,
+                                                               p_index2]**2))
 
     # pprint(pair_order_numbers)
 
@@ -1957,7 +1969,8 @@ def plot_vs_radial_velocity(star_list):
 
     """
 
-    plots_dir = Path('/Users/dberke/Pictures/sample_radial_velocity_dependence')
+    plots_dir = Path('/Users/dberke/Pictures/'
+                     'sample_radial_velocity_dependence')
 
     pairs_to_use = ('4652.593Cr1_4653.460Cr1_29',
                     '4652.593Cr1_4653.460Cr1_30',
@@ -2520,19 +2533,20 @@ parser.add_argument('--sigma', type=float, action='store',
 parser.add_argument('--heliocentric-distance', action='store_true',
                     help='Plot as a function of distance from the Sun.')
 parser.add_argument('--galactocentric-distance', action='store_true',
-                    help='Plot as a function of distance from galactic center.')
+                    help='Plot as a function of distance from galactic'
+                    ' center.')
 parser.add_argument('--sigma-sys-vs-pair-separations', action='store_true',
                     help='Plot the sigma_sys for each pair as a function'
                     ' of its weighted-mean separation.')
 parser.add_argument('--model-diff-vs-pair-separations', action='store_true',
-                    help='Plot the model difference for each pair as a function'
-                    ' of it weighted-mean separation.')
+                    help='Plot the model difference for each pair as a'
+                    " function of it's weighted-mean separation.")
 parser.add_argument('--plot-duplicate-pairs', action='store_true',
                     help='Plot differences in measured and model-corrected'
                     ' pair separations for duplicate pairs for a given star.')
 parser.add_argument('--plot-depth-differences', action='store_true',
-                    help='Create a plot of systematic differences as a function'
-                    ' of pair depth differences.')
+                    help='Create a plot of systematic differences as a'
+                    ' function of pair depth differences.')
 parser.add_argument('--plot-vs-blendedness', action='store_true',
                     help='Plot pairs sorted by blendedness.')
 parser.add_argument('--plot-vs-radial-velocity', action='store_true',
