@@ -26,7 +26,7 @@ import h5py
 import hickle
 import numpy as np
 import numpy.ma as ma
-from tqdm import tqdm, trange
+from tqdm import tqdm
 import unyt as u
 from unyt import accepts, returns
 from unyt.dimensions import length as u_length
@@ -94,8 +94,8 @@ class Star(object):
         `fitOffsetsCorrectedArray`.
     transitionModelArray : `unyt.unyt_array`
         A 2D array of model values for each transition offset based on the
-        stellar parameters of this star. Has two rows, with row 0 being the pre-
-        fiber change values, and row 1 the post-change values.
+        stellar parameters of this star. Has two rows, with row 0 being the
+        pre- fiber change values, and row 1 the post-change values.
     transitionOutliersMask : `np.array`
         A 2D array of boolean values where True indicates a masked value, made
         from `transitionModelOffsetsArray` by masking any outliers beyond the
@@ -128,9 +128,9 @@ class Star(object):
         is masked).
     pairModelOffsetsArray : `unyt.unyt_array`
         A 2D array of pair separation values from `pairSeparationsArray` with
-        the values from `pairModelArray` subtracted from them, and the mask from
-        `pairOutliersMask` applied to remove outliers beyond a given sigma limit
-        (5.0 by default).
+        the values from `pairModelArray` subtracted from them, and the mask
+        from `pairOutliersMask` applied to remove outliers beyond a given sigma
+        limit (5.0 by default).
     pairModelErrorsArray : `unyt.unyt_array`
         A 2D array holding the uncertainties for `pairModelOffsetsArray`, using
         the same `pairOutliersMask`.
@@ -182,9 +182,9 @@ class Star(object):
         The logarithm of the surface gravity of the star. Technicallly in units
         of cm / s / s but unitless in code.
     fiberSplitIndex : None or int
-        A value representing either the index of the first observation after the
-        HARPS fiber change in May 2015, or None if all observations were prior
-        to the change.
+        A value representing either the index of the first observation after
+        the HARPS fiber change in May 2015, or None if all observations were
+        prior to the change.
     numObsPre : int
         The number of observations of this star taken before the fiber change.
     numObsPost : int
@@ -196,8 +196,8 @@ class Star(object):
     specialAttributes: dict
         A dictionary (possibly empty) of certain characteristics or attributes
         of some stars which are rare enough to not warrant storing for every
-        stars, e.g., whether a star has a known companion (planet or star) or if
-        it is known to be variable. Currently has two recognized keywords:
+        stars, e.g., whether a star has a known companion (planet or star) or
+        if it is known to be variable. Currently has three recognized keywords:
             'is_variable' : the type of variable (BY Draconis, etc.)
             'is_multiple' : the total number of stars in the system
             'has_planets': the number of planets around this star
@@ -334,9 +334,9 @@ class Star(object):
             Which paper's derivation of the stellar parameters for this star to
             use.
         perform_full_analysis : bool, Default : False
-            If True, will attempt to create model-corrected transition and pair-
-            wise separation arrays. Doing this requires external files to be in
-            place, so it is False by default.
+            If True, will attempt to create model-corrected transition and
+            pair- wise separation arrays. Doing this requires external files to
+            be in place, so it is False by default.
 
         """
 
@@ -426,7 +426,7 @@ class Star(object):
                                              f' exist: {star_dir}')
 
         # Get a list of pickled fit results in the given directory.
-        search_str = str(star_dir) + f'/HARPS*/pickles_int/*fits.lzma'
+        search_str = str(star_dir) + '/HARPS*/pickles_int/*fits.lzma'
         self.pickle_files = [Path(path) for path in sorted(glob(search_str))]
 
         num_obs = len(self.pickle_files)
@@ -441,7 +441,7 @@ class Star(object):
         for transition in self.transitionsList:
             num_cols += len(transition.ordersToFitIn)
 
-        # Set up 2D arrays with entries for each transition in each observation.
+        # Set up 2D arrays with entries for each transition in each observation
         self.fitMeansArray = np.full((num_obs, num_cols),
                                      np.nan, dtype=float) * u.angstrom
         self.fitErrorsArray = np.full((num_obs, num_cols),
@@ -577,12 +577,12 @@ class Star(object):
         This method takes a function of three stellar parameters (temperature,
         metallicity, and surface gravity) and a variable number of
         coefficients. These coefficients are provided in a dictionary for each
-        transition, for pre- and post-fiber change instances. It then calculates
-        a correction for each observation's fitted wavelength and checks if the
-        resultant position is more than `n_sigma` times the statistical error
-        for that transition from zero. It returns an array corrected by the
-        value of the function for each transition (given the stars's
-        temperature, metallicity, and surface gravity) and a mask
+        transition, for pre- and post-fiber change instances. It then
+        calculates a correction for each observation's fitted wavelength and
+        checks if the resultant position is more than `n_sigma` times the
+        statistical error for that transition from zero. It returns an array
+        corrected by the value of the function for each transition (given the
+        stars's temperature, metallicity, and surface gravity) and a mask
         for measurements more than `n_sigma` sigma away from the mean.
 
 
@@ -620,12 +620,8 @@ class Star(object):
         # Set up an array to hold the corrected values.
         corrected_array = np.full_like(self.fitOffsetsNormalizedArray,
                                        fill_value=np.nan, dtype=float)
-        # Initialize the mask to False (0, not masked) with the same shape
-        # as the data for this star:
-        mask_array = np.full_like(self.fitOffsetsNormalizedArray, False,
-                                  dtype=bool)
-        # Create a copy of the errors array which we can change values to NaN in
-        # later on, since masks don't play well with Unyt arrays.
+        # Create a copy of the errors array which we can change values to NaN
+        # in later on, since masks don't play well with Unyt arrays.
         masked_errs_array = self.fitErrorsArray.to_ndarray()
         # Create an array to keep track of the model values.
         # Two rows: 0 = pre, 1 = post.
@@ -648,9 +644,9 @@ class Star(object):
 
                 pre_slice = slice(None, self.fiberSplitIndex)
                 # Compute the model value for this transition and star.
-                model_value = u.unyt_quantity(function(stellar_params,
-                                                       *coeffs_dict[label_pre]),
-                                              units=u.m/u.s)
+                model_value = u.unyt_quantity(function(
+                        stellar_params, *coeffs_dict[label_pre]),
+                        units=u.m/u.s)
                 # Store the model value for the pre-change era.
                 model_values_array[0, col_num] = model_value.value
                 # Apply it to all measurements of this transition.
@@ -792,12 +788,8 @@ class Star(object):
         # Set up an array to hold the corrected values.
         corrected_array = np.full_like(self.pairSeparationsArray,
                                        fill_value=np.nan, dtype=float)
-        # Initialize the mask to False (0, not masked) with the same shape
-        # as the data for this star:
-        mask_array = np.full_like(self.pairSeparationsArray, False,
-                                  dtype=bool)
-        # Create a copy of the errors array which we can change values to NaN in
-        # later on, since masks don't play well with Unyt arrays.
+        # Create a copy of the errors array which we can change values to NaN
+        # in later on, since masks don't play well with Unyt arrays.
         masked_errs_array = self.pairSepErrorsArray.to_ndarray()
         # Create an array to keep track of the corrections themselves.
         # Two rows: 0 = pre, 1 = post.
@@ -1103,8 +1095,8 @@ class Star(object):
         Parameters
         ----------
         order : int
-            The HARPS order on which the observation was made. This should be an
-            integer in the range [0, 71].
+            The HARPS order on which the observation was made. This should be
+            an integer in the range [0, 71].
         pixel : int
             The horizontal pixel position on the HARPS CCD where the center of
             the observed feature was found. Should be an integer in the range
@@ -1188,8 +1180,8 @@ class Star(object):
         |  4  |   135 - 161    |    0 - 25                 |
         ----------------------------------------------------
 
-        Note that block 4 doesn't have its own residual values, so it uses those
-        from block 3.
+        Note that block 4 doesn't have its own residual values, so it uses
+        those from block 3.
 
         Returns
         -------
@@ -1404,7 +1396,8 @@ class Star(object):
 
     @property
     def numObsPost(self):
-        """Return the number of observations post-fiber-change for this star."""
+        """Return the number of observations post-fiber-change for this star.
+        """
         if self.fiberSplitIndex == 0:
             return self.getNumObs()
         elif self.fiberSplitIndex is None:
@@ -1424,7 +1417,8 @@ class Star(object):
 
     @property
     def hasObsPost(self):
-        """Return a boolean denoting if post-fiber-change observations exist."""
+        """Return a boolean denoting if post-fiber-change observations exist.
+        """
         if self._hasObsPost is None:
             if self.fiberSplitIndex is None:
                 self._hasObsPost = False
@@ -1451,7 +1445,8 @@ class Star(object):
 
     def getSpecialAttributes(self, star_dir=None):
         """
-        Read and save any special attributes for the star from an external file.
+        Read and save any special attributes for the star from an external
+        file.
 
         In order to capture certain factor which apply only to some stars, this
         function will read an optional JSON file in the star's directory and
@@ -1461,7 +1456,7 @@ class Star(object):
         ----------
         star_dir : `pathlib.Path`
             The path to the directory where the star is being constructed/read
-            from. By default will use the directory used when instantiatiing the
+            from. By default will use the directory used when instantiating the
             star if given (wll be *None* otherwise).
 
         Returns
