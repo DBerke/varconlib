@@ -37,7 +37,9 @@ import unyt as u
 import varconlib as vcl
 import varconlib.fitting as fit
 from varconlib.miscellaneous import (remove_nans, weighted_mean_and_error,
-                                     get_params_file)
+                                     get_params_file,
+                                     velocity2wavelength, wavelength2index)
+from varconlib.obs2d import HARPSFile2DScience
 from varconlib.star import Star
 from varconlib.transition_line import roman_numerals
 
@@ -138,7 +140,6 @@ def find_star_category(star):
         if (teff_low <= teff <= teff_high) and\
            (feh_low <= feh <= feh_high) and\
            (logg_low <= logg <= logg_high):
-            # tqdm.write(f'{star.name:>8}: {teff} {feh} {logg} {categories[i]}')
             return categories[i]
 
     # tqdm.write(f'{star.name:>8}: {teff} {feh} {logg}')
@@ -155,6 +156,20 @@ def create_HR_diagram_plot():
 
     """
 
+    # Get all stars from the Nordstrom et al. 2004 catalog.
+    nordstrom_table = vcl.data_dir / 'Nordstrom+2004_table1.dat'
+    all_colors, all_mags = np.loadtxt(nordstrom_table,
+                                      dtype=str, unpack=True,
+                                      delimiter='|', usecols=(10, 16))
+    nordstrom_mags, nordstrom_colors = [], []
+    for mag, color in zip(all_mags, all_colors):
+        try:
+            nordstrom_mags.append(float(mag))
+            nordstrom_colors.append(float(color))
+        except ValueError:
+            pass
+
+    # Get stars in our initial selection.
     nordstrom_stellar_sample_file = vcl.data_dir / "StellarSampleData_full.csv"
     star_mags, star_colors = np.loadtxt(nordstrom_stellar_sample_file,
                                         dtype=str, unpack=True,
@@ -207,43 +222,52 @@ def create_HR_diagram_plot():
 
     vesta = Star('Vesta', '/Users/dberke/data_output/Vesta')
 
-    colors = cmr.take_cmap_colors('cmr.chroma', 3,
-                                  cmap_range=(0.45, 0.95), return_fmt='hex')
+    colors = cmr.take_cmap_colors('cmr.sunburst', 3,
+                                  cmap_range=(0.4, 0.9), return_fmt='hex')
 
     fig = plt.figure(figsize=(5, 5), tight_layout=True)
     ax = fig.add_subplot(1, 1, 1)
 
-    ax.set_xlabel(r'Color, $b-y$')
-    ax.set_ylabel(r'Absolute magnitude, M$_\mathrm{V}$')
-    ax.set_ylim(bottom=5.9, top=3.9)
+    ax.set_xlabel(r'Colour, $b-y$', fontsize=18)
+    ax.set_ylabel(r'Absolute magnitude, M$_\mathrm{V}$', fontsize=18)
+    ax.set_ylim(bottom=5.66, top=3.95)
     ax.set_xlim(left=0.25, right=0.53)
 
     # Plot all the stars in the GCS survey.
-    ax.plot(star_colors, star_mags,
-            color='Black', marker='.', markersize=1,
-            linestyle='', zorder=1)
+#    ax.plot(nordstrom_colors, nordstrom_mags,
+#            color='Gray', marker='.', markersize=1,
+#            linestyle='', zorder=1,
+#            label=r'GCS')
 
+    # Plot the Sun.
+    ax.plot(vesta.color, vesta.absoluteMagnitude,
+            color='LightSkyBlue', marker='o', markersize=8,
+            markeredgecolor='Black', markeredgewidth=1,
+            linestyle='', zorder=6, alpha=1,
+            label='Sun')
+    # Plot solar twins.
     ax.plot(sp1_colors, sp1_mags,
             color=colors[0],
-            markeredgecolor='Black', marker='o', markersize=6,
-            linestyle='', alpha=0.6,
-            label='Solar twins', zorder=4)
+            markeredgecolor='Black', marker='D', markersize=6,
+            linestyle='', alpha=1,
+            label='Solar twins', zorder=5)
+    # Plot solar analogues.
     ax.plot(sp3_colors, sp3_mags,
             color=colors[1],
-            markeredgecolor='Black', marker='s', markersize=5,
-            linestyle='', alpha=0.6,
-            label='Solar analogs', zorder=3)
+            markeredgecolor='Black', marker='s', markersize=6.5,
+            linestyle='', alpha=1,
+            label='Solar analogues', zorder=4)
+    # Plot solar-type stars.
     ax.plot(other_colors, other_mags,
             color=colors[2],
-            markeredgecolor='Black', marker='h', markersize=6,
-            linestyle='', alpha=0.6,
-            label='Other stars', zorder=2)
-
-    ax.plot(vesta.color, vesta.absoluteMagnitude,
-            color='Gold', marker='*', markersize=12,
-            markeredgecolor='Black',
-            linestyle='', zorder=5, alpha=0.8,
-            label='Sun')
+            markeredgecolor='Black', marker='h', markersize=7.5,
+            linestyle='', alpha=1,
+            label='Solar-type stars', zorder=3)
+    # Plot the stars in our initial selection box.
+    ax.plot(star_colors, star_mags,
+            color='DimGray', marker='o', markersize=2,
+            linestyle='', zorder=2,
+            label='Initial selection')
 
     ax.legend(loc='lower left', fontsize=17,
               handletextpad=0.1, handlelength=0.8,
@@ -299,7 +323,8 @@ def create_example_pair_sep_plots():
     m_seps = m_seps.reshape([len(m_seps), 1])
 
     # Then create a new array from the non-masked data:
-    separations = u.unyt_array(m_seps[~m_seps.mask], units=u.km/u.s).to(u.m/u.s)
+    separations = u.unyt_array(m_seps[~m_seps.mask],
+                               units=u.km/u.s).to(u.m/u.s)
 
     m_eotwms = ma.masked_invalid(star_pair_separations_EotWM[0, :, col])
     m_eotwms = m_eotwms.reshape([len(m_eotwms), 1])
@@ -1372,6 +1397,74 @@ def plot_vs_pair_blendedness(star):
     plt.close('all')
 
 
+def plot_representative_blendedness_plots():
+    """Create a plot showing examples of the various blendedness categories.
+
+    """
+
+    # Vesta observation with SNR = 226
+    data_file = vcl.harps_dir /\
+        'Vesta/data/reduced/'\
+        '2011-09-29/HARPS.2011-09-29T23:30:27.911_e2ds_A.fits'
+
+    data_file = '/Users/dberke/Vesta/data/reduced/'\
+        '2011-09-29/HARPS.2011-09-29T23:30:27.911_e2ds_A.fits'
+
+    obs = HARPSFile2DScience(data_file)
+
+    transitions = {'category0': ('4575.498Fe1_27',
+                                 '5595.288Ni1_51',
+                                 '6167.066Fe1_61'),
+                   'category1': ('4589.484Cr2_28',
+                                 '5143.171Fe1_42',
+                                 '6131.832Ni1_60'),
+                   'category2': ('4492.660Fe2_25',
+                                 '5187.997Ni1_43',
+                                 '6245.542Si1_62'),
+                   'category3': ('4223.402Fe1_16',
+                                 '5536.376Fe2_49',
+                                 '6165.470Ca1_61'),
+                   'category4': ('4295.006Fe1_18',
+                                 '5146.101Cr1_42',
+                                 '5596.208Fe1_51'),
+                   'category5': ('4309.365Mn2_19',
+                                 '5147.740Fe1_42',
+                                 '5209.550Cr1_44')}
+
+    # Create the plot.
+    fig = plt.figure(figsize=(18, 4), tight_layout=True)
+    axes = fig.subplots(1, 6, sharey=True, gridspec_kw={'wspace': 0})
+
+    for i, category in tqdm(enumerate(transitions.keys())):
+        axes[i].set_xlabel(f'Blendedness: {category[-1]}')
+        for j, t_label in enumerate(transitions[category]):
+            tqdm.write(f'Working on {t_label}')
+            wavelength = float(t_label[:8]) * u.angstrom
+            order_num = int(t_label[-2:])
+
+            wavelength_data = obs.barycentricArray[order_num]
+            flux_data = obs.photonFluxArray[order_num]
+            error_data = obs.errorArray[order_num]
+
+            plot_range = velocity2wavelength(15 * u.km/u.s,
+                                             wavelength)
+
+            low_index = wavelength2index(wavelength - plot_range,
+                                         wavelength_data)
+            high_index = wavelength2index(wavelength + plot_range,
+                                          wavelength_data)
+            indices = [i for i in range(high_index - low_index)]
+
+            axes[i].errorbar(indices,
+                             flux_data[low_index:high_index],
+                             yerr=error_data[low_index:high_index],
+                             barsabove=True,
+                             color='Black', ecolor='Chocolate',
+                             linestyle='-', marker='')
+
+    plt.show()
+
+
 def plot_pair_depth_differences(star):
     """
     Create a plot to investigate pair depth differences for systematics.
@@ -1393,7 +1486,7 @@ def plot_pair_depth_differences(star):
     plots_dir = Path('/Users/dberke/Pictures/paper_plots_and_tables/plots')
 
     filename = vcl.output_dir /\
-        f'fit_params/quadratic_pairs_4.0sigma_params.hdf5'
+        'fit_params/quadratic_pairs_4.0sigma_params.hdf5'
     fit_results_dict = get_params_file(filename)
     sigma_sys_dict = fit_results_dict['sigmas_sys']
 
@@ -1450,30 +1543,32 @@ def plot_pair_depth_differences(star):
                   width_ratios=(2, 1),
                   wspace=0)
     ax_pre = fig.add_subplot(gs[0, 0])
-    ax_pre_wmean = fig.add_subplot(gs[0, 1], sharey=ax_pre)
-    # ax_clb_pre = fig.add_subplot(gs[0, 1])
+    ax_chi_squared = fig.add_subplot(gs[0, 1], sharey=ax_pre)
 
     ax_pre.set_xlabel('Model offset (m/s)')
-    ax_pre_wmean.set_xlabel('Weighted\nmean (m/s)', fontsize=18)
+    ax_chi_squared.set_xlabel(r'$\chi^2_{\nu}$', fontsize=18)
     ax_pre.set_ylabel('Normalized mean depth of pair')
 
-    ax_pre_wmean.tick_params(labelleft=False)
+    ax_chi_squared.tick_params(labelleft=False)
 
     ax_pre.set_xlim(left=-45, right=45)
-    ax_pre.set_ylim(top=0.14, bottom=1)
-    ax_pre.xaxis.set_minor_locator(ticker.AutoMinorLocator())
-    ax_pre_wmean.xaxis.set_minor_locator(ticker.AutoMinorLocator())
-    ax_pre_wmean.xaxis.set_major_locator(ticker.FixedLocator([-2, 0, 2]))
-    grid_keywords = {'which': 'major', 'linestyle': '--',
+    ax_pre.set_ylim(top=0.12, bottom=0.74)
+    ax_pre.axvline(x=0, color='Gray', linestyle='--', zorder=0)
+#    ax_pre.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+#    ax_chi_squared.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+    ax_chi_squared.xaxis.set_major_locator(ticker.FixedLocator([0, 1, 2]))
+    ax_chi_squared.axvline(x=1, linestyle='-.', color='Gray',
+                           zorder=0, alpha=1)
+    grid_keywords = {'which': 'major', 'linestyle': ':',
                      'color': 'SeaGreen', 'alpha': 0.8,
                      'linewidth': 1.5}
     ax_pre.yaxis.grid(**grid_keywords)
-    ax_pre_wmean.yaxis.grid(**grid_keywords)
-    ax_pre_wmean.set_xlim(left=-3.5, right=3.5)
-    for ax in (ax_pre, ax_pre_wmean):
-        ax.axvline(x=0, color='Gray', linestyle='--', zorder=0)
+    ax_chi_squared.yaxis.grid(**grid_keywords)
+    ax_chi_squared.set_xlim(left=-0.07, right=2.07)
+    for ax in (ax_pre, ax_chi_squared):
         # ax.xaxis.set_major_locator(ticker.AutoLocator())
         ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
         # ax.xaxis.grid(which='major', color='Gray',
         #               linestyle=':', alpha=0.65)
         # ax.xaxis.grid(which='minor', color='Gray',
@@ -1482,8 +1577,8 @@ def plot_pair_depth_differences(star):
     full_errs_pre = np.sqrt(pair_model_err_pre ** 2 +
                             sigmas_sys_pre ** 2)
     values, mask = remove_nans(pair_model_sep_pre, return_mask=True)
-    # chisq = calc_chi_squared_nu(values,
-    #                             full_errs_pre[mask], 1)
+#    chisq = calc_chi_squared_nu(values,
+#                                full_errs_pre[mask], 1)
     ax_pre.errorbar(pair_model_sep_pre, pair_depth_means,
                     xerr=full_errs_pre,
                     # xerr=pair_model_err_pre,
@@ -1514,24 +1609,304 @@ def plot_pair_depth_differences(star):
         w_means.append(w_mean)
         eotwms.append(eotwm)
 
-        # chisq.append(calc_chi_squared_nu(values, errs, 1))
-    ax_pre_wmean.errorbar(w_means, midpoints, xerr=eotwms,
-                          color='Black', marker='o',
-                          markerfacecolor='White',
-                          capsize=3, capthick=2,
-                          zorder=5)
+        chisq.append(fit.calc_chi_squared_nu(values, errs, 1))
+    ax_chi_squared.errorbar(chisq, midpoints,
+                            color='Black', marker='o',
+                            markerfacecolor='White',
+                            markersize=10, linewidth=2, markeredgewidth=1.5,
+                            capsize=3, capthick=2,
+                            zorder=5)
 
-    ax_pre.legend(loc='lower left', fontsize=14)
+#    ax_pre.legend(loc='lower left', fontsize=14)
     category = find_star_category(star)
-    outfile = plots_dir / f'{star.name}_obs_by_mean_depth_{category}.png'
+    outfile = plots_dir / f'{star.name}_obs_by_mean_depth_{category}.pdf'
     fig.savefig(str(outfile))
     plt.close('all')
 
 
+def create_sigma_s2s_histogram():
+    """Create a histogram showing the distribution of sigma_s2s values."""
+
+    # Get values for the 17 pairs on the shortlist.
+    pairs_file = vcl.data_dir / '17_pairs.txt'
+    pair_labels = np.loadtxt(pairs_file, dtype=str)
+
+    vesta = Star('Vesta', vcl.output_dir / 'Vesta')
+
+    # Size 20 because 17 pairs + 3 duplicates
+    pre_sigma_s2s_short_list = np.zeros(20, dtype=float)
+    post_sigma_s2s_short_list = np.zeros(20, dtype=float)
+
+    for i, label in enumerate(pair_labels):
+        index = vesta.p_index(label)
+        pre_sigma_s2s_short_list[i] = vesta.pairSysErrorsArray[0, index].value
+        post_sigma_s2s_short_list[i] = vesta.pairSysErrorsArray[1, index].value
+
+    # Get all the max blendedness < 3 pairs.
+    pre_sigma_s2s_blend_2 = []
+    post_sigma_s2s_blend_2 = []
+    for pair in tqdm(vesta.pairsList):
+        if (pair.blendTuple[0] < 3) and (pair.blendTuple[1] < 3):
+            for order_num in pair.ordersToMeasureIn:
+                label = '_'.join([pair.label, str(order_num)])
+                index = vesta.p_index(label)
+                pre_sigma_s2s_blend_2.append(float(vesta.pairSysErrorsArray[
+                        0, index].value))
+                post_sigma_s2s_blend_2.append(float(vesta.pairSysErrorsArray[
+                        1, index].value))
+
+    fig1 = plt.figure(figsize=(5, 5), tight_layout=True)
+    ax1 = fig1.add_subplot(1, 1, 1)
+
+    ax1.set_ylabel('N')
+    ax1.set_xlabel(r'Star-to-star variance, $\sigma_{**}$ (m/s)')
+    ax1.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+
+    short_list_bins = [x for x in range(16)]
+    ax1.hist(pre_sigma_s2s_short_list,
+             histtype='step', color=cmr.sunburst(0.7), linestyle='-',
+             bins=short_list_bins, linewidth=2,
+             label='Pre')
+    ax1.hist(post_sigma_s2s_short_list,
+             histtype='step', color=cmr.sunburst(0.), linestyle='--',
+             bins=short_list_bins, linewidth=2,
+             label='Post')
+
+    ax1.legend()
+
+    outfile = plots_dir / 'Sigma_s2s_histogram_17_pairs.pdf'
+    fig1.savefig(str(outfile))
+
+    fig2 = plt.figure(figsize=(5, 5), tight_layout=True)
+    ax2 = fig2.add_subplot(1, 1, 1)
+
+    ax2.set_ylabel('N')
+    ax2.set_xlabel(r'Star-to-star scatter, $\sigma_{**}$ (m/s)')
+    ax2.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+
+    blend_2_bins = [x-0.5 for x in range(int(max(pre_sigma_s2s_blend_2)+1))]
+    ax2.hist(pre_sigma_s2s_blend_2,
+             histtype='step', color=cmr.sunburst(0.7), linestyle='-',
+             bins=blend_2_bins, linewidth=2,
+             label='Pre')
+    ax2.hist(post_sigma_s2s_blend_2,
+             histtype='step', color=cmr.sunburst(0.), linestyle='--',
+             bins=blend_2_bins, linewidth=2,
+             label='Post')
+
+    ax2.legend()
+
+    outfile = plots_dir / 'Sigma_s2s_histogram_blend_2_pairs.pdf'
+    fig2.savefig(str(outfile))
+
+
+def plot_solar_twins_results():
+    """Plot results for 17 pairs with q-coefficients for solar twins"""
+
+    roman_numerals = {'1': 'I', '2': 'II'}
+
+    # Get labels of the 17 pairs on the shortlist.
+    pairs_file = vcl.data_dir / '17_pairs.txt'
+    pair_labels = np.loadtxt(pairs_file, dtype=str)
+
+    # Get the 18 solar twins.
+    stars = {star_name: Star(star_name, vcl.output_dir / star_name)
+             for star_name in sp1_stars}
+
+    # Set out lists of star for the top and bottom panels.
+    top_stars = ('HD20782', 'HD45184', 'HD45289', 'HD76151', 'HD78429',
+                 'HD140538', 'HD146233', 'HD157347', 'HD171665',
+                 'Vesta')
+    bottom_stars = ('HD1835', 'HD19467', 'HD30495', 'HD78660', 'HD138573',
+                    'HD183658', 'HD220507', 'HD222582')
+
+    fig = plt.figure(figsize=(18, 9), tight_layout=True)
+    gs = GridSpec(ncols=20, nrows=2, figure=fig, wspace=0,
+                  height_ratios=(len(top_stars), len(bottom_stars)))
+
+    # Create a dict to hold all the axes.
+    axes = {}
+    # Create top panel (with pair labels)
+    # Create tick locations to put the grid at.
+    y_grid_locations = [y+0.5 for y in range(len(top_stars))]
+    for i, label in (enumerate(pair_labels)):
+        ax = fig.add_subplot(gs[0, i])
+        ax.axvline(x=0, color='Black', linestyle='--', linewidth=1.7,
+                   zorder=0)
+        # Set the limits of each axis.
+        ax.set_ylim(top=-0.5, bottom=len(top_stars)-0.5)
+        ax.set_xlim(left=-25, right=25)
+        # Add the grid.
+        ax.yaxis.set_minor_locator(ticker.FixedLocator(y_grid_locations))
+        ax.yaxis.grid(which='minor', color='LightGray', linewidth=1.8,
+                      linestyle=':')
+        ax.tick_params(labelleft=False, labelbottom=False,
+                       left=False, right=False, top=False, bottom=False,
+                       labeltop=True)
+        # This sets the width of the outside edges of the subaxes.
+        for axis in ['top', 'right', 'bottom', 'left']:
+            ax.spines[axis].set_linewidth(2.1)
+            ax.spines[axis].set_zorder(20)
+
+        # Add the tick labels for each pair at the top of the plot.
+        ax.xaxis.set_major_locator(ticker.FixedLocator((0,)))
+        t1, t2, _ = label.split('_')
+        new_label1 = f"{t1[:8]}" + r"\ " + f"{t1[8:-1]}" + r"\," + \
+            r"\textsc{\lowercase{" + f"{roman_numerals[t1[-1]]}" + r"}}"
+        new_label2 = f"{t2[:8]}" + r"\ " + f"{t2[8:-1]}" + r"\," + \
+            r"\textsc{\lowercase{" + f"{roman_numerals[t2[-1]]}" + r"}}"
+        ax.set_xticklabels((f'{new_label1}\n{new_label2}',),
+                           fontdict={'rotation': 90,
+                                     'horizontalalignment': 'center',
+                                     'verticalalignment': 'bottom'})
+        # Add axis to axes dictionary.
+        axes[(0, i)] = ax
+
+    # Create bottom panel
+    y_grid_locations = [y+0.5 for y in range(len(bottom_stars))]
+    for i, label in (enumerate(pair_labels)):
+        ax = fig.add_subplot(gs[1, i])
+        ax.axvline(x=0, color='Black', linestyle='--', linewidth=1.7)
+        ax.set_ylim(top=-0.5, bottom=len(bottom_stars)-0.5)
+        ax.set_xlim(left=-100, right=100)
+        ax.yaxis.set_minor_locator(ticker.FixedLocator(y_grid_locations))
+        ax.yaxis.grid(which='minor', color='LightGray', linewidth=1.8,
+                      linestyle=':')
+        ax.tick_params(labelleft=False, labelbottom=False,
+                       left=False, right=False, top=False, bottom=False)
+        for axis in ['top', 'right', 'bottom', 'left']:
+            ax.spines[axis].set_linewidth(2.1)
+        axes[(1, i)] = ax
+
+    # Set the left-most axes to have y-labels for star names.
+    axes[(0, 0)].tick_params(labelleft=True)
+    axes[(1, 0)].tick_params(labelleft=True)
+    # Create the locations for minor ticks to put the star name labels at.
+    y_ticks_top = [y for y in range(len(top_stars))]
+    y_ticks_bottom = [y for y in range(len(bottom_stars))]
+    axes[(0, 0)].yaxis.set_major_locator(ticker.FixedLocator(y_ticks_top))
+    axes[(1, 0)].yaxis.set_major_locator(ticker.FixedLocator(y_ticks_bottom))
+    # Create the list of top stars...have to handle Vesta specially.
+    top_labels = [' '.join((x[:2], x[2:])) for x in top_stars[:-1]]
+    top_labels.append('Sun (Vesta)')
+    axes[(0, 0)].set_yticklabels(top_labels,
+                                 fontdict={'horizontalalignment': 'right'})
+    axes[(1, 0)].set_yticklabels([' '.join((x[:2], x[2:]))
+                                  for x in bottom_stars],
+                                 fontdict={'horizontalalignment': 'right'})
+
+    for i, pair_label in enumerate(pair_labels):
+        # Figure out some numbers for locating things from star name.
+        for star_name in sp1_stars:
+            if star_name in top_stars:
+                row = 0
+                j = top_stars.index(star_name)
+            elif star_name in bottom_stars:
+                row = 1
+                j = bottom_stars.index(star_name)
+            else:
+                raise RuntimeError(f"{star_name} not in top or bottom lists!")
+            star = stars[star_name]
+            pair_index = star.p_index(pair_label)
+            fiber_split_index = star.fiberSplitIndex
+            # Get the pre-change values.
+            if star.hasObsPre:
+                values, mask = remove_nans(star.pairModelOffsetsArray[
+                        :fiber_split_index, pair_index], return_mask=True)
+                errors = star.pairModelErrorsArray[:fiber_split_index,
+                                                   pair_index][mask]
+                try:
+                    value, error = weighted_mean_and_error(values, errors)
+                except ZeroDivisionError:
+                    # This indicates no value for a particular 'cell', so just
+                    # plot something there to indicate that.
+                    axes[(row, i)].plot(0, j, color='Black', marker='x',
+                                        markersize=7, zorder=10)
+                    continue
+                # First plot an errorbar with sigma_s2s included.
+                sigma_s2s = star.pairSysErrorsArray[0, pair_index]
+                axes[(row, i)].errorbar(value, j-0.15,
+                                        xerr=np.sqrt(error**2 + sigma_s2s**2),
+                                        ecolor='Chocolate',
+                                        marker='',
+                                        capsize=3,
+                                        capthick=1.5,
+                                        elinewidth=1.4,
+                                        zorder=11)
+                # Then plot just the star's statistical error.
+                axes[(row, i)].errorbar(value, j-0.15,
+                                        xerr=error,
+                                        markerfacecolor='Chocolate',
+                                        markeredgecolor='Black',
+                                        ecolor='Chocolate',
+                                        markeredgewidth=2,  # controls capthick
+                                        marker='o',
+                                        markersize=9,
+                                        capsize=5,
+                                        elinewidth=4,
+                                        zorder=12)
+            # Get the post-change values.
+            if star.hasObsPost:
+                values, mask = remove_nans(star.pairModelOffsetsArray[
+                        fiber_split_index:, pair_index], return_mask=True)
+                errors = star.pairModelErrorsArray[fiber_split_index:,
+                                                   pair_index][mask]
+                try:
+                    value, error = weighted_mean_and_error(values, errors)
+                except ZeroDivisionError:
+                    axes[(row, i)].plot(0, j, color='Black', marker='x',
+                                        markersize=7)
+                    continue
+                sigma_s2s = star.pairSysErrorsArray[1, pair_index]
+                axes[(row, i)].errorbar(value, j+0.15,
+                                        xerr=np.sqrt(error**2 + sigma_s2s**2),
+                                        ecolor='RoyalBlue',
+                                        marker='',
+                                        capsize=4,
+                                        capthick=1.5,
+                                        elinewidth=1.5,
+                                        zorder=13)
+                axes[(row, i)].errorbar(value, j+0.15,
+                                        xerr=error,
+                                        markerfacecolor='RoyalBlue',
+                                        markeredgecolor='Black',
+                                        ecolor='RoyalBlue',
+                                        markeredgewidth=2,
+                                        marker='D',
+                                        markersize=8.5,
+                                        capsize=5,
+                                        elinewidth=4,
+                                        zorder=14)
+            # Add combined results for both pre- and post-.
+#            if star.hasObsPre and star.hasObsPost:
+#                pair_index = star.p_index(pair_label)
+#                values, mask = remove_nans(star.pairModelOffsetsArray[
+#                        :, pair_index], return_mask=True)
+#                errors = star.pairModelErrorsArray[:, pair_index][mask]
+#                try:
+#                    value, error = weighted_mean_and_error(values, errors)
+#                except ZeroDivisionError:
+#                    axes[i].plot(0, j, color='ForestGreen', marker='x',
+#                                 markersize=6)
+#                    continue
+#                axes[i].errorbar(value, j, xerr=error,
+#                                 color='ForestGreen',
+#                                 markerfacecolor='White',
+#                                 markeredgewidth=2.6,
+#                                 marker='s',
+#                                 markersize=8.5,
+#                                 capsize=3,
+#                                 capthick=3,
+#                                 elinewidth=3)
+
+    outfile = plots_dir / 'Pair_offsets_17_pairs.pdf'
+    fig.savefig(str(outfile))
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Create all the necessary'
-                                     ' figures and tables for my two papers and'
-                                     ' thesis.')
+                                     ' figures and tables for my two papers'
+                                     ' and thesis.')
 
     parser.add_argument('--tables', action='store_true',
                         help='Save out tables in LaTeX format to text files.')
@@ -1553,10 +1928,18 @@ if __name__ == '__main__':
 
     db_file = vcl.databases_dir / 'stellar_db_uncorrected.hdf5'
 
-    sp1_stars = ('HD138573', 'HD140538', 'HD146233', 'HD157347', 'HD171665',
-                 'HD1835', 'HD183658', 'HD19467', 'HD20782', 'HD220507'
-                 'HD222582', 'HD30495', 'HD45184', 'HD45289', 'HD76151',
-                 'HD78429', 'HD78660', 'Vesta')
+    sp1_stars = ('HD1835', 'HD19467', 'HD20782', 'HD30495',
+                 'HD45184', 'HD45289', 'HD76151', 'HD78429',
+                 'HD78660', 'HD138573', 'HD140538', 'HD146233',
+                 'HD157347', 'HD171665', 'HD183658', 'HD220507',
+                 'HD222582', 'Vesta')
+
+#    sp1_stars = ('HD138573', 'HD140538', 'HD146233', 'HD157347', 'HD171665',
+#                 'HD1835', 'HD183658', 'HD19467', 'HD20782', 'HD220507',
+#                 'HD222582', 'HD30495', 'HD45184', 'HD45289', 'HD76151',
+#                 'HD78429', 'HD78660', 'Vesta')
+
+    plots_dir = Path('/Users/dberke/Pictures/paper_plots_and_tables/plots')
 
     if args.tables:
 
@@ -1625,9 +2008,9 @@ if __name__ == '__main__':
                 f.write(transitions_output)
 
     if args.figures:
-        hd146233 = Star('HD146233', '/Users/dberke/data_output/HD146233')
+#        hd146233 = Star('HD146233', '/Users/dberke/data_output/HD146233')
 
-        create_HR_diagram_plot()
+#        create_HR_diagram_plot()
 
         # create_example_pair_sep_plots()
 
@@ -1642,32 +2025,12 @@ if __name__ == '__main__':
 
 #        plot_vs_pair_blendedness(hd146233)
 
+#        plot_representative_blendedness_plots()
+
 #        plot_pair_depth_differences(hd146233)
-        # plot_pair_depth_differences(Star('HD72769',
-        #                             '/Users/dberke/data_output/HD72769'))
-        # plot_pair_depth_differences(Star('HD98281',
-        #                             '/Users/dberke/data_output/HD98281'))
-        # plot_pair_depth_differences(Star('HD97343',
-        #                             '/Users/dberke/data_output/HD97343'))
-        # plot_pair_depth_differences(Star('HD144585',
-        #                             '/Users/dberke/data_output/HD144585'))
-        # plot_pair_depth_differences(Star('HD82943',
-        #                             '/Users/dberke/data_output/HD82943'))
-        # plot_pair_depth_differences(Star('Vesta',
-        #                             '/Users/dberke/data_output/Vesta'))
-        # plot_pair_depth_differences(Star('HD96700',
-        #                             '/Users/dberke/data_output/HD96700'))
-        # plot_pair_depth_differences(Star('HD114853',
-        #                             '/Users/dberke/data_output/HD114853'))
-        # plot_pair_depth_differences(Star('HD134060',
-        #                             '/Users/dberke/data_output/HD134060'))
-        # plot_pair_depth_differences(Star('HD1388',
-        #                             '/Users/dberke/data_output/HD1388'))
-        # plot_pair_depth_differences(Star('HD140901',
-        #                             '/Users/dberke/data_output/HD140901'))
-        # plot_pair_depth_differences(Star('HD45184',
-        #                             '/Users/dberke/data_output/HD45184'))
-        # plot_pair_depth_differences(Star('HD20807',
-        #                             '/Users/dberke/data_output/HD20807'))
-#        plot_pair_depth_differences(Star('HD78429',
-#                                    '/Users/dberke/data_output/HD78429'))
+#        plot_pair_depth_differences(Star('HD134060',
+#                                    '/Users/dberke/data_output/HD134060'))
+
+#        create_sigma_s2s_histogram()
+
+        plot_solar_twins_results()
