@@ -96,11 +96,13 @@ def main():
         if star is None:
             continue
         else:
-            star_list.append(star)
-            # Put updates to stars that don't require rebuilding here, just
-            # call saveDataToDisk() afterwards.
-            if 'HD' in star.name:
-                star_names.append(star.name)
+            # Filter out stars too hot or too metal-poor.
+            if (star.temperature < 6072) and (star.metallicity > -0.45):
+                star_list.append(star)
+                # Put updates to stars that don't require rebuilding here, just
+                # call saveDataToDisk() afterwards.
+                if 'HD' in star.name:
+                    star_names.append(star.name)
 
     # Only update star coordinates if specifically requested.
     star_coords_file = vcl.data_dir / 'Star_coords.csv'
@@ -168,15 +170,17 @@ def main():
                 else:
                     info_list = [star.name]
                     info_list.extend(['-']*4)
-                obs_dates = [dt.datetime.fromisoformat(obs_date) for obs_date in
-                             star._obs_date_bidict.keys()]
+                obs_dates = [dt.datetime.fromisoformat(obs_date)
+                             for obs_date in star._obs_date_bidict.keys()]
                 start_date = min(obs_dates)
                 end_date = max(obs_dates)
                 info_list.extend([star.temperature.value, star.metallicity,
                                   star.logg, star.absoluteMagnitude,
                                   star.getNumObs(),
-                                  start_date.isoformat(timespec='milliseconds'),
-                                  end_date.isoformat(timespec='milliseconds'),
+                                  start_date.isoformat(
+                                          timespec='milliseconds'),
+                                  end_date.isoformat(
+                                          timespec='milliseconds'),
                                   star.distance.value])
                 datawriter.writerow(info_list)
 
