@@ -1658,7 +1658,12 @@ def create_sigma_s2s_histogram():
     fig1 = plt.figure(figsize=(5, 5), tight_layout=True)
     ax1 = fig1.add_subplot(1, 1, 1)
 
-    ax1.set_ylabel('N')
+    n_0 = 0
+    for x in post_sigma_s2s_short_list:
+        if x < 0.01:
+            n_0 += 1
+
+    ax1.set_ylabel(f'N ({n_0}$<1$ cm/s)')
     ax1.set_xlabel(r'Star-to-star variance, $\sigma_{**}$ (m/s)')
     ax1.xaxis.set_minor_locator(ticker.AutoMinorLocator())
 
@@ -1680,11 +1685,17 @@ def create_sigma_s2s_histogram():
     fig2 = plt.figure(figsize=(5, 5), tight_layout=True)
     ax2 = fig2.add_subplot(1, 1, 1)
 
-    ax2.set_ylabel('N')
+    n_0 = 0
+    for x in post_sigma_s2s_blend_2:
+        if x < 0.01:
+            n_0 += 1
+
+    ax2.set_ylabel(f'N ({n_0}$<1$ cm/s)')
     ax2.set_xlabel(r'Star-to-star scatter, $\sigma_{**}$ (m/s)')
     ax2.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+    ax2.yaxis.set_minor_locator(ticker.AutoMinorLocator())
 
-    blend_2_bins = [x-0.5 for x in range(int(max(pre_sigma_s2s_blend_2)+1))]
+    blend_2_bins = [x for x in range(int(max(pre_sigma_s2s_blend_2)+1))]
     ax2.hist(pre_sigma_s2s_blend_2,
              histtype='step', color=cmr.sunburst(0.7), linestyle='-',
              bins=blend_2_bins, linewidth=2,
@@ -1732,14 +1743,14 @@ def plot_solar_twins_results():
     for i, label in (enumerate(pair_labels)):
         ax = fig.add_subplot(gs[0, i])
         ax.axvline(x=0, color='Black', linestyle='--', linewidth=1.7,
-                   zorder=0)
+                   zorder=1)
         # Set the limits of each axis.
         ax.set_ylim(top=-0.5, bottom=len(top_stars)-0.5)
         ax.set_xlim(left=-25, right=25)
         # Add the grid.
         ax.yaxis.set_minor_locator(ticker.FixedLocator(y_grid_locations))
         ax.yaxis.grid(which='minor', color='LightGray', linewidth=1.8,
-                      linestyle=':')
+                      linestyle=':', zorder=0)
         ax.tick_params(labelleft=False, labelbottom=False,
                        left=False, right=False, top=False, bottom=False,
                        labeltop=True)
@@ -1749,16 +1760,34 @@ def plot_solar_twins_results():
             ax.spines[axis].set_zorder(20)
 
         # Add the tick labels for each pair at the top of the plot.
-        ax.xaxis.set_major_locator(ticker.FixedLocator((0,)))
-        t1, t2, _ = label.split('_')
+        t1, t2, order_num = label.split('_')
+        # This mimics the look of ion labels in MNRAS.
         new_label1 = f"{t1[:8]}" + r"\ " + f"{t1[8:-1]}" + r"\," + \
             r"\textsc{\lowercase{" + f"{roman_numerals[t1[-1]]}" + r"}}"
         new_label2 = f"{t2[:8]}" + r"\ " + f"{t2[8:-1]}" + r"\," + \
             r"\textsc{\lowercase{" + f"{roman_numerals[t2[-1]]}" + r"}}"
-        ax.set_xticklabels((f'{new_label1}\n{new_label2}',),
-                           fontdict={'rotation': 90,
-                                     'horizontalalignment': 'center',
-                                     'verticalalignment': 'bottom'})
+        if i > 5:
+            ax.xaxis.set_major_locator(ticker.FixedLocator((-17,)))
+            ax.set_xticklabels((f'{new_label1}\n{new_label2}',),
+                               fontdict={'rotation': 90,
+                                         'horizontalalignment': 'left',
+                                         'verticalalignment': 'bottom'})
+        elif i in (0, 2, 4):
+            ax.xaxis.set_major_locator(ticker.FixedLocator((-17, 8)))
+            ax.set_xticklabels((str(order_num),
+                                f'{new_label1}\n{new_label2}'),
+                               fontdict={'rotation': 90,
+                                         'horizontalalignment': 'left',
+                                         'verticalalignment': 'bottom'})
+        elif i in (1, 3, 5):
+            ax.xaxis.set_major_locator(ticker.FixedLocator((3,)))
+            ax.set_xticklabels((f'{str(order_num)}',),
+                               fontdict={'rotation': 90,
+                                         'horizontalalignment': 'left',
+                                         'verticalalignment': 'bottom'})
+        else:
+            ax.tick_params(labeltop=False)
+
         # Add axis to axes dictionary.
         axes[(0, i)] = ax
 
@@ -2031,6 +2060,6 @@ if __name__ == '__main__':
 #        plot_pair_depth_differences(Star('HD134060',
 #                                    '/Users/dberke/data_output/HD134060'))
 
-#        create_sigma_s2s_histogram()
+        create_sigma_s2s_histogram()
 
-        plot_solar_twins_results()
+#        plot_solar_twins_results()
