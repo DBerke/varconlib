@@ -1811,8 +1811,11 @@ def plot_solar_twins_results():
         ax.yaxis.set_minor_locator(ticker.FixedLocator(y_grid_locations))
         ax.yaxis.grid(which='minor', color='LightGray', linewidth=1.8,
                       linestyle=':')
-        ax.tick_params(labelleft=False, labelbottom=False,
-                       left=False, right=False, top=False, bottom=False)
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.xaxis.set_major_locator(ticker.FixedLocator((-50, 0, 50)))
+        ax.tick_params(which='both', labelleft=False, labelbottom=True,
+                       left=False, right=False, top=False, bottom=True,
+                       labelsize=12)
         for axis in ['top', 'right', 'bottom', 'left']:
             ax.spines[axis].set_linewidth(2.1)
         axes[(1, i)] = ax
