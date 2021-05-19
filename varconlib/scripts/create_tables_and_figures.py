@@ -1725,15 +1725,18 @@ def plot_solar_twins_results():
              for star_name in sp1_stars}
 
     # Set out lists of star for the top and bottom panels.
-    top_stars = ('HD20782', 'HD45184', 'HD45289', 'HD76151', 'HD78429',
-                 'HD140538', 'HD146233', 'HD157347', 'HD171665',
+    top_stars = ('HD19467', 'HD20782', 'HD45184', 'HD45289',
+                 'HD76151', 'HD78429',
+                 'HD140538', 'HD146233', 'HD157347',
                  'Vesta')
-    bottom_stars = ('HD1835', 'HD19467', 'HD30495', 'HD78660', 'HD138573',
+    bottom_stars = ('HD1835', 'HD30495', 'HD78660', 'HD138573', 'HD171665',
                     'HD183658', 'HD220507', 'HD222582')
 
     fig = plt.figure(figsize=(18, 9), tight_layout=True)
     gs = GridSpec(ncols=20, nrows=2, figure=fig, wspace=0,
                   height_ratios=(len(top_stars), len(bottom_stars)))
+    # Set the "velocity" title to be below the figure.
+    fig.supxlabel('Velocity (m/s)', fontsize=18)
 
     # Create a dict to hold all the axes.
     axes = {}
@@ -1767,26 +1770,33 @@ def plot_solar_twins_results():
         new_label2 = f"{t2[:8]}" + r"\ " + f"{t2[8:-1]}" + r"\," + \
             r"\textsc{\lowercase{" + f"{roman_numerals[t2[-1]]}" + r"}}"
         if i > 5:
-            ax.xaxis.set_major_locator(ticker.FixedLocator((-17,)))
+            ax.xaxis.set_major_locator(ticker.FixedLocator((-13,)))
             ax.set_xticklabels((f'{new_label1}\n{new_label2}',),
                                fontdict={'rotation': 90,
                                          'horizontalalignment': 'left',
-                                         'verticalalignment': 'bottom'})
+                                         'verticalalignment': 'bottom',
+                                         'fontsize': 16})
         elif i in (0, 2, 4):
-            ax.xaxis.set_major_locator(ticker.FixedLocator((-17, 8)))
+            ax.xaxis.set_major_locator(ticker.FixedLocator((-11, 12)))
             ax.set_xticklabels((str(order_num),
                                 f'{new_label1}\n{new_label2}'),
                                fontdict={'rotation': 90,
                                          'horizontalalignment': 'left',
-                                         'verticalalignment': 'bottom'})
+                                         'verticalalignment': 'bottom',
+                                         'fontsize': 16})
         elif i in (1, 3, 5):
-            ax.xaxis.set_major_locator(ticker.FixedLocator((3,)))
+            ax.xaxis.set_major_locator(ticker.FixedLocator((2,)))
             ax.set_xticklabels((f'{str(order_num)}',),
                                fontdict={'rotation': 90,
                                          'horizontalalignment': 'left',
-                                         'verticalalignment': 'bottom'})
+                                         'verticalalignment': 'bottom',
+                                         'fontsize': 16})
         else:
             ax.tick_params(labeltop=False)
+
+#        ax_bottom = ax.twiny()
+#        ax_bottom.xaxis.set_major_locator(ticker.FixedLocator((-15, 0, 15)))
+#        ax_bottom.tick_params(labelbottom=True, labelsize=12)
 
         # Add axis to axes dictionary.
         axes[(0, i)] = ax
@@ -1797,7 +1807,7 @@ def plot_solar_twins_results():
         ax = fig.add_subplot(gs[1, i])
         ax.axvline(x=0, color='Black', linestyle='--', linewidth=1.7)
         ax.set_ylim(top=-0.5, bottom=len(bottom_stars)-0.5)
-        ax.set_xlim(left=-100, right=100)
+        ax.set_xlim(left=-75, right=75)
         ax.yaxis.set_minor_locator(ticker.FixedLocator(y_grid_locations))
         ax.yaxis.grid(which='minor', color='LightGray', linewidth=1.8,
                       linestyle=':')
@@ -1819,10 +1829,12 @@ def plot_solar_twins_results():
     top_labels = [' '.join((x[:2], x[2:])) for x in top_stars[:-1]]
     top_labels.append('Sun (Vesta)')
     axes[(0, 0)].set_yticklabels(top_labels,
-                                 fontdict={'horizontalalignment': 'right'})
+                                 fontdict={'horizontalalignment': 'right',
+                                           'fontsize': 15})
     axes[(1, 0)].set_yticklabels([' '.join((x[:2], x[2:]))
                                   for x in bottom_stars],
-                                 fontdict={'horizontalalignment': 'right'})
+                                 fontdict={'horizontalalignment': 'right',
+                                           'fontsize': 15})
 
     for i, pair_label in enumerate(pair_labels):
         # Figure out some numbers for locating things from star name.
@@ -1929,7 +1941,7 @@ def plot_solar_twins_results():
 #                                 elinewidth=3)
 
     outfile = plots_dir / 'Pair_offsets_17_pairs.pdf'
-    fig.savefig(str(outfile))
+    fig.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
 
 
 if __name__ == '__main__':
@@ -2060,6 +2072,6 @@ if __name__ == '__main__':
 #        plot_pair_depth_differences(Star('HD134060',
 #                                    '/Users/dberke/data_output/HD134060'))
 
-        create_sigma_s2s_histogram()
+#        create_sigma_s2s_histogram()
 
-#        plot_solar_twins_results()
+        plot_solar_twins_results()
