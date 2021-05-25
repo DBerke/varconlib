@@ -30,6 +30,7 @@ import matplotlib.lines as mlines
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from scipy.optimize import curve_fit
+from scipy.stats import anderson_ksamp, ks_2samp
 from tabulate import tabulate
 from tqdm import tqdm
 import unyt as u
@@ -382,8 +383,8 @@ def create_example_pair_sep_plots():
     ax2 = fig2.add_subplot(gs[0, 0])
     ax3 = fig2.add_subplot(gs[1, 0], sharex=ax2)
 
-    ax2.annotate(r'$\lambda4492.660\,\textrm{Fe\,II}-'
-                 r'\lambda4503.480\,\textrm{Mn\,I}$',
+    ax2.annotate(r'$\lambda4492.660\,\textrm{Fe\,\textsc{\lowercase{II}}},\,'
+                 r'\lambda4503.480\,\textrm{Mn\,\textsc{\lowercase{I}}}$',
                  xy=(0, 0), xytext=(0.03, 0.02),
                  textcoords='axes fraction', size=19,
                  horizontalalignment='left', verticalalignment='bottom')
@@ -391,8 +392,8 @@ def create_example_pair_sep_plots():
     ax3.set_xlabel('[Fe/H]')
 
     for ax in (ax1, ax2):
-        ax.set_ylabel('Normalized pair\nseparation (m/s)')
-    ax3.set_ylabel('Residuals (m/s)')
+        ax.set_ylabel('Normalized pair\nseparation (m/s)', size=18)
+    ax3.set_ylabel('Residuals (m/s)', size=18)
 
     ax1.xaxis.set_minor_locator(ticker.AutoMinorLocator())
     for ax in (ax2, ax3):
@@ -403,9 +404,9 @@ def create_example_pair_sep_plots():
     ax2.tick_params(labelbottom=False)
 
     ax1.set_xlim(left=-0.11, right=0.11)
-    ax3.set_xlim(left=-0.73, right=0.44)
+    ax3.set_xlim(left=-0.465, right=0.44)
     ax3.set_ylim(bottom=-110, top=110)
-    ax2.set_ylim(bottom=-270, top=270)
+    ax2.set_ylim(bottom=-220, top=220)
 
     ax3.axhline(y=0, linestyle='--',
                 color='DarkCyan')
@@ -469,11 +470,11 @@ def create_example_pair_sep_plots():
     err_array.mask = mask_quad
     names.mask = mask_quad
 
-    ax3.annotate(r'$\sigma_\mathrm{2s2}=\,$'
+    ax3.annotate(r'$\sigma_{**}=\,$'
                  f'{sigma_s2s:.2f}',
-                 xy=(0, 0), xytext=(0.02, 0.04),
-                 textcoords='axes fraction', size=17,
-                 horizontalalignment='left', verticalalignment='bottom')
+                 xy=(0, 0), xytext=(0.03, 0.97),
+                 textcoords='axes fraction', size=18,
+                 horizontalalignment='left', verticalalignment='top')
 
     # metallicities is index 1 here
     ax3.errorbar(ma.compressed(x_data[1]),
@@ -488,7 +489,7 @@ def create_example_pair_sep_plots():
 
     plot_dir = Path('/Users/dberke/Pictures/paper_plots_and_tables/plots')
     fig1.savefig(str(plot_dir / f'{label}_SP1.png'))
-    fig2.savefig(str(plot_dir / f'{label}_sample.png'))
+    fig2.savefig(str(plot_dir / f'{label}_sample.pdf'))
 
     # plt.show()
 
@@ -1645,7 +1646,7 @@ def create_sigma_s2s_histogram():
     # Get all the max blendedness < 3 pairs.
     pre_sigma_s2s_blend_2 = []
     post_sigma_s2s_blend_2 = []
-    for pair in tqdm(vesta.pairsList):
+    for pair in vesta.pairsList:
         if (pair.blendTuple[0] < 3) and (pair.blendTuple[1] < 3):
             for order_num in pair.ordersToMeasureIn:
                 label = '_'.join([pair.label, str(order_num)])
@@ -1655,29 +1656,36 @@ def create_sigma_s2s_histogram():
                 post_sigma_s2s_blend_2.append(float(vesta.pairSysErrorsArray[
                         1, index].value))
 
+    total_short_list = np.concatenate((pre_sigma_s2s_short_list,
+                                       post_sigma_s2s_short_list))
+    total_blend_2 = np.concatenate((pre_sigma_s2s_blend_2,
+                                    post_sigma_s2s_blend_2))
+
+    # Make the plot for the 17 pairs with q-coefficients.
     fig1 = plt.figure(figsize=(5, 5), tight_layout=True)
     ax1 = fig1.add_subplot(1, 1, 1)
 
-    n_0 = 0
-    for x in post_sigma_s2s_short_list:
-        if x < 0.01:
-            n_0 += 1
-
-    ax1.set_ylabel(f'N ({n_0}$<1$ cm/s)')
-    ax1.set_xlabel(r'Star-to-star variance, $\sigma_{**}$ (m/s)')
+    ax1.set_ylabel('N')
+    ax1.set_xlabel(r'Star-to-star scatter, $\sigma_{**}$ (m/s)')
     ax1.xaxis.set_minor_locator(ticker.AutoMinorLocator())
 
-    short_list_bins = [x for x in range(16)]
-    ax1.hist(pre_sigma_s2s_short_list,
-             histtype='step', color=cmr.sunburst(0.7), linestyle='-',
-             bins=short_list_bins, linewidth=2,
-             label='Pre')
-    ax1.hist(post_sigma_s2s_short_list,
-             histtype='step', color=cmr.sunburst(0.), linestyle='--',
-             bins=short_list_bins, linewidth=2,
-             label='Post')
+    # Print out the medians of the distributions.
+    vprint('Median of pre (17 pairs):'
+           f' {np.median(pre_sigma_s2s_short_list):.2f}')
+    vprint('Median of post (17 pairs): '
+           f'{np.median(post_sigma_s2s_short_list):.2f}')
 
-    ax1.legend()
+    short_list_bins = [x+0.0001 for x in range(
+            -1, ceil(total_short_list.max())+1)]
+    ax1.hist(total_short_list,
+             histtype='step', color='Gray', linestyle='-',
+             bins=short_list_bins, linewidth=2.5,
+             label='Total')
+    ax1.hist(post_sigma_s2s_short_list,
+             histtype='step', color='Black', linestyle='-',
+             bins=short_list_bins, linewidth=2.5,
+             label='Post')
+    ax1.legend(loc='upper left')
 
     outfile = plots_dir / 'Sigma_s2s_histogram_17_pairs.pdf'
     fig1.savefig(str(outfile))
@@ -1685,30 +1693,55 @@ def create_sigma_s2s_histogram():
     fig2 = plt.figure(figsize=(5, 5), tight_layout=True)
     ax2 = fig2.add_subplot(1, 1, 1)
 
-    n_0 = 0
-    for x in post_sigma_s2s_blend_2:
-        if x < 0.01:
-            n_0 += 1
-
-    ax2.set_ylabel(f'N ({n_0}$<1$ cm/s)')
+    ax2.set_ylabel('N')
     ax2.set_xlabel(r'Star-to-star scatter, $\sigma_{**}$ (m/s)')
     ax2.xaxis.set_minor_locator(ticker.AutoMinorLocator())
     ax2.yaxis.set_minor_locator(ticker.AutoMinorLocator())
 
-    blend_2_bins = [x for x in range(int(max(pre_sigma_s2s_blend_2)+1))]
+    # Print out the medians of the distributions.
+    vprint('Median of pre (all blend 2):'
+           f' {np.median(pre_sigma_s2s_blend_2):.2f}')
+    vprint('Median of post (all blend 2): '
+           f'{np.median(post_sigma_s2s_blend_2):.2f}')
+
+    blend_2_bins = [x+0.0001 for x in range(-1, ceil(total_blend_2.max())+1)]
+    ax2.hist(total_blend_2,
+             histtype='step', color=cmr.torch(0.5), linestyle='-',
+             bins=blend_2_bins, linewidth=2.5,
+             label='Total')
     ax2.hist(pre_sigma_s2s_blend_2,
-             histtype='step', color=cmr.sunburst(0.7), linestyle='-',
-             bins=blend_2_bins, linewidth=2,
+             histtype='step', color=cmr.torch(0.8), linestyle='-',
+             bins=blend_2_bins, linewidth=2.5,
              label='Pre')
     ax2.hist(post_sigma_s2s_blend_2,
-             histtype='step', color=cmr.sunburst(0.), linestyle='--',
-             bins=blend_2_bins, linewidth=2,
+             histtype='step', color=cmr.torch(0.2), linestyle='-',
+             bins=blend_2_bins, linewidth=2.5,
              label='Post')
 
-    ax2.legend()
+    ax2.legend(loc='upper right')
 
     outfile = plots_dir / 'Sigma_s2s_histogram_blend_2_pairs.pdf'
     fig2.savefig(str(outfile))
+
+    vprint(f'# of pre values: {len(pre_sigma_s2s_blend_2)}')
+    vprint(f'# of post values: {len(post_sigma_s2s_blend_2)}')
+
+    # Run a k-sample Anderson-Darling test to see if the two samples appear
+    # likely to come from the same distribution.
+#    k_value, crit_values, sig_level = anderson_ksamp(
+#            [np.array(pre_sigma_s2s_blend_2),
+#             np.array(post_sigma_s2s_blend_2)])
+#
+#    vprint('For the Anderson-Darling k-sample test:')
+#    vprint(f'statistic: {k_value}')
+#    vprint(f'critical values: {crit_values}')
+#    vprint(f'significance level: {sig_level}')
+
+    ks_value, p_value = ks_2samp(pre_sigma_s2s_blend_2,
+                                 post_sigma_s2s_blend_2)
+    vprint('For the Kologorov-Smirnov test:')
+    vprint(f'KS statistic: {ks_value}')
+    vprint(f'p-value: {p_value}')
 
 
 def plot_solar_twins_results():
@@ -1754,15 +1787,23 @@ def plot_solar_twins_results():
         ax.yaxis.set_minor_locator(ticker.FixedLocator(y_grid_locations))
         ax.yaxis.grid(which='minor', color='LightGray', linewidth=1.8,
                       linestyle=':', zorder=0)
-        ax.tick_params(labelleft=False, labelbottom=False,
-                       left=False, right=False, top=False, bottom=False,
-                       labeltop=True)
+        # Remove all the ticks and labels on the y-axes (left-most will have
+        # them specially added back in).
+        ax.tick_params(axis='y', which='both', left=False, right=False,
+                       labelleft=False, labelright=False)
+        ax.tick_params(axis='x', which='both', top=False, bottom=True,
+                       labeltop=False, labelbottom=True, labelsize=12)
+        ax.xaxis.set_major_locator(ticker.FixedLocator((-15, 0, 15)))
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
         # This sets the width of the outside edges of the subaxes.
         for axis in ['top', 'right', 'bottom', 'left']:
             ax.spines[axis].set_linewidth(2.1)
             ax.spines[axis].set_zorder(20)
 
         # Add the tick labels for each pair at the top of the plot.
+        ax_twin = ax.twiny()
+        ax_twin.set_xlim(ax.get_xlim())
+        ax_twin.tick_params(top=False, labelsize=16)
         t1, t2, order_num = label.split('_')
         # This mimics the look of ion labels in MNRAS.
         new_label1 = f"{t1[:8]}" + r"\ " + f"{t1[8:-1]}" + r"\," + \
@@ -1770,34 +1811,24 @@ def plot_solar_twins_results():
         new_label2 = f"{t2[:8]}" + r"\ " + f"{t2[8:-1]}" + r"\," + \
             r"\textsc{\lowercase{" + f"{roman_numerals[t2[-1]]}" + r"}}"
         if i > 5:
-            ax.xaxis.set_major_locator(ticker.FixedLocator((-13,)))
-            ax.set_xticklabels((f'{new_label1}\n{new_label2}',),
-                               fontdict={'rotation': 90,
-                                         'horizontalalignment': 'left',
-                                         'verticalalignment': 'bottom',
-                                         'fontsize': 16})
+            ax_twin.xaxis.set_major_locator(ticker.FixedLocator((-12,)))
+            ax_twin.set_xticklabels((f'{new_label1}\n{new_label2}',),
+                                    fontdict={'rotation': 90,
+                                              'horizontalalignment': 'left',
+                                              'verticalalignment': 'bottom'})
         elif i in (0, 2, 4):
-            ax.xaxis.set_major_locator(ticker.FixedLocator((-11, 12)))
-            ax.set_xticklabels((str(order_num),
-                                f'{new_label1}\n{new_label2}'),
-                               fontdict={'rotation': 90,
-                                         'horizontalalignment': 'left',
-                                         'verticalalignment': 'bottom',
-                                         'fontsize': 16})
+            ax_twin.xaxis.set_major_locator(ticker.FixedLocator((-11, 12)))
+            ax_twin.set_xticklabels((str(order_num),
+                                     f'{new_label1}\n{new_label2}'),
+                                    fontdict={'rotation': 90,
+                                              'horizontalalignment': 'left',
+                                              'verticalalignment': 'bottom'})
         elif i in (1, 3, 5):
-            ax.xaxis.set_major_locator(ticker.FixedLocator((2,)))
-            ax.set_xticklabels((f'{str(order_num)}',),
-                               fontdict={'rotation': 90,
-                                         'horizontalalignment': 'left',
-                                         'verticalalignment': 'bottom',
-                                         'fontsize': 16})
-        else:
-            ax.tick_params(labeltop=False)
-
-#        ax_bottom = ax.twiny()
-#        ax_bottom.xaxis.set_major_locator(ticker.FixedLocator((-15, 0, 15)))
-#        ax_bottom.tick_params(labelbottom=True, labelsize=12)
-
+            ax_twin.xaxis.set_major_locator(ticker.FixedLocator((2,)))
+            ax_twin.set_xticklabels((f'{str(order_num)}',),
+                                    fontdict={'rotation': 90,
+                                              'horizontalalignment': 'left',
+                                              'verticalalignment': 'bottom'})
         # Add axis to axes dictionary.
         axes[(0, i)] = ax
 
@@ -1839,6 +1870,9 @@ def plot_solar_twins_results():
                                  fontdict={'horizontalalignment': 'right',
                                            'fontsize': 15})
 
+    # How significant to report outliers.
+    sigma_significance = 2
+    vprint(f'Looking for outliers beyond {sigma_significance} sigma')
     for i, pair_label in enumerate(pair_labels):
         # Figure out some numbers for locating things from star name.
         for star_name in sp1_stars:
@@ -1867,10 +1901,18 @@ def plot_solar_twins_results():
                     axes[(row, i)].plot(0, j, color='Black', marker='x',
                                         markersize=7, zorder=10)
                     continue
-                # First plot an errorbar with sigma_s2s included.
+                # Compute error with sigma_** included.
                 sigma_s2s = star.pairSysErrorsArray[0, pair_index]
+                full_error = np.sqrt(error**2 + sigma_s2s**2)
+                significance = abs(value / full_error).value
+#                if star.name == 'Vesta':
+#                    vprint(f'{pair_label}: {significance:.2f}')
+                if significance > sigma_significance:
+                    vprint(f'{star.name}: {pair_label}:'
+                           f' (Pre) {significance:.2f}')
+                # First plot an errorbar with sigma_s2s included.
                 axes[(row, i)].errorbar(value, j-0.15,
-                                        xerr=np.sqrt(error**2 + sigma_s2s**2),
+                                        xerr=full_error,
                                         ecolor='Chocolate',
                                         marker='',
                                         capsize=3,
@@ -1902,8 +1944,13 @@ def plot_solar_twins_results():
                                         markersize=7)
                     continue
                 sigma_s2s = star.pairSysErrorsArray[1, pair_index]
+                full_error = np.sqrt(error**2 + sigma_s2s**2)
+                significance = abs(value / full_error).value
+                if significance > sigma_significance:
+                    vprint(f'{star.name}: {pair_label}:'
+                           f' (Post) {significance:.2f}')
                 axes[(row, i)].errorbar(value, j+0.15,
-                                        xerr=np.sqrt(error**2 + sigma_s2s**2),
+                                        xerr=full_error,
                                         ecolor='RoyalBlue',
                                         marker='',
                                         capsize=4,
@@ -2056,11 +2103,11 @@ if __name__ == '__main__':
 
 #        create_HR_diagram_plot()
 
-        # create_example_pair_sep_plots()
+#         create_example_pair_sep_plots()
 
         # create_sigma_sys_hist()
 
-        # create_parameter_dependence_plot(use_cached=True, min_bin_size=5)
+#         create_parameter_dependence_plot(use_cached=True, min_bin_size=5)
 
         # plot_duplicate_pairs(Star('Vesta', '/Users/dberke/data_output/Vesta'))
         # plot_duplicate_pairs(hd146233)
