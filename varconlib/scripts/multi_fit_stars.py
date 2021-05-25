@@ -150,17 +150,18 @@ def create_comparison_figure(ylims=None, fit_target='transitions',
         if ax not in (hist_ax_pre, hist_ax_post):
             ax.xaxis.grid(which='major', color='Gray',
                           linestyle='--', alpha=0.65)
+        ax.tick_params(labelsize=14)
 
     for ax in (temp_ax_pre, temp_ax_post):
-        ax.set_xlabel('Temperature (K)')
+        ax.set_xlabel('Temperature (K)', size=15)
         ax.xaxis.set_major_locator(ticker.MultipleLocator(base=200))
         ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=100))
     for ax in (mtl_ax_pre, mtl_ax_post):
-        ax.set_xlabel('Metallicity [Fe/H]')
+        ax.set_xlabel('Metallicity [Fe/H]', size=15)
         ax.xaxis.set_major_locator(ticker.MultipleLocator(base=0.2))
         ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=0.1))
     for ax in (logg_ax_pre, logg_ax_post):
-        ax.set_xlabel(r'log $g$ $(\mathrm{cm}/\mathrm{s}^2)$')
+        ax.set_xlabel(r'log $g$ $(\mathrm{cm}/\mathrm{s}^2)$', size=15)
         ax.xaxis.set_major_locator(ticker.MultipleLocator(base=0.1))
         ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=0.05))
 
@@ -721,6 +722,7 @@ def main():
                                                (temp_lims, mtl_lims,
                                                 logg_lims)):
                         ax = axes_dict[f'{plot_type}_{time}']
+                        ax.tick_params(labelsize=14)
                         plot_data_points(
                             ax,
                             ma.compressed(x_data[param_dict[plot_type]]),
