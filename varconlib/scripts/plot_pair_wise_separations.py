@@ -2187,12 +2187,117 @@ def plot_vs_radial_velocity(star_list):
         plt.close('all')
 
 
+def plot_chi_squared_values(star):
+    """Plot the chi-squared value for each transition and pair to look for
+    excess.
+
+    star : `varconlib.star.Star`
+        An instance of `varconlib.star.Star` to be plotted.
+
+    """
+
+    pairs_to_use = ('4652.593Cr1_4653.460Cr1_29',
+                    '4652.593Cr1_4653.460Cr1_30',
+                    '4759.449Ti1_4760.600Ti1_32',
+                    '4759.449Ti1_4760.600Ti1_33',
+                    '4799.873Ti2_4800.072Fe1_33',
+                    '4799.873Ti2_4800.072Fe1_34',
+                    '5138.510Ni1_5143.171Fe1_42',
+                    '5187.346Ti2_5200.158Fe1_43',
+                    '6123.910Ca1_6138.313Fe1_60',
+                    '6123.910Ca1_6139.390Fe1_60',
+                    '6138.313Fe1_6139.390Fe1_60',
+                    '6153.320Fe1_6155.928Na1_61',
+                    '6153.320Fe1_6162.452Na1_61',
+                    '6153.320Fe1_6168.150Ca1_61',
+                    '6155.928Na1_6162.452Na1_61',
+                    '6162.452Na1_6168.150Ca1_61',
+                    '6162.452Na1_6175.044Fe1_61',
+                    '6168.150Ca1_6175.044Fe1_61',
+                    '6192.900Ni1_6202.028Fe1_61',
+                    '6242.372Fe1_6244.834V1_62')
+
+    if star.hasObsPre:
+        split_index = star.fiberSplitIndex
+
+        for p_label in tqdm(pairs_to_use):
+            t1, t2, order_num = p_label.split('_')
+            t1_label = '_'.join((t1, order_num))
+            t2_label = '_'.join((t2, order_num))
+            p_index = star.p_index(p_label)
+            t1_index = star.t_index(t1_label)
+            t2_index = star.t_index(t2_label)
+
+            t1_values = star.transitionModelOffsetsArray[:split_index,
+                                                         t1_index]
+            t1_errors = star.transitionModelErrorsArray[:split_index,
+                                                        t1_index]
+            t2_values = star.transitionModelOffsetsArray[:split_index,
+                                                         t2_index]
+            t2_errors = star.transitionModelErrorsArray[:split_index,
+                                                        t2_index]
+            p_values = star.pairModelOffsetsArray[:split_index,
+                                                  p_index].to(u.m/u.s)
+            p_errors = star.pairModelErrorsArray[:split_index,
+                                                 p_index]
+
+            t1_values_nn, t1_mask = remove_nans(t1_values, return_mask=True)
+            t2_values_nn, t2_mask = remove_nans(t2_values, return_mask=True)
+            p_values_nn, p_mask = remove_nans(p_values, return_mask=True)
+
+            t1_chi_squared = calc_chi_squared_nu(t1_values_nn,
+                                                 t1_errors[t1_mask], 1)
+            t2_chi_squared = calc_chi_squared_nu(t2_values_nn,
+                                                 t2_errors[t2_mask], 1)
+            p_chi_squared = calc_chi_squared_nu(p_values_nn,
+                                                p_errors[p_mask], 1)
+
+            fig = plt.figure(figsize=(10, 10), tight_layout=True)
+            gs = GridSpec(nrows=3, ncols=1, figure=fig)
+            ax1 = fig.add_subplot(gs[0, 0])
+            ax2 = fig.add_subplot(gs[1, 0])
+            ax3 = fig.add_subplot(gs[2, 0])
+
+            for ax in (ax1, ax2, ax3):
+                ax.axhline(y=0, color='Black', linestyle='--')
+                ax.set_ylabel('Model offset (m/s)')
+
+            t1_indices = [x for x in range(len(t1_values))]
+            t2_indices = [x for x in range(len(t2_values))]
+            p_indices = [x for x in range(len(p_values))]
+
+            ax1.errorbar(t1_indices, t1_values, yerr=t1_errors, linestyle='',
+                         marker='o',
+                         label=r'$\chi^2_\nu$'
+                         f'{t1_chi_squared.value:.2f}')
+            ax2.errorbar(t2_indices, t2_values, yerr=t2_errors, linestyle='',
+                         marker='o',
+                         label=r'$\chi^2_\nu$'
+                         f'{t2_chi_squared.value:.2f}')
+            ax3.errorbar(p_indices, p_values, yerr=p_errors, linestyle='',
+                         marker='o',
+                         label=r'$\chi^2_\nu$'
+                         f'{p_chi_squared.value:.2f}')
+
+            ax1.legend()
+            ax2.legend()
+            ax3.legend()
+
+            plots_dir = star.base_dir / 'transition_pair_chi_squareds'
+            if not plots_dir.exists():
+                os.mkdir(plots_dir)
+
+            filename = plots_dir / f'{star.name}_{p_label}.png'
+            fig.savefig(str(filename))
+            plt.close('all')
+
+
 def get_weighted_mean(values_array, errs_array, time_slice, col_index):
     """
     Get the weighted mean of a column in an array avoiding NaNs.
 
     This function is intended to get the weighted mean of the values for either
-    a transition or pair from star, from a give time period using the given
+    a transition or pair from star, from a given time period using the given
     column index.
 
     It is CRITICAL that you check if the star has observations in the pre- or
@@ -2552,6 +2657,9 @@ parser.add_argument('--plot-vs-blendedness', action='store_true',
 parser.add_argument('--plot-vs-radial-velocity', action='store_true',
                     help='Plot pair linear slopes as a function of radial'
                     ' velocity.')
+parser.add_argument('--plot-chi-squared-values', action='store_true',
+                    help='Plot the value of chi-squared for each transition/'
+                    'pair for a star.')
 
 parameter_options.add_argument('-T', '--temperature',
                                dest='parameters_to_plot',
@@ -2680,6 +2788,11 @@ if args.stars is not None and args.plot_vs_blendedness:
 
 if args.stars is not None and args.plot_vs_radial_velocity:
     plot_vs_radial_velocity(stars)
+
+if args.stars is not None and args.plot_chi_squared_values:
+    for star_name in args.stars:
+        star = Star(star_name, vcl.output_dir / star_name)
+        plot_chi_squared_values(star)
 
 duration = time.time() - start_time
 tqdm.write(f'Finished in {duration:.1f} seconds.')
