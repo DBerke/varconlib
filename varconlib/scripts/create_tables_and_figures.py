@@ -1807,6 +1807,9 @@ def plot_solar_twins_results():
     # Set the "velocity" title to be below the figure.
     fig.supxlabel('Velocity (m/s)', fontsize=18)
 
+    fig_hist = plt.figure(figsize=(12, 5), tight_layout=True)
+    gs_hist = GridSpec(ncols=10, nrows=2, figure=fig_hist, wspace=0)
+
     # Create a dict to hold all the axes.
     axes = {}
     # Create top panel (with pair labels)
@@ -1842,11 +1845,6 @@ def plot_solar_twins_results():
         ax_twin.set_xlim(ax.get_xlim())
         ax_twin.tick_params(top=False, labelsize=16)
         t1, t2, order_num = label.split('_')
-        # This mimics the look of ion labels in MNRAS.
-#        new_label1 = f"{t1[:8]}" + r"\ " + f"{t1[8:-1]}" + r"\," + \
-#            r"\textsc{\lowercase{" + f"{roman_numerals[t1[-1]]}" + r"}}"
-#        new_label2 = f"{t2[:8]}" + r"\ " + f"{t2[8:-1]}" + r"\," + \
-#            r"\textsc{\lowercase{" + f"{roman_numerals[t2[-1]]}" + r"}}"
         if i > 5:
             ax_twin.xaxis.set_major_locator(ticker.FixedLocator((-12,)))
             ax_twin.set_xticklabels(('{ion1}\n{ion2}'.format(
@@ -1964,6 +1962,9 @@ def plot_solar_twins_results():
     sigma_significance = 2
     vprint(f'Looking for outliers beyond {sigma_significance} sigma')
     for i, pair_label in enumerate(pair_labels):
+        # Create lists to hold the significance values:
+        pre_stat, pre_sys = [], []
+        post_stat, post_sys = [], []
         # Figure out some numbers for locating things from star name.
         for star_name in sp1_stars:
             if star_name in block1_stars:
@@ -2000,10 +2001,13 @@ def plot_solar_twins_results():
                 # Compute error with sigma_** included.
                 sigma_s2s = star.pairSysErrorsArray[0, pair_index]
                 full_error = np.sqrt(error**2 + sigma_s2s**2)
-                significance = abs(value / full_error).value
-                if significance > sigma_significance:
+                sig_stat = float(abs(value / error).value)
+                sig_sys = float(abs(value / full_error).value)
+                pre_stat.append(sig_stat)
+                pre_sys.append(sig_sys)
+                if sig_sys > sigma_significance:
                     vprint(f'{star.name}: {pair_label}:'
-                           f' (Pre) {significance:.2f}')
+                           f' (Pre) {sig_sys:.2f}')
                 # First plot an errorbar with sigma_** included.
                 axes[(row, i)].errorbar(value, j-0.15,
                                         xerr=full_error,
@@ -2039,10 +2043,13 @@ def plot_solar_twins_results():
                     continue
                 sigma_s2s = star.pairSysErrorsArray[1, pair_index]
                 full_error = np.sqrt(error**2 + sigma_s2s**2)
-                significance = abs(value / full_error).value
-                if significance > sigma_significance:
+                sig_stat = float(abs(value / error).value)
+                sig_sys = float(abs(value / full_error).value)
+                post_stat.append(sig_stat)
+                post_sys.append(sig_sys)
+                if sig_sys > sigma_significance:
                     vprint(f'{star.name}: {pair_label}:'
-                           f' (Post) {significance:.2f}')
+                           f' (Post) {sig_sys:.2f}')
                 axes[(row, i)].errorbar(value, j+0.15,
                                         xerr=full_error,
                                         ecolor=post_color,
@@ -2063,8 +2070,22 @@ def plot_solar_twins_results():
                                         elinewidth=4,
                                         zorder=14)
 
+        # Create the histogram plots for the pair.
+        if i > 9:
+            i -= 10
+            k = 1
+        else:
+            k = 0
+        ax = fig_hist.add_subplot(gs_hist[k, i])
+        ax.tick_params(labelleft=False)
+        ax.hist(pre_stat, color=pre_color, histtype='step')
+        ax.hist(post_stat, color=post_color, histtype='step')
+
     outfile = plots_dir / 'Pair_offsets_17_pairs.pdf'
     fig.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
+
+    histfile = plots_dir / 'Pair_offsets_histograms.pdf'
+    fig_hist.savefig(str(histfile), bbox_inches='tight', pad_inches=0.01)
 
     # Create an excerpt of a single column.
     fig_ex = plt.figure(figsize=(5, 7), tight_layout=True)
