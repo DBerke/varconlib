@@ -1747,6 +1747,30 @@ def create_sigma_s2s_histogram():
 def plot_solar_twins_results():
     """Plot results for 17 pairs with q-coefficients for solar twins"""
 
+    def format_label(pair_label):
+        """Format a pair label for printing with MNRAS ion format.
+
+        Parameters
+        ----------
+        pair_label : str
+             A pair label of the form "4492.660Fe2_4503.480Mn1_25"
+
+        Returns
+        -------
+        dict
+            A dictionary containing LaTeX-formatted representations of the two
+            transitions in the pair label.
+        """
+
+        t1, t2, order_num = pair_label.split('_')
+        # This mimics the look of ion labels in MNRAS.
+        new_label1 = f"{t1[:8]}" + r"\ " + f"{t1[8:-1]}" + r"\," + \
+            r"\textsc{\lowercase{" + f"{roman_numerals[t1[-1]]}" + r"}}"
+        new_label2 = f"{t2[:8]}" + r"\ " + f"{t2[8:-1]}" + r"\," + \
+            r"\textsc{\lowercase{" + f"{roman_numerals[t2[-1]]}" + r"}}"
+
+        return {'ion1': new_label1, 'ion2': new_label2}
+
     roman_numerals = {'1': 'I', '2': 'II'}
 
     # Get labels of the 17 pairs on the shortlist.
@@ -1758,16 +1782,28 @@ def plot_solar_twins_results():
              for star_name in sp1_stars}
 
     # Set out lists of star for the top and bottom panels.
-    top_stars = ('HD19467', 'HD20782', 'HD45184', 'HD45289',
-                 'HD76151', 'HD78429',
-                 'HD140538', 'HD146233', 'HD157347',
-                 'Vesta')
-    bottom_stars = ('HD1835', 'HD30495', 'HD78660', 'HD138573', 'HD171665',
-                    'HD183658', 'HD220507', 'HD222582')
+    block1_stars = ('Vesta', 'HD76151', 'HD78429',
+                    'HD140538', 'HD146233', 'HD157347')
+    block2_stars = ('HD20782', 'HD19467', 'HD45184',
+                    'HD45289', 'HD138573', 'HD171665',)
+    block3_stars = ('HD183658', 'HD220507', 'HD222582')
+    block4_stars = ('HD1835', 'HD30495', 'HD78660', )
 
-    fig = plt.figure(figsize=(18, 9), tight_layout=True)
-    gs = GridSpec(ncols=20, nrows=2, figure=fig, wspace=0,
-                  height_ratios=(len(top_stars), len(bottom_stars)))
+    block1_width = 25
+    block1_ticks = 15
+    block2_width = 50
+    block2_ticks = 30
+    block3_width = 80
+    block3_ticks = 50
+    block4_width = 125
+    block4_ticks = 75
+
+    fig = plt.figure(figsize=(18, 10), tight_layout=True)
+    gs = GridSpec(ncols=20, nrows=4, figure=fig, wspace=0,
+                  height_ratios=(len(block1_stars),
+                                 len(block2_stars),
+                                 len(block3_stars),
+                                 len(block4_stars)))
     # Set the "velocity" title to be below the figure.
     fig.supxlabel('Velocity (m/s)', fontsize=18)
 
@@ -1775,14 +1811,14 @@ def plot_solar_twins_results():
     axes = {}
     # Create top panel (with pair labels)
     # Create tick locations to put the grid at.
-    y_grid_locations = [y+0.5 for y in range(len(top_stars))]
+    y_grid_locations = [y+0.5 for y in range(len(block1_stars))]
     for i, label in (enumerate(pair_labels)):
         ax = fig.add_subplot(gs[0, i])
         ax.axvline(x=0, color='Black', linestyle='--', linewidth=1.7,
                    zorder=1)
         # Set the limits of each axis.
-        ax.set_ylim(top=-0.5, bottom=len(top_stars)-0.5)
-        ax.set_xlim(left=-25, right=25)
+        ax.set_ylim(top=-0.5, bottom=len(block1_stars)-0.5)
+        ax.set_xlim(left=-block1_width, right=block1_width)
         # Add the grid.
         ax.yaxis.set_minor_locator(ticker.FixedLocator(y_grid_locations))
         ax.yaxis.grid(which='minor', color='LightGray', linewidth=1.8,
@@ -1793,7 +1829,8 @@ def plot_solar_twins_results():
                        labelleft=False, labelright=False)
         ax.tick_params(axis='x', which='both', top=False, bottom=True,
                        labeltop=False, labelbottom=True, labelsize=12)
-        ax.xaxis.set_major_locator(ticker.FixedLocator((-15, 0, 15)))
+        ax.xaxis.set_major_locator(ticker.FixedLocator(
+                (-block1_ticks, 0, block1_ticks)))
         ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
         # This sets the width of the outside edges of the subaxes.
         for axis in ['top', 'right', 'bottom', 'left']:
@@ -1806,20 +1843,22 @@ def plot_solar_twins_results():
         ax_twin.tick_params(top=False, labelsize=16)
         t1, t2, order_num = label.split('_')
         # This mimics the look of ion labels in MNRAS.
-        new_label1 = f"{t1[:8]}" + r"\ " + f"{t1[8:-1]}" + r"\," + \
-            r"\textsc{\lowercase{" + f"{roman_numerals[t1[-1]]}" + r"}}"
-        new_label2 = f"{t2[:8]}" + r"\ " + f"{t2[8:-1]}" + r"\," + \
-            r"\textsc{\lowercase{" + f"{roman_numerals[t2[-1]]}" + r"}}"
+#        new_label1 = f"{t1[:8]}" + r"\ " + f"{t1[8:-1]}" + r"\," + \
+#            r"\textsc{\lowercase{" + f"{roman_numerals[t1[-1]]}" + r"}}"
+#        new_label2 = f"{t2[:8]}" + r"\ " + f"{t2[8:-1]}" + r"\," + \
+#            r"\textsc{\lowercase{" + f"{roman_numerals[t2[-1]]}" + r"}}"
         if i > 5:
             ax_twin.xaxis.set_major_locator(ticker.FixedLocator((-12,)))
-            ax_twin.set_xticklabels((f'{new_label1}\n{new_label2}',),
+            ax_twin.set_xticklabels(('{ion1}\n{ion2}'.format(
+                    **format_label(label)),),
                                     fontdict={'rotation': 90,
                                               'horizontalalignment': 'left',
                                               'verticalalignment': 'bottom'})
         elif i in (0, 2, 4):
             ax_twin.xaxis.set_major_locator(ticker.FixedLocator((-11, 12)))
             ax_twin.set_xticklabels((str(order_num),
-                                     f'{new_label1}\n{new_label2}'),
+                                     '{ion1}\n{ion2}'.format(
+                    **format_label(label)),),
                                     fontdict={'rotation': 90,
                                               'horizontalalignment': 'left',
                                               'verticalalignment': 'bottom'})
@@ -1832,43 +1871,94 @@ def plot_solar_twins_results():
         # Add axis to axes dictionary.
         axes[(0, i)] = ax
 
-    # Create bottom panel
-    y_grid_locations = [y+0.5 for y in range(len(bottom_stars))]
+    # Create second panel
+    y_grid_locations = [y+0.5 for y in range(len(block2_stars))]
     for i, label in (enumerate(pair_labels)):
         ax = fig.add_subplot(gs[1, i])
         ax.axvline(x=0, color='Black', linestyle='--', linewidth=1.7)
-        ax.set_ylim(top=-0.5, bottom=len(bottom_stars)-0.5)
-        ax.set_xlim(left=-75, right=75)
+        ax.set_ylim(top=-0.5, bottom=len(block2_stars)-0.5)
+        ax.set_xlim(left=-block2_width, right=block2_width)
         ax.yaxis.set_minor_locator(ticker.FixedLocator(y_grid_locations))
         ax.yaxis.grid(which='minor', color='LightGray', linewidth=1.8,
                       linestyle=':')
         ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
-        ax.xaxis.set_major_locator(ticker.FixedLocator((-50, 0, 50)))
+        ax.xaxis.set_major_locator(ticker.FixedLocator(
+                (-block2_ticks, 0, block2_ticks)))
         ax.tick_params(which='both', labelleft=False, labelbottom=True,
                        left=False, right=False, top=False, bottom=True,
                        labelsize=12)
         for axis in ['top', 'right', 'bottom', 'left']:
             ax.spines[axis].set_linewidth(2.1)
+            ax.spines[axis].set_zorder(20)
         axes[(1, i)] = ax
 
+    # Create third panel
+    y_grid_locations = [y+0.5 for y in range(len(block3_stars))]
+    for i, label in (enumerate(pair_labels)):
+        ax = fig.add_subplot(gs[2, i])
+        ax.axvline(x=0, color='Black', linestyle='--', linewidth=1.7)
+        ax.set_ylim(top=-0.5, bottom=len(block3_stars)-0.5)
+        ax.set_xlim(left=-block3_width, right=block3_width)
+        ax.yaxis.set_minor_locator(ticker.FixedLocator(y_grid_locations))
+        ax.yaxis.grid(which='minor', color='LightGray', linewidth=1.8,
+                      linestyle=':')
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.xaxis.set_major_locator(ticker.FixedLocator(
+                (-block3_ticks, 0, block3_ticks)))
+        ax.tick_params(which='both', labelleft=False, labelbottom=True,
+                       left=False, right=False, top=False, bottom=True,
+                       labelsize=12)
+        for axis in ['top', 'right', 'bottom', 'left']:
+            ax.spines[axis].set_linewidth(2.1)
+            ax.spines[axis].set_zorder(20)
+        axes[(2, i)] = ax
+
+    # Create fourth panel
+    y_grid_locations = [y+0.5 for y in range(len(block4_stars))]
+    for i, label in (enumerate(pair_labels)):
+        ax = fig.add_subplot(gs[3, i])
+        ax.axvline(x=0, color='Black', linestyle='--', linewidth=1.7)
+        ax.set_ylim(top=-0.5, bottom=len(block4_stars)-0.5)
+        ax.set_xlim(left=-block4_width, right=block4_width)
+        ax.yaxis.set_minor_locator(ticker.FixedLocator(y_grid_locations))
+        ax.yaxis.grid(which='minor', color='LightGray', linewidth=1.8,
+                      linestyle=':')
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.xaxis.set_major_locator(ticker.FixedLocator(
+                (-block4_ticks, 0, block4_ticks)))
+        ax.tick_params(which='both', labelleft=False, labelbottom=True,
+                       left=False, right=False, top=False, bottom=True,
+                       labelsize=12)
+        for axis in ['top', 'right', 'bottom', 'left']:
+            ax.spines[axis].set_linewidth(2.1)
+            ax.spines[axis].set_zorder(20)
+        axes[(3, i)] = ax
+
     # Set the left-most axes to have y-labels for star names.
-    axes[(0, 0)].tick_params(labelleft=True)
-    axes[(1, 0)].tick_params(labelleft=True)
+    for i in range(4):
+        axes[(i, 0)].tick_params(labelleft=True)
     # Create the locations for minor ticks to put the star name labels at.
-    y_ticks_top = [y for y in range(len(top_stars))]
-    y_ticks_bottom = [y for y in range(len(bottom_stars))]
-    axes[(0, 0)].yaxis.set_major_locator(ticker.FixedLocator(y_ticks_top))
-    axes[(1, 0)].yaxis.set_major_locator(ticker.FixedLocator(y_ticks_bottom))
+    for i, block in enumerate((block1_stars, block2_stars,
+                               block3_stars, block4_stars)):
+        y_ticks = [y for y in range(len(block))]
+        axes[(i, 0)].yaxis.set_major_locator(ticker.FixedLocator(y_ticks))
     # Create the list of top stars...have to handle Vesta specially.
-    top_labels = [' '.join((x[:2], x[2:])) for x in top_stars[:-1]]
-    top_labels.append('Sun (Vesta)')
+    top_labels = ['Sun']
+    top_labels.extend([' '.join((x[:2], x[2:])) for x in block1_stars[1:]])
+
     axes[(0, 0)].set_yticklabels(top_labels,
                                  fontdict={'horizontalalignment': 'right',
                                            'fontsize': 15})
-    axes[(1, 0)].set_yticklabels([' '.join((x[:2], x[2:]))
-                                  for x in bottom_stars],
-                                 fontdict={'horizontalalignment': 'right',
-                                           'fontsize': 15})
+    for i, star_names in enumerate((block2_stars, block3_stars, block4_stars)):
+        axes[(i+1, 0)].set_yticklabels([' '.join((x[:2], x[2:]))
+                                       for x in star_names],
+                                       fontdict={
+                                               'horizontalalignment': 'right',
+                                               'fontsize': 15})
+
+    # Define colors for pre- and post- eras.
+    pre_color = cmr.ember(0.7)
+    post_color = cmr.freeze(0.55)
 
     # How significant to report outliers.
     sigma_significance = 2
@@ -1876,14 +1966,20 @@ def plot_solar_twins_results():
     for i, pair_label in enumerate(pair_labels):
         # Figure out some numbers for locating things from star name.
         for star_name in sp1_stars:
-            if star_name in top_stars:
+            if star_name in block1_stars:
                 row = 0
-                j = top_stars.index(star_name)
-            elif star_name in bottom_stars:
+                j = block1_stars.index(star_name)
+            elif star_name in block2_stars:
                 row = 1
-                j = bottom_stars.index(star_name)
+                j = block2_stars.index(star_name)
+            elif star_name in block3_stars:
+                row = 2
+                j = block3_stars.index(star_name)
+            elif star_name in block4_stars:
+                row = 3
+                j = block4_stars.index(star_name)
             else:
-                raise RuntimeError(f"{star_name} not in top or bottom lists!")
+                raise RuntimeError(f"{star_name} not in any list!")
             star = stars[star_name]
             pair_index = star.p_index(pair_label)
             fiber_split_index = star.fiberSplitIndex
@@ -1905,15 +2001,13 @@ def plot_solar_twins_results():
                 sigma_s2s = star.pairSysErrorsArray[0, pair_index]
                 full_error = np.sqrt(error**2 + sigma_s2s**2)
                 significance = abs(value / full_error).value
-#                if star.name == 'Vesta':
-#                    vprint(f'{pair_label}: {significance:.2f}')
                 if significance > sigma_significance:
                     vprint(f'{star.name}: {pair_label}:'
                            f' (Pre) {significance:.2f}')
-                # First plot an errorbar with sigma_s2s included.
+                # First plot an errorbar with sigma_** included.
                 axes[(row, i)].errorbar(value, j-0.15,
                                         xerr=full_error,
-                                        ecolor='Chocolate',
+                                        ecolor=pre_color,
                                         marker='',
                                         capsize=3,
                                         capthick=1.5,
@@ -1922,9 +2016,9 @@ def plot_solar_twins_results():
                 # Then plot just the star's statistical error.
                 axes[(row, i)].errorbar(value, j-0.15,
                                         xerr=error,
-                                        markerfacecolor='Chocolate',
+                                        markerfacecolor=pre_color,
                                         markeredgecolor='Black',
-                                        ecolor='Chocolate',
+                                        ecolor=pre_color,
                                         markeredgewidth=2,  # controls capthick
                                         marker='o',
                                         markersize=9,
@@ -1951,7 +2045,7 @@ def plot_solar_twins_results():
                            f' (Post) {significance:.2f}')
                 axes[(row, i)].errorbar(value, j+0.15,
                                         xerr=full_error,
-                                        ecolor='RoyalBlue',
+                                        ecolor=post_color,
                                         marker='',
                                         capsize=4,
                                         capthick=1.5,
@@ -1959,39 +2053,143 @@ def plot_solar_twins_results():
                                         zorder=13)
                 axes[(row, i)].errorbar(value, j+0.15,
                                         xerr=error,
-                                        markerfacecolor='RoyalBlue',
+                                        markerfacecolor=post_color,
                                         markeredgecolor='Black',
-                                        ecolor='RoyalBlue',
+                                        ecolor=post_color,
                                         markeredgewidth=2,
                                         marker='D',
                                         markersize=8.5,
                                         capsize=5,
                                         elinewidth=4,
                                         zorder=14)
-            # Add combined results for both pre- and post-.
-#            if star.hasObsPre and star.hasObsPost:
-#                pair_index = star.p_index(pair_label)
-#                values, mask = remove_nans(star.pairModelOffsetsArray[
-#                        :, pair_index], return_mask=True)
-#                errors = star.pairModelErrorsArray[:, pair_index][mask]
-#                try:
-#                    value, error = weighted_mean_and_error(values, errors)
-#                except ZeroDivisionError:
-#                    axes[i].plot(0, j, color='ForestGreen', marker='x',
-#                                 markersize=6)
-#                    continue
-#                axes[i].errorbar(value, j, xerr=error,
-#                                 color='ForestGreen',
-#                                 markerfacecolor='White',
-#                                 markeredgewidth=2.6,
-#                                 marker='s',
-#                                 markersize=8.5,
-#                                 capsize=3,
-#                                 capthick=3,
-#                                 elinewidth=3)
 
     outfile = plots_dir / 'Pair_offsets_17_pairs.pdf'
     fig.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
+
+    # Create an excerpt of a single column.
+    fig_ex = plt.figure(figsize=(5, 7), tight_layout=True)
+    ax_ex = fig_ex.add_subplot(1, 1, 1)
+
+    y_grid_locations = [y+0.5 for y in range(len(sp1_stars))]
+    ax_ex.axvline(x=0, color='Black', linestyle='--', linewidth=1.7)
+    ax_ex.set_ylim(top=-0.5, bottom=len(sp1_stars)-0.5)
+    ax_ex.set_xlim(left=-40, right=40)
+    ax_ex.yaxis.set_minor_locator(ticker.FixedLocator(y_grid_locations))
+    ax_ex.yaxis.grid(which='minor', color='LightGray', linewidth=1.8,
+                     linestyle=':')
+    ax_ex.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+#    ax_ex.xaxis.set_major_locator(ticker.FixedLocator(
+#            [-50, -25, 0, 25, 50]))
+    ax_ex.tick_params(which='both', labelleft=True, labelbottom=True,
+                      left=False, right=False, top=False, bottom=True,
+                      labelsize=12)
+    for axis in ['top', 'right', 'bottom', 'left']:
+        ax_ex.spines[axis].set_linewidth(2.1)
+        ax_ex.spines[axis].set_zorder(20)
+    ax_ex.set_xlabel('Model offset (m/s)', size=15)
+
+    # Add labels to axis.
+    # Create the locations for major ticks to put the star name labels at.
+    y_ticks = [y for y in range(len(sp1_stars))]
+    ax_ex.yaxis.set_major_locator(ticker.FixedLocator(y_ticks))
+    # Create the list of top stars...have to handle Vesta specially.
+    ex_labels = ['Sun']
+    ex_labels.extend([' '.join((x[:2], x[2:])) for x in sp1_stars[1:]])
+
+    ax_ex.set_yticklabels(ex_labels,
+                          fontdict={'horizontalalignment': 'right',
+                                    'fontsize': 15})
+    # Set the pair label to use.
+    pair_label = pair_labels[10]  # 6138--6139
+    pair_label = pair_labels[16]
+    fig_ex.suptitle(r'{ion1},\ {ion2}'.format(
+                    **format_label(pair_label)), size=16)
+    for j, star_name in enumerate(sp1_stars):
+        star = stars[star_name]
+        pair_index = star.p_index(pair_label)
+        fiber_split_index = star.fiberSplitIndex
+        # Get the pre-change values.
+        if star.hasObsPre:
+            values, mask = remove_nans(star.pairModelOffsetsArray[
+                    :fiber_split_index, pair_index], return_mask=True)
+            errors = star.pairModelErrorsArray[:fiber_split_index,
+                                               pair_index][mask]
+            try:
+                value, error = weighted_mean_and_error(values, errors)
+            except ZeroDivisionError:
+                # This indicates no value for a particular 'cell', so just
+                # plot something there to indicate that.
+                ax_ex.plot(0, j, color='Black', marker='x',
+                           markersize=7, zorder=10)
+                continue
+            # Compute error with sigma_** included.
+            sigma_s2s = star.pairSysErrorsArray[0, pair_index]
+            full_error = np.sqrt(error**2 + sigma_s2s**2)
+            significance = abs(value / full_error).value
+            if significance > sigma_significance:
+                vprint(f'{star.name}: {pair_label}:'
+                       f' (Pre) {significance:.2f}')
+            # First plot an errorbar with sigma_** included.
+            ax_ex.errorbar(value, j-0.15,
+                           xerr=full_error,
+                           ecolor=pre_color,
+                           marker='',
+                           capsize=3,
+                           capthick=1.5,
+                           elinewidth=1.4,
+                           zorder=11)
+            # Then plot just the star's statistical error.
+            ax_ex.errorbar(value, j-0.15,
+                           xerr=error,
+                           markerfacecolor=pre_color,
+                           markeredgecolor='Black',
+                           ecolor=pre_color,
+                           markeredgewidth=2,  # controls capthick
+                           marker='o',
+                           markersize=9,
+                           capsize=5,
+                           elinewidth=4,
+                           zorder=12)
+        # Get the post-change values.
+        if star.hasObsPost:
+            values, mask = remove_nans(star.pairModelOffsetsArray[
+                    fiber_split_index:, pair_index], return_mask=True)
+            errors = star.pairModelErrorsArray[fiber_split_index:,
+                                               pair_index][mask]
+            try:
+                value, error = weighted_mean_and_error(values, errors)
+            except ZeroDivisionError:
+                ax_ex.plot(0, j, color='Black', marker='x',
+                           markersize=7)
+                continue
+            sigma_s2s = star.pairSysErrorsArray[1, pair_index]
+            full_error = np.sqrt(error**2 + sigma_s2s**2)
+            significance = abs(value / full_error).value
+            if significance > sigma_significance:
+                vprint(f'{star.name}: {pair_label}:'
+                       f' (Post) {significance:.2f}')
+            ax_ex.errorbar(value, j+0.15,
+                           xerr=full_error,
+                           ecolor=post_color,
+                           marker='',
+                           capsize=4,
+                           capthick=1.5,
+                           elinewidth=1.5,
+                           zorder=13)
+            ax_ex.errorbar(value, j+0.15,
+                           xerr=error,
+                           markerfacecolor=post_color,
+                           markeredgecolor='Black',
+                           ecolor=post_color,
+                           markeredgewidth=2,
+                           marker='D',
+                           markersize=8.5,
+                           capsize=5,
+                           elinewidth=4,
+                           zorder=14)
+
+    outfile = plots_dir / f'Pair_offsets_17_pairs_excerpt_{pair_label}.pdf'
+    fig_ex.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
 
 
 if __name__ == '__main__':
@@ -2019,16 +2217,11 @@ if __name__ == '__main__':
 
     db_file = vcl.databases_dir / 'stellar_db_uncorrected.hdf5'
 
-    sp1_stars = ('HD1835', 'HD19467', 'HD20782', 'HD30495',
-                 'HD45184', 'HD45289', 'HD76151', 'HD78429',
-                 'HD78660', 'HD138573', 'HD140538', 'HD146233',
-                 'HD157347', 'HD171665', 'HD183658', 'HD220507',
-                 'HD222582', 'Vesta')
-
-#    sp1_stars = ('HD138573', 'HD140538', 'HD146233', 'HD157347', 'HD171665',
-#                 'HD1835', 'HD183658', 'HD19467', 'HD20782', 'HD220507',
-#                 'HD222582', 'HD30495', 'HD45184', 'HD45289', 'HD76151',
-#                 'HD78429', 'HD78660', 'Vesta')
+    sp1_stars = ('Vesta', 'HD1835', 'HD19467', 'HD20782',
+                 'HD30495', 'HD45184', 'HD45289', 'HD76151',
+                 'HD78429', 'HD78660', 'HD138573', 'HD140538',
+                 'HD146233', 'HD157347', 'HD171665', 'HD183658',
+                 'HD220507', 'HD222582')
 
     plots_dir = Path('/Users/dberke/Pictures/paper_plots_and_tables/plots')
 
