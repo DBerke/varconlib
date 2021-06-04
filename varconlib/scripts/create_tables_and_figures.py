@@ -1764,10 +1764,14 @@ def plot_solar_twins_results():
 
         t1, t2, order_num = pair_label.split('_')
         # This mimics the look of ion labels in MNRAS.
-        new_label1 = f"{t1[:8]}" + r"\ " + f"{t1[8:-1]}" + r"\," + \
-            r"\textsc{\lowercase{" + f"{roman_numerals[t1[-1]]}" + r"}}"
-        new_label2 = f"{t2[:8]}" + r"\ " + f"{t2[8:-1]}" + r"\," + \
-            r"\textsc{\lowercase{" + f"{roman_numerals[t2[-1]]}" + r"}}"
+#        new_label1 = f"{t1[:8]}" + r"\ " + f"{t1[8:-1]}" + r"\," + \
+#            r"\textsc{\lowercase{" + f"{roman_numerals[t1[-1]]}" + r"}}"
+        new_label1 = f"{t1[8:-1]}" + r"\," + r"\textsc{\lowercase{" +\
+            f"{roman_numerals[t1[-1]]}" + r"}}" + r"\ " + f"{t1[:8]}"
+#        new_label2 = f"{t2[:8]}" + r"\ " + f"{t2[8:-1]}" + r"\," + \
+#            r"\textsc{\lowercase{" + f"{roman_numerals[t2[-1]]}" + r"}}"
+        new_label2 = f"{t2[8:-1]}" + r"\," + r"\textsc{\lowercase{" +\
+            f"{roman_numerals[t2[-1]]}" + r"}}" + r"\ " + f"{t2[:8]}"
 
         return {'ion1': new_label1, 'ion2': new_label2}
 
@@ -1785,15 +1789,15 @@ def plot_solar_twins_results():
     block1_stars = ('Vesta', 'HD76151', 'HD78429',
                     'HD140538', 'HD146233', 'HD157347')
     block2_stars = ('HD20782', 'HD19467', 'HD45184',
-                    'HD45289', 'HD138573', 'HD171665',)
-    block3_stars = ('HD183658', 'HD220507', 'HD222582')
+                    'HD45289', 'HD171665',)
+    block3_stars = ('HD138573', 'HD183658', 'HD220507', 'HD222582')
     block4_stars = ('HD1835', 'HD30495', 'HD78660', )
 
     block1_width = 25
     block1_ticks = 15
-    block2_width = 50
+    block2_width = 45
     block2_ticks = 30
-    block3_width = 80
+    block3_width = 75
     block3_ticks = 50
     block4_width = 125
     block4_ticks = 75
@@ -1807,8 +1811,8 @@ def plot_solar_twins_results():
     # Set the "velocity" title to be below the figure.
     fig.supxlabel('Velocity (m/s)', fontsize=18)
 
-    fig_hist = plt.figure(figsize=(12, 5), tight_layout=True)
-    gs_hist = GridSpec(ncols=10, nrows=2, figure=fig_hist, wspace=0)
+    fig_hist = plt.figure(figsize=(6, 8), tight_layout=True)
+    gs_hist = GridSpec(ncols=1, nrows=2, figure=fig_hist)
 
     # Create a dict to hold all the axes.
     axes = {}
@@ -1953,18 +1957,21 @@ def plot_solar_twins_results():
                                        fontdict={
                                                'horizontalalignment': 'right',
                                                'fontsize': 15})
-
     # Define colors for pre- and post- eras.
     pre_color = cmr.ember(0.7)
-    post_color = cmr.freeze(0.55)
+    post_color = cmr.cosmic(0.55)
 
     # How significant to report outliers.
-    sigma_significance = 2
+    sigma_significance = 3
     vprint(f'Looking for outliers beyond {sigma_significance} sigma')
+    # Create lists to hold the significance values:
+    pre_stat, pre_sys = [], []
+    post_stat, post_sys = [], []
     for i, pair_label in enumerate(pair_labels):
-        # Create lists to hold the significance values:
-        pre_stat, pre_sys = [], []
-        post_stat, post_sys = [], []
+        # Create lists to hold the values and errors:
+        pre_values, post_values = [], []
+        pre_err_stat, post_err_stat = [], []
+        pre_err_sys, post_err_sys = [], []
         # Figure out some numbers for locating things from star name.
         for star_name in sp1_stars:
             if star_name in block1_stars:
@@ -2001,13 +2008,20 @@ def plot_solar_twins_results():
                 # Compute error with sigma_** included.
                 sigma_s2s = star.pairSysErrorsArray[0, pair_index]
                 full_error = np.sqrt(error**2 + sigma_s2s**2)
-                sig_stat = float(abs(value / error).value)
-                sig_sys = float(abs(value / full_error).value)
+                sig_stat = float((value / error).value)
+                sig_sys = float((value / full_error).value)
                 pre_stat.append(sig_stat)
                 pre_sys.append(sig_sys)
-                if sig_sys > sigma_significance:
+                if abs(sig_sys) > sigma_significance:
                     vprint(f'{star.name}: {pair_label}:'
                            f' (Pre) {sig_sys:.2f}')
+                pre_values.append(value)
+                pre_err_stat.append(error)
+                pre_err_sys.append(full_error)
+                if (star.name == 'HD1835') and\
+                        (pair_label == '4759.449Ti1_4760.600Ti1_32'):
+                    vprint('For HD 1835, 4759.449Ti1_4760.600Ti1_32:')
+                    vprint(f'Value: {value:.3f}, error: {full_error:.3f}')
                 # First plot an errorbar with sigma_** included.
                 axes[(row, i)].errorbar(value, j-0.15,
                                         xerr=full_error,
@@ -2043,13 +2057,16 @@ def plot_solar_twins_results():
                     continue
                 sigma_s2s = star.pairSysErrorsArray[1, pair_index]
                 full_error = np.sqrt(error**2 + sigma_s2s**2)
-                sig_stat = float(abs(value / error).value)
-                sig_sys = float(abs(value / full_error).value)
+                sig_stat = float((value / error).value)
+                sig_sys = float((value / full_error).value)
                 post_stat.append(sig_stat)
                 post_sys.append(sig_sys)
-                if sig_sys > sigma_significance:
+                if abs(sig_sys) > sigma_significance:
                     vprint(f'{star.name}: {pair_label}:'
                            f' (Post) {sig_sys:.2f}')
+                post_values.append(value)
+                post_err_stat.append(error)
+                post_err_sys.append(full_error)
                 axes[(row, i)].errorbar(value, j+0.15,
                                         xerr=full_error,
                                         ecolor=post_color,
@@ -2069,17 +2086,62 @@ def plot_solar_twins_results():
                                         capsize=5,
                                         elinewidth=4,
                                         zorder=14)
+        # Print some metrics for the pair.
+        pre_val_arr = np.array(pre_values)
+        pre_err_arr_stat = np.array(pre_err_stat)
+        pre_err_arr_sys = np.array(pre_err_sys)
+        post_val_arr = np.array(post_values)
+        post_err_arr_stat = np.array(post_err_stat)
+        post_err_arr_sys = np.array(post_err_sys)
+        wm_value_pre, error_pre = weighted_mean_and_error(
+                pre_val_arr, pre_err_arr_sys)
+        wm_value_post, error_post = weighted_mean_and_error(
+                post_val_arr, post_err_arr_sys)
+        chi_2_pre_stat = fit.calc_chi_squared_nu(
+                pre_val_arr, pre_err_arr_stat, 1)
+        chi_2_pre_sys = fit.calc_chi_squared_nu(
+                pre_val_arr, pre_err_arr_sys, 1)
+        chi_2_post_stat = fit.calc_chi_squared_nu(
+                post_val_arr, post_err_arr_stat, 1)
+        chi_2_post_sys = fit.calc_chi_squared_nu(
+                post_val_arr, post_err_arr_sys, 1)
+        vprint(f'For {pair_label}:')
+        vprint('    Pre : Weighted mean:'
+               f' {wm_value_pre:.2f} ± {error_pre:.2f} m/s')
+        vprint(f'    Pre : chi^2: {chi_2_pre_stat:.2f}, {chi_2_pre_sys:.2f}')
+        vprint(f'    Pre : mean error: {np.mean(pre_err_arr_sys):.2f} m/s')
+        vprint('    Post: Weighted mean:'
+               f' {wm_value_post:.2f} ± {error_post:.2f} m/s')
+        vprint(f'    Post: chi^2: {chi_2_post_stat:.2f}, {chi_2_post_sys:.2f}')
+        vprint(f'    Post: mean error: {np.mean(post_err_arr_sys):.2f} m/s')
 
-        # Create the histogram plots for the pair.
-        if i > 9:
-            i -= 10
-            k = 1
-        else:
-            k = 0
-        ax = fig_hist.add_subplot(gs_hist[k, i])
-        ax.tick_params(labelleft=False)
-        ax.hist(pre_stat, color=pre_color, histtype='step')
-        ax.hist(post_stat, color=post_color, histtype='step')
+    # Create the histogram plots for the pair.
+
+    bins_stat = np.linspace(-3, 3, num=25)
+    bins_sys = np.linspace(-3, 3, num=25)
+    ax_stat = fig_hist.add_subplot(gs_hist[0, 0])
+    ax_sys = fig_hist.add_subplot(gs_hist[1, 0],
+                                  sharex=ax_stat, sharey=ax_stat)
+    ax_stat.set_xlabel('Significance (stat only)', size=14)
+    ax_sys.set_xlabel('Significance (stat + sys)', size=14)
+    for ax in (ax_stat, ax_sys):
+        ax.set_ylabel('N')
+        ax.xaxis.set_major_locator(ticker.FixedLocator((-3, -2, -1,
+                                                        0, 1, 2, 3)))
+        ax.xaxis.set_minor_locator(ticker.FixedLocator(bins_stat))
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+
+    ax_stat.hist(pre_stat, color=pre_color, histtype='step',
+                 bins=bins_stat, linewidth=2, label='Pre')
+    ax_stat.hist(post_stat, color=post_color, histtype='bar', alpha=0.4,
+                 bins=bins_stat, linewidth=1.8, label='Post')
+    ax_sys.hist(pre_sys, color=pre_color, histtype='step',
+                bins=bins_sys, linewidth=2, label='Pre')
+    ax_sys.hist(post_sys, color=post_color, histtype='bar', alpha=0.4,
+                bins=bins_sys, linewidth=1.8, label='Post')
+
+    ax_stat.legend(loc='upper right')
+    ax_stat.legend(loc='upper right')
 
     outfile = plots_dir / 'Pair_offsets_17_pairs.pdf'
     fig.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
@@ -2088,7 +2150,7 @@ def plot_solar_twins_results():
     fig_hist.savefig(str(histfile), bbox_inches='tight', pad_inches=0.01)
 
     # Create an excerpt of a single column.
-    fig_ex = plt.figure(figsize=(5, 7), tight_layout=True)
+    fig_ex = plt.figure(figsize=(5, 6), tight_layout=True)
     ax_ex = fig_ex.add_subplot(1, 1, 1)
 
     y_grid_locations = [y+0.5 for y in range(len(sp1_stars))]
@@ -2123,8 +2185,9 @@ def plot_solar_twins_results():
     # Set the pair label to use.
     pair_label = pair_labels[10]  # 6138--6139
     pair_label = pair_labels[16]
-    fig_ex.suptitle(r'{ion1},\ {ion2}'.format(
-                    **format_label(pair_label)), size=16)
+    tqdm.write(f'Using pair {pair_label} for excerpt')
+#    fig_ex.suptitle(r'{ion1},\ {ion2}'.format(
+#                    **format_label(pair_label)), size=16)
     for j, star_name in enumerate(sp1_stars):
         star = stars[star_name]
         pair_index = star.p_index(pair_label)
@@ -2209,7 +2272,8 @@ def plot_solar_twins_results():
                            elinewidth=4,
                            zorder=14)
 
-    outfile = plots_dir / f'Pair_offsets_17_pairs_excerpt_{pair_label}.pdf'
+    outfile = plots_dir /\
+        f'Pair_offsets_17_pairs_excerpt_{pair_label.replace(".", "_")}.pdf'
     fig_ex.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
 
 
