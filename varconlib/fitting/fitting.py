@@ -254,16 +254,16 @@ def gaussian(x, a, b, c, d=0):
 
 
 def integrated_gaussian(pixel, amplitude, mu, sigma, baseline):
-    r"""Return the value of a Gaussian integrated between two points (given as a
-    tuple in `pixel`).
+    r"""Return the value of a Gaussian integrated between two points (given as
+    a tuple in `pixel`).
 
     The function is given by
-    .. math::    f(x_1, x_2) = \\sqrt{\\frac{\\tau}{4}} A
-                 \\sigma\\left[\\erf\\left(\\frac{x_{2}-
+    .. math::    f(x_1, x_2) = \\frac{\\sqrt{\\frac{\\tau}{4}} A
+                 \\sigma\\left[\\mathrm{erf}\\left(\\frac{x_{2}-
                  \\mu}{\\sqrt{2}\\sigma}\\right)
-                 -\\erf\\left(\\frac{x_{1}-
+                 -\\mathrm{erf}\\left(\\frac{x_{1}-
                  \\mu}{\\sqrt{2}\\sigma}\\right)\\right]
-                 -D x_{1}+D x_{2}
+                 -D x_{1}+D x_{2}}{x_2-x_1}
 
 
     Parameters
@@ -273,7 +273,7 @@ def integrated_gaussian(pixel, amplitude, mu, sigma, baseline):
     amplitude : float
         The amplitude of the Gaussian. Must be Real.
     mu : float
-        The median (also the center) of the Gaussian. Must be Real.
+        The mean (also the center) of the Gaussian. Must be Real.
     sigma : float
         The standard deviation of the Gaussian. Must be non-zero.
     baseline : float
