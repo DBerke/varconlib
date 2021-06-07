@@ -19,6 +19,7 @@ from math import ceil
 import os
 from pathlib import Path
 import pickle
+import sys
 
 import cmasher as cmr
 import h5py
@@ -30,7 +31,7 @@ import matplotlib.lines as mlines
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from scipy.optimize import curve_fit
-from scipy.stats import anderson_ksamp, ks_2samp
+from scipy.stats import ks_2samp
 from tabulate import tabulate
 from tqdm import tqdm
 import unyt as u
@@ -383,23 +384,24 @@ def create_example_pair_sep_plots():
     ax2 = fig2.add_subplot(gs[0, 0])
     ax3 = fig2.add_subplot(gs[1, 0], sharex=ax2)
 
-    ax2.annotate(r'$\lambda4492.660\,\textrm{Fe\,\textsc{\lowercase{II}}},\,'
-                 r'\lambda4503.480\,\textrm{Mn\,\textsc{\lowercase{I}}}$',
+    ax2.annotate(r'$\textrm{Fe\,\textsc{\lowercase{II}}}\,\lambda4492.660,\,'
+                 r'\textrm{Mn\,\textsc{\lowercase{I}}}\,\lambda4503.480$',
                  xy=(0, 0), xytext=(0.03, 0.02),
-                 textcoords='axes fraction', size=19,
+                 textcoords='axes fraction', size=18,
                  horizontalalignment='left', verticalalignment='bottom')
 
-    ax3.set_xlabel('[Fe/H]')
+    ax3.set_xlabel('[Fe/H]', size=18)
 
     for ax in (ax1, ax2):
-        ax.set_ylabel('Normalized pair\nseparation (m/s)', size=18)
-    ax3.set_ylabel('Residuals (m/s)', size=18)
+        ax.set_ylabel('Normalized pair\nseparation (m/s)', size=16)
+    ax3.set_ylabel('Pair model offsets (m/s)', size=16)
 
     ax1.xaxis.set_minor_locator(ticker.AutoMinorLocator())
     for ax in (ax2, ax3):
         ax.xaxis.set_major_locator(ticker.MultipleLocator(base=0.2))
         ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.tick_params(labelsize=16)
 
     ax2.tick_params(labelbottom=False)
 
@@ -409,7 +411,7 @@ def create_example_pair_sep_plots():
     ax2.set_ylim(bottom=-220, top=220)
 
     ax3.axhline(y=0, linestyle='--',
-                color='DarkCyan')
+                color='Black')
 
     # metallicities is index 1 here
     ax2.errorbar(ma.compressed(x_data[1]),
@@ -488,8 +490,10 @@ def create_example_pair_sep_plots():
                  ecolor='DarkOrange')
 
     plot_dir = Path('/Users/dberke/Pictures/paper_plots_and_tables/plots')
-    fig1.savefig(str(plot_dir / f'{label}_SP1.png'))
-    fig2.savefig(str(plot_dir / f'{label}_sample.pdf'))
+    fig1.savefig(str(plot_dir / f'{label}_SP1.png'),
+                 bbox_inches='tight', pad_inches=0.01)
+    fig2.savefig(str(plot_dir / f'{label}_sample.pdf'),
+                 bbox_inches='tight', pad_inches=0.01)
 
     # plt.show()
 
@@ -548,8 +552,8 @@ def create_parameter_dependence_plot(use_cached=False, min_bin_size=5):
     Parameters
     ----------
     use_cached : bool, Default: False
-        If False, will rerun entire binning and fitting procedure, which is very
-        slow. (Though it must be done at least once first.) If True, will
+        If False, will rerun entire binning and fitting procedure, which is
+        very slow. (Though it must be done at least once first.) If True, will
         instead used saved values from running full procedure.
     min_bin_size : int
         The lower limit on the number of stars in a bin to proceed with finding
@@ -595,7 +599,7 @@ def create_parameter_dependence_plot(use_cached=False, min_bin_size=5):
     with h5py.File(db_file, mode='r') as f:
 
         star_metallicities = hickle.load(f, path='/star_metallicities')
-        star_magnitudes = hickle.load(f, path='/star_magnitudes')
+#        star_magnitudes = hickle.load(f, path='/star_magnitudes')
         star_gravities = hickle.load(f, path='/star_gravities')
         column_dict = hickle.load(f, path='/pair_column_index')
 
@@ -655,17 +659,17 @@ def create_parameter_dependence_plot(use_cached=False, min_bin_size=5):
     ax2 = fig.add_subplot(gs[0, 1], sharey=ax1)
     ax3 = fig.add_subplot(gs[0, 2], sharey=ax1)
 
-    ax1.set_ylim(bottom=-3, top=120)
+    ax1.set_ylim(bottom=-3, top=124)
     ax1.set_xlim(left=bin_dict['temp'][0], right=bin_dict['temp'][-1])
     ax2.set_xlim(left=bin_dict['mtl'][0], right=bin_dict['mtl'][-1])
     ax3.set_xlim(left=bin_dict['logg'][0], right=bin_dict['logg'][-1])
 
-    ax1.set_xlabel(r'$T_\mathrm{eff}$ (K)')
-    ax1.set_ylabel(r'$\sigma_\mathrm{s2s}$ (m/s)')
-    ax2.set_xlabel('[Fe/H]')
-    ax3.set_xlabel(r'$\log{g}\,(\mathrm{cm\,s}^{-2})$')
+    ax1.set_xlabel(r'$T_\mathrm{eff}$ (K)', size=15)
+    ax1.set_ylabel(r'$\sigma_\mathrm{**}$ (m/s)', size=15)
+    ax2.set_xlabel('[Fe/H]', size=15)
+    ax3.set_xlabel(r'$\log{g}\,(\mathrm{cm\,s}^{-2})$', size=15)
 
-    ax1.xaxis.set_major_locator(ticker.FixedLocator([5477, 5777, 6077]))
+    ax1.xaxis.set_major_locator(ticker.FixedLocator([5472, 5772, 6072]))
     ax2.xaxis.set_major_locator(ticker.MultipleLocator(base=0.3))
     ax3.xaxis.set_major_locator(ticker.FixedLocator([4.24, 4.34, 4.44,
                                                      4.54]))
@@ -676,6 +680,7 @@ def create_parameter_dependence_plot(use_cached=False, min_bin_size=5):
     for ax in (ax1, ax2, ax3):
         ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.tick_params(labelsize=16)
 
     for plot_type, ax in zip(plot_types, (ax1, ax2, ax3)):
         for limit in bin_dict[plot_type]:
@@ -734,15 +739,8 @@ def create_parameter_dependence_plot(use_cached=False, min_bin_size=5):
             temps = temperatures[~m_seps.mask]
             metallicities = ma.masked_array(star_metallicities)
             metals = metallicities[~m_seps.mask]
-            magnitudes = ma.masked_array(star_magnitudes)
-            mags = magnitudes[~m_seps.mask]
             gravities = ma.masked_array(star_gravities)
             loggs = gravities[~m_seps.mask]
-
-            # stars = ma.masked_array([key for key in
-            #                          star_names.keys()]).reshape(
-            #                              len(star_names.keys()), 1)
-            # names = stars[~m_seps.mask]
 
             # Stack the stellar parameters into vertical slices
             # for passing to model functions.
@@ -769,16 +767,6 @@ def create_parameter_dependence_plot(use_cached=False, min_bin_size=5):
             model_values = model_func(x_data, *popt)
             residuals = separations.value - model_values
 
-            # if args.nbins:
-            #     nbins = int(args.nbins)
-            #     # Use quantiles to get bins with the same number of elements
-            #     # in them.
-            #     vprint(f'Generating {args.nbins} bins.')
-            #     bins = np.quantile(arrays_dict[name],
-            #                        np.linspace(0, 1, nbins+1),
-            #                        interpolation='nearest')
-            #     bin_dict[name] = bins
-
             min_bin_size = min_bin_size
             sigma_sys_dict = {}
             star_bins_dict = {}
@@ -793,7 +781,8 @@ def create_parameter_dependence_plot(use_cached=False, min_bin_size=5):
                     bin_num += 1
                     lower, upper = bin_lims
                     bin_mid_list.append((lower + upper) / 2)
-                    mask_array = ma.masked_outside(arrays_dict[name], *bin_lims)
+                    mask_array = ma.masked_outside(arrays_dict[name],
+                                                   *bin_lims)
                     num_points = mask_array.count()
                     star_bins_dict[name].append(num_points)
                     vprint(f'{num_points} values in bin ({lower},{upper})')
@@ -802,13 +791,8 @@ def create_parameter_dependence_plot(use_cached=False, min_bin_size=5):
                         sigma_list.append(np.nan)
                         sigma_sys_list.append(np.nan)
                         continue
-                    temps_copy = temps[~mask_array.mask]
-                    metals_copy = metals[~mask_array.mask]
-                    mags_copy = mags[~mask_array.mask]
                     residuals_copy = residuals[~mask_array.mask]
                     errs_copy = err_array[~mask_array.mask].value
-                    x_data_copy = np.stack((temps_copy, metals_copy, mags_copy),
-                                           axis=0)
 
                     chi_squared_nu = fit.calc_chi_squared_nu(residuals_copy,
                                                              errs_copy,
@@ -843,7 +827,6 @@ def create_parameter_dependence_plot(use_cached=False, min_bin_size=5):
                         print(mask_array)
                         print(metals)
                         print(residuals)
-                        print(n_params)
                         print(num_params)
                         print(residuals_copy)
                         print(errs_copy)
@@ -889,16 +872,16 @@ def create_parameter_dependence_plot(use_cached=False, min_bin_size=5):
             ax.annotate(fr'${star_bins_dict[name][i]}$',
                         (float(sigma_sys_dict[f'{name}_bin_mids'][i]), 110),
                         xytext=(float(sigma_sys_dict[f'{name}_bin_mids'][i]),
-                                110),
+                                121),
                         textcoords='data',
                         verticalalignment='top', horizontalalignment='center',
-                        fontsize=18, zorder=15)
+                        fontsize=16, zorder=15)
 
     plot_path = Path('/Users/dberke/Pictures/paper_plots_and_tables/plots')
 
     filename = plot_path /\
-        f'Stellar_parameter_dependence_bin_{min_bin_size}.png'
-    fig.savefig(str(filename))
+        f'Stellar_parameter_dependence_bin_{min_bin_size}.pdf'
+    fig.savefig(str(filename), bbox_inches='tight', pad_inches=0.01)
 
 
 def plot_duplicate_pairs(star):
@@ -2381,7 +2364,7 @@ if __name__ == '__main__':
 
 #        create_HR_diagram_plot()
 
-#         create_example_pair_sep_plots()
+         create_example_pair_sep_plots()
 
         # create_sigma_sys_hist()
 
@@ -2402,4 +2385,4 @@ if __name__ == '__main__':
 
 #        create_sigma_s2s_histogram()
 
-        plot_solar_twins_results()
+#        plot_solar_twins_results()
