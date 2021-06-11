@@ -39,7 +39,7 @@ import unyt as u
 import varconlib as vcl
 import varconlib.fitting as fit
 from varconlib.miscellaneous import (remove_nans, weighted_mean_and_error,
-                                     get_params_file,
+                                     get_params_file, shift_wavelength,
                                      velocity2wavelength, wavelength2index)
 from varconlib.obs2d import HARPSFile2DScience
 from varconlib.star import Star
@@ -1396,6 +1396,9 @@ def plot_representative_blendedness_plots():
 
     obs = HARPSFile2DScience(data_file)
 
+    # Get the radial velocity.
+    radial_velocity = obs.radialVelocity
+
     transitions = {'category0': ('4575.498Fe1_27',
                                  '5595.288Ni1_51',
                                  '6167.066Fe1_61'),
@@ -1416,37 +1419,45 @@ def plot_representative_blendedness_plots():
                                  '5209.550Cr1_44')}
 
     # Create the plot.
-    fig = plt.figure(figsize=(18, 4), tight_layout=True)
+    fig = plt.figure(figsize=(16, 4), tight_layout=True)
     axes = fig.subplots(1, 6, sharey=True, gridspec_kw={'wspace': 0})
 
     for i, category in tqdm(enumerate(transitions.keys())):
         axes[i].set_xlabel(f'Blendedness: {category[-1]}')
+        colors = cmr.take_cmap_colors('cmr.torch', 3,
+                                      cmap_range=(0.2, 0.8), return_fmt='hex')
         for j, t_label in enumerate(transitions[category]):
             tqdm.write(f'Working on {t_label}')
             wavelength = float(t_label[:8]) * u.angstrom
+            exp_wavelength = shift_wavelength(wavelength, radial_velocity)
             order_num = int(t_label[-2:])
 
             wavelength_data = obs.barycentricArray[order_num]
             flux_data = obs.photonFluxArray[order_num]
             error_data = obs.errorArray[order_num]
 
-            plot_range = velocity2wavelength(15 * u.km/u.s,
-                                             wavelength)
+            plot_range = velocity2wavelength(20 * u.km/u.s,
+                                             exp_wavelength)
 
-            low_index = wavelength2index(wavelength - plot_range,
+            low_index = wavelength2index(exp_wavelength - plot_range,
                                          wavelength_data)
-            high_index = wavelength2index(wavelength + plot_range,
+            high_index = wavelength2index(exp_wavelength + plot_range,
                                           wavelength_data)
             indices = [i for i in range(high_index - low_index)]
 
-            axes[i].errorbar(indices,
-                             flux_data[low_index:high_index],
-                             yerr=error_data[low_index:high_index],
-                             barsabove=True,
-                             color='Black', ecolor='Chocolate',
-                             linestyle='-', marker='')
+            fluxes = flux_data[low_index:high_index]
+            flux_max = flux_data[low_index:high_index].max()
 
-    plt.show()
+            axes[i].errorbar(indices,
+                             fluxes / flux_max,
+                             yerr=error_data[low_index:high_index]/flux_max,
+                             barsabove=True,
+                             color=colors[j], ecolor='Black',
+                             linestyle='-', marker='', linewidth=2)
+
+    plot_name = plots_dir / 'Blendedness_examples.png'
+    fig.savefig(str(plot_name), bbox_inches='tight', pad_inches=0.01)
+#    plt.show()
 
 
 def plot_pair_depth_differences(star):
@@ -2260,6 +2271,66 @@ def plot_solar_twins_results():
     fig_ex.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
 
 
+def create_cosmic_ray_plots():
+    """Create plots showing the effect of a cosmic ray hit."""
+
+    hd45184 = Star('HD45184', '/Users/dberke/data_output/HD45184')
+
+    # Transition of interest is 4658.285Fe2_29
+    t_label = '4658.285Fe2_29'
+    t_index = hd45184.t_index(t_label)
+    # Observation date is 2012-05-10T23:31:23.209
+    o_index = hd45184._obs_date_bidict['2012-05-10T23:31:23.209']
+
+    obs_file = vcl.data_dir /\
+        'spectra/HD45184/HARPS.2012-05-10T23:31:23.210_e2ds_A.fits'
+
+    # Get the right data from the affected observation.
+    obs = HARPSFile2DScience(obs_file)
+    radial_velocity = obs.radialVelocity
+    vprint(f'Working on {t_label}.')
+    wavelength = float(t_label[:8]) * u.angstrom
+    exp_wavelength = shift_wavelength(wavelength, radial_velocity)
+    order_num = int(t_label[-2:])
+
+    wavelength_data = obs.barycentricArray[order_num]
+    flux_data = obs.photonFluxArray[order_num]
+    error_data = obs.errorArray[order_num]
+
+    mid_index = wavelength2index(exp_wavelength, wavelength_data)
+    low_index = mid_index - 10
+    high_index = mid_index + 10
+
+    fig = plt.figure(figsize=(6, 6), tight_layout=True)
+    gs = GridSpec(nrows=2, ncols=1, figure=fig,
+                  height_ratios=(2.8, 1))
+
+    ax_plot = fig.add_subplot(gs[0, 0])
+    ax_hist = fig.add_subplot(gs[1, 0])
+
+    ax_plot.set_ylabel('Flux (photons)')
+    ax_plot.set_xlabel(r'Wavelength (\AA)')
+
+    ax_hist.set_xlim(left=-160, right=450)
+    ax_hist.set_ylabel('N')
+    ax_hist.set_xlabel('Transition offset (m/s)')
+    bins = np.linspace(-150, 450, 57)
+
+    ax_hist.hist(hd45184.fitOffsetsArray[:, 108].value, bins=bins,
+                 histtype='step', color='Black', linewidth=1.5)
+
+    ax_plot.errorbar(wavelength_data[low_index:high_index],
+                     flux_data[low_index:high_index],
+                     yerr=error_data[low_index:high_index],
+                     color=cmr.torch(0.8), linestyle='-', marker='',
+                     ecolor='Black', linewidth=2,
+                     barsabove=True, capsize=2.5,
+                     capthick=1.5)
+
+    outfile = plots_dir / 'Cosmic_ray_effect.pdf'
+    fig.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Create all the necessary'
                                      ' figures and tables for my two papers'
@@ -2364,7 +2435,7 @@ if __name__ == '__main__':
 
 #        create_HR_diagram_plot()
 
-         create_example_pair_sep_plots()
+#         create_example_pair_sep_plots()
 
         # create_sigma_sys_hist()
 
@@ -2386,3 +2457,5 @@ if __name__ == '__main__':
 #        create_sigma_s2s_histogram()
 
 #        plot_solar_twins_results()
+
+        create_cosmic_ray_plots()
