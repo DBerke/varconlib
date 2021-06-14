@@ -15,6 +15,7 @@ import csv
 from inspect import signature
 from itertools import tee
 from glob import glob
+import lzma
 from math import ceil
 import os
 from pathlib import Path
@@ -2276,11 +2277,24 @@ def create_cosmic_ray_plots():
 
     hd45184 = Star('HD45184', '/Users/dberke/data_output/HD45184')
 
-    # Transition of interest is 4658.285Fe2_29
+    saved_fits_file = vcl.output_dir /\
+        'HD45184/HARPS.2012-05-10T23:31:23.210_e2ds_A/pickles_int/'\
+        'HARPS.2012-05-10T23:31:23.210_e2ds_A_gaussian_fits.lzma'
+
+    # Transition of interest is 4658.285Fe2_29, index 108
     t_label = '4658.285Fe2_29'
     t_index = hd45184.t_index(t_label)
-    # Observation date is 2012-05-10T23:31:23.209
-    o_index = hd45184._obs_date_bidict['2012-05-10T23:31:23.209']
+    # Observation date is 2012-05-10T23:31:23.209, index 77
+#    o_index = hd45184._obs_date_bidict['2012-05-10T23:31:23.209']
+
+    # Find the weighted mean and error of this transition offset in this star.
+    offsets, mask = remove_nans(hd45184.fitOffsetsArray[:, 108],
+                                return_mask=True)
+    errors = hd45184.fitErrorsArray[:, 108][mask]
+    wmean, eotwm = weighted_mean_and_error(offsets, errors)
+    vprint(f'Weighted mean of offsets: {wmean:.3f}')
+    vprint(f'Error on the weighted mean: {eotwm:.3f}')
+    vprint(f'RMS of offsets: {np.std(offsets):.3f}')
 
     obs_file = vcl.data_dir /\
         'spectra/HD45184/HARPS.2012-05-10T23:31:23.210_e2ds_A.fits'
@@ -2301,6 +2315,12 @@ def create_cosmic_ray_plots():
     low_index = mid_index - 10
     high_index = mid_index + 10
 
+    # Get fit information from the saved fit.
+    with lzma.open(saved_fits_file, 'rb') as f:
+        fits_list = pickle.loads(f.read())
+    model_fit = fits_list[t_index]
+#    print(model_fit.label)
+
     fig = plt.figure(figsize=(6, 6), tight_layout=True)
     gs = GridSpec(nrows=2, ncols=1, figure=fig,
                   height_ratios=(2.8, 1))
@@ -2310,22 +2330,69 @@ def create_cosmic_ray_plots():
 
     ax_plot.set_ylabel('Flux (photons)')
     ax_plot.set_xlabel(r'Wavelength (\AA)')
+#    ax_plot.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:>5.1e}'))
+    ax_plot.set_ylim(bottom=flux_data[low_index:high_index].min() * 0.96,
+                     top=flux_data[low_index:high_index].max() * 1.02)
+    ax_plot.set_xlim(left=wavelength_data[low_index],
+                     right=wavelength_data[high_index-1])
 
     ax_hist.set_xlim(left=-160, right=450)
     ax_hist.set_ylabel('N')
-    ax_hist.set_xlabel('Transition offset (m/s)')
+    ax_hist.set_xlabel('Transition offsets in HD 45184 (m/s)')
     bins = np.linspace(-150, 450, 57)
 
+    # Plot the histogram:
     ax_hist.hist(hd45184.fitOffsetsArray[:, 108].value, bins=bins,
-                 histtype='step', color='Black', linewidth=1.5)
+                 histtype='step', color='Black', linewidth=1.5,
+                 zorder=5)
+    ax_hist.axvline(x=wmean, color='Gray', linestyle='--',
+                    zorder=6)
+    ax_hist.axvline(x=model_fit.velocityOffset.to(u.m/u.s),
+                    color='Gray', linestyle=':',
+                    zorder=6)
 
+    # Plot the fit:
     ax_plot.errorbar(wavelength_data[low_index:high_index],
                      flux_data[low_index:high_index],
                      yerr=error_data[low_index:high_index],
                      color=cmr.torch(0.8), linestyle='-', marker='',
-                     ecolor='Black', linewidth=2,
+                     ecolor='Gray', linewidth=2,
                      barsabove=True, capsize=2.5,
-                     capthick=1.5)
+                     capthick=1.5,
+                     zorder=5)
+
+    # Plot the data points used in fitting with different color.
+    ax_plot.errorbar(wavelength_data[mid_index-3:mid_index+4],
+                     flux_data[mid_index-3:mid_index+4],
+                     yerr=error_data[mid_index-3:mid_index+4],
+                     linestyle='', marker='',
+                     ecolor='Black', barsabove=True,
+                     capsize=2.5, capthick=1.5,
+                     zorder=9)
+
+    # Create x-values for the fit.
+    x = np.linspace(wavelength_data[low_index].value - 1,
+                    wavelength_data[high_index].value + 1, 1000)
+    ax_plot.plot(x, fit.gaussian(x, *model_fit.popt),
+                 color='DarkGreen', alpha=0.7, linestyle='-',
+                 zorder=8)
+
+    ax_plot.axvline(model_fit.mean.to(u.angstrom),
+                    color='Gray', linestyle=':',
+                    zorder=7, label='Measured offset')
+    ax_plot.axvline(shift_wavelength(model_fit.mean.to(u.angstrom),
+                                     -model_fit.velocityOffset),
+                    color='Gray', linestyle='--',
+                    zorder=6, label='Weighted mean\nof offsets')
+
+    ax_plot.legend(loc='lower left',
+                   fontsize=14)
+
+#    ax_plot.annotate('Affected\npixel', (wavelength_data[mid_index-3],
+#                                         flux_data[mid_index-3]),
+#                     xytext=(4658.17, 29000),
+#                     arrowprops={'arrowstyle': '-'},
+#                     fontsize=14, halignment='center')
 
     outfile = plots_dir / 'Cosmic_ray_effect.pdf'
     fig.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
@@ -2456,6 +2523,6 @@ if __name__ == '__main__':
 
 #        create_sigma_s2s_histogram()
 
-#        plot_solar_twins_results()
+        plot_solar_twins_results()
 
-        create_cosmic_ray_plots()
+#        create_cosmic_ray_plots()
