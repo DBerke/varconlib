@@ -1680,10 +1680,10 @@ def create_sigma_s2s_histogram():
              histtype='step', color='Black', linestyle='-',
              bins=short_list_bins, linewidth=2.5,
              label='Post')
-    ax1.legend(loc='upper left')
+    ax1.legend(loc='upper left', fontsize=16)
 
     outfile = plots_dir / 'Sigma_s2s_histogram_17_pairs.pdf'
-    fig1.savefig(str(outfile))
+    fig1.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
 
     fig2 = plt.figure(figsize=(5, 5), tight_layout=True)
     ax2 = fig2.add_subplot(1, 1, 1)
@@ -1713,10 +1713,10 @@ def create_sigma_s2s_histogram():
              bins=blend_2_bins, linewidth=2.5,
              label='Post')
 
-    ax2.legend(loc='upper right')
+    ax2.legend(loc='upper right', fontsize=16)
 
     outfile = plots_dir / 'Sigma_s2s_histogram_blend_2_pairs.pdf'
-    fig2.savefig(str(outfile))
+    fig2.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
 
     vprint(f'# of pre values: {len(pre_sigma_s2s_blend_2)}')
     vprint(f'# of post values: {len(post_sigma_s2s_blend_2)}')
@@ -1805,9 +1805,6 @@ def plot_solar_twins_results():
                                  len(block4_stars)))
     # Set the "velocity" title to be below the figure.
     fig.supxlabel('Velocity (m/s)', fontsize=18)
-
-    fig_hist = plt.figure(figsize=(6, 8), tight_layout=True)
-    gs_hist = GridSpec(ncols=1, nrows=2, figure=fig_hist)
 
     # Create a dict to hold all the axes.
     axes = {}
@@ -2112,31 +2109,27 @@ def plot_solar_twins_results():
 
     # Create the histogram plots for the pair.
 
-    bins_stat = np.linspace(-3, 3, num=25)
-    bins_sys = np.linspace(-3, 3, num=25)
-    ax_stat = fig_hist.add_subplot(gs_hist[0, 0])
-    ax_sys = fig_hist.add_subplot(gs_hist[1, 0],
-                                  sharex=ax_stat, sharey=ax_stat)
-    ax_stat.set_xlabel('Significance (stat only)', size=14)
-    ax_sys.set_xlabel('Significance (stat + sys)', size=14)
-    for ax in (ax_stat, ax_sys):
-        ax.set_ylabel('N')
-        ax.xaxis.set_major_locator(ticker.FixedLocator((-3, -2, -1,
-                                                        0, 1, 2, 3)))
-        ax.xaxis.set_minor_locator(ticker.FixedLocator(bins_stat))
-        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+    fig_hist = plt.figure(figsize=(5.5, 5.5), tight_layout=True)
+    bins = np.linspace(-3, 3, num=25)
+    ax_hist = fig_hist.add_subplot(1, 1, 1)
+    ax_hist.set_xlabel(r'Significance ($\sigma$)')
+    ax_hist.set_ylabel('N')
+    ax_hist.xaxis.set_major_locator(ticker.FixedLocator((-3, -2, -1,
+                                                         0, 1, 2, 3)))
+    ax_hist.xaxis.set_minor_locator(ticker.FixedLocator(bins))
+    ax_hist.yaxis.set_minor_locator(ticker.AutoMinorLocator())
 
-    ax_stat.hist(pre_stat, color=pre_color, histtype='step',
-                 bins=bins_stat, linewidth=2, label='Pre')
-    ax_stat.hist(post_stat, color=post_color, histtype='bar', alpha=0.4,
-                 bins=bins_stat, linewidth=1.8, label='Post')
-    ax_sys.hist(pre_sys, color=pre_color, histtype='step',
-                bins=bins_sys, linewidth=2, label='Pre')
-    ax_sys.hist(post_sys, color=post_color, histtype='bar', alpha=0.4,
-                bins=bins_sys, linewidth=1.8, label='Post')
+    # Add the pre and post distributions together here.
+    pre_stat.extend(post_stat)
+    pre_sys.extend(post_sys)
 
-    ax_stat.legend(loc='upper right')
-    ax_stat.legend(loc='upper right')
+    ax_hist.hist(pre_stat, color='Gray', histtype='step',
+                 bins=bins, linewidth=1.8, label='Stat. only')
+    ax_hist.hist(pre_sys, color='Black', histtype='step',
+                 bins=bins, linewidth=2.6, label='Stat. + Sys.')
+
+    ax_hist.legend(loc='upper right', fontsize=16,
+                   shadow=True)
 
     outfile = plots_dir / 'Pair_offsets_17_pairs.pdf'
     fig.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
@@ -2521,8 +2514,8 @@ if __name__ == '__main__':
 #        plot_pair_depth_differences(Star('HD134060',
 #                                    '/Users/dberke/data_output/HD134060'))
 
-#        create_sigma_s2s_histogram()
+        create_sigma_s2s_histogram()
 
-        plot_solar_twins_results()
+#        plot_solar_twins_results()
 
 #        create_cosmic_ray_plots()
