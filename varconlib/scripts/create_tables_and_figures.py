@@ -540,7 +540,7 @@ def create_sigma_sys_hist():
     ax.hist(sigmas_sys, color='Black', histtype='step',
             bins='fd')
 
-    ax.legend()
+    ax.legend(shadow=True)
 
     plt.show()
 
@@ -1680,7 +1680,7 @@ def create_sigma_s2s_histogram():
              histtype='step', color='Black', linestyle='-',
              bins=short_list_bins, linewidth=2.5,
              label='Post')
-    ax1.legend(loc='upper left', fontsize=16)
+    ax1.legend(loc='upper left', fontsize=16, shadow=True)
 
     outfile = plots_dir / 'Sigma_s2s_histogram_17_pairs.pdf'
     fig1.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
@@ -1797,7 +1797,7 @@ def plot_solar_twins_results():
     block4_width = 125
     block4_ticks = 75
 
-    fig = plt.figure(figsize=(18, 10), tight_layout=True)
+    fig = plt.figure(figsize=(18, 10.5), tight_layout=True)
     gs = GridSpec(ncols=20, nrows=4, figure=fig, wspace=0,
                   height_ratios=(len(block1_stars),
                                  len(block2_stars),
@@ -1850,15 +1850,15 @@ def plot_solar_twins_results():
                                               'verticalalignment': 'bottom'})
         elif i in (0, 2, 4):
             ax_twin.xaxis.set_major_locator(ticker.FixedLocator((-11, 12)))
-            ax_twin.set_xticklabels((str(order_num),
+            ax_twin.set_xticklabels((f'Order: {str(order_num)}',
                                      '{ion1}\n{ion2}'.format(
-                    **format_label(label)),),
+                                             **format_label(label)),),
                                     fontdict={'rotation': 90,
                                               'horizontalalignment': 'left',
                                               'verticalalignment': 'bottom'})
         elif i in (1, 3, 5):
             ax_twin.xaxis.set_major_locator(ticker.FixedLocator((2,)))
-            ax_twin.set_xticklabels((f'{str(order_num)}',),
+            ax_twin.set_xticklabels((f'Order: {str(order_num)}',),
                                     fontdict={'rotation': 90,
                                               'horizontalalignment': 'left',
                                               'verticalalignment': 'bottom'})
@@ -2123,6 +2123,18 @@ def plot_solar_twins_results():
     pre_stat.extend(post_stat)
     pre_sys.extend(post_sys)
 
+    one_sigma, two_sigma = 0, 0
+    for x in pre_sys:
+        y = abs(x)
+        if y < 1:
+            one_sigma += 1
+            two_sigma += 1
+        elif y < 2:
+            two_sigma += 1
+
+    vprint(f'{one_sigma/len(pre_sys):.1%} of values within 1 sigma.')
+    vprint(f'{two_sigma/len(pre_sys):.1%} of values within 2 sigma.')
+
     ax_hist.hist(pre_stat, color='Gray', histtype='step',
                  bins=bins, linewidth=1.8, label='Stat. only')
     ax_hist.hist(pre_sys, color='Black', histtype='step',
@@ -2305,8 +2317,8 @@ def create_cosmic_ray_plots():
     error_data = obs.errorArray[order_num]
 
     mid_index = wavelength2index(exp_wavelength, wavelength_data)
-    low_index = mid_index - 10
-    high_index = mid_index + 10
+    low_index = mid_index - 12
+    high_index = mid_index + 12
 
     # Get fit information from the saved fit.
     with lzma.open(saved_fits_file, 'rb') as f:
@@ -2344,31 +2356,41 @@ def create_cosmic_ray_plots():
                     color='Gray', linestyle=':',
                     zorder=6)
 
-    # Plot the fit:
+    # Plot the spectrum:
     ax_plot.errorbar(wavelength_data[low_index:high_index],
                      flux_data[low_index:high_index],
                      yerr=error_data[low_index:high_index],
-                     color=cmr.torch(0.8), linestyle='-', marker='',
-                     ecolor='Gray', linewidth=2,
+                     color=cmr.torch(0.82), linestyle='-', marker='',
+                     ecolor='Gray', linewidth=2.3,
                      barsabove=True, capsize=2.5,
-                     capthick=1.5,
+                     capthick=1.5, alpha=0.7,
                      zorder=5)
+
+    # Plot the spectrum line a bit darker.
+    ax_plot.errorbar(wavelength_data[mid_index-3:mid_index+4],
+                     flux_data[mid_index-3:mid_index+4],
+                     color=cmr.torch(0.8),
+                     linestyle='-', marker='', linewidth=2.5,
+                     zorder=8)
 
     # Plot the data points used in fitting with different color.
     ax_plot.errorbar(wavelength_data[mid_index-3:mid_index+4],
                      flux_data[mid_index-3:mid_index+4],
                      yerr=error_data[mid_index-3:mid_index+4],
-                     linestyle='', marker='',
-                     ecolor='Black', barsabove=True,
-                     capsize=2.5, capthick=1.5,
-                     zorder=9)
+                     color=cmr.torch(0.8), markeredgecolor='Black',
+                     markersize=5,
+                     linestyle='', marker='o', linewidth=2,
+                     ecolor='Black', barsabove=False,
+                     capsize=3, capthick=1.2,
+                     zorder=10)
 
     # Create x-values for the fit.
     x = np.linspace(wavelength_data[low_index].value - 1,
                     wavelength_data[high_index].value + 1, 1000)
+    # Plot the fit:
     ax_plot.plot(x, fit.gaussian(x, *model_fit.popt),
-                 color='DarkGreen', alpha=0.7, linestyle='-',
-                 zorder=8)
+                 color=cmr.torch(0.3), alpha=0.7, linestyle='-',
+                 zorder=9)
 
     ax_plot.axvline(model_fit.mean.to(u.angstrom),
                     color='Gray', linestyle=':',
@@ -2379,15 +2401,25 @@ def create_cosmic_ray_plots():
                     zorder=6, label='Weighted mean\nof offsets')
 
     ax_plot.legend(loc='lower left',
-                   fontsize=14)
+                   fontsize=14, shadow=True)
 
-#    ax_plot.annotate('Affected\npixel', (wavelength_data[mid_index-3],
-#                                         flux_data[mid_index-3]),
-#                     xytext=(4658.17, 29000),
-#                     arrowprops={'arrowstyle': '-'},
-#                     fontsize=14, halignment='center')
+    ax_plot.annotate('Affected\npixel',
+                     (wavelength_data[mid_index-3]-0.003*u.angstrom,
+                      flux_data[mid_index-3]+5),
+                     xytext=(4658.14, 25500),
+                     arrowprops={'arrowstyle': '-'},
+                     fontsize=14, horizontalalignment='center',
+                     zorder=6)
+    ax_plot.annotate('Possibly\naffected?',
+                     (wavelength_data[mid_index-2]-0.003*u.angstrom,
+                      flux_data[mid_index-2]+5),
+                     xytext=(4658.14, 23200),
+                     arrowprops={'arrowstyle': '-'},
+                     fontsize=14, horizontalalignment='center',
+                     verticalalignment='bottom',
+                     zorder=6)
 
-    outfile = plots_dir / 'Cosmic_ray_effect.pdf'
+    outfile = plots_dir / 'Cosmic_ray_effect.png'
     fig.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
 
 
@@ -2497,7 +2529,7 @@ if __name__ == '__main__':
 
 #         create_example_pair_sep_plots()
 
-        # create_sigma_sys_hist()
+#        create_sigma_sys_hist()
 
 #         create_parameter_dependence_plot(use_cached=True, min_bin_size=5)
 
@@ -2514,8 +2546,8 @@ if __name__ == '__main__':
 #        plot_pair_depth_differences(Star('HD134060',
 #                                    '/Users/dberke/data_output/HD134060'))
 
-        create_sigma_s2s_histogram()
+#        create_sigma_s2s_histogram()
 
-#        plot_solar_twins_results()
+        plot_solar_twins_results()
 
 #        create_cosmic_ray_plots()
