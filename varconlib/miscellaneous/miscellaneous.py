@@ -302,6 +302,7 @@ def wavelength2velocity(wavelength1, wavelength2):
     return result.to(u.m/u.s)
 
 
+@returns(length/time)
 def q_alpha_shift(omega, q_coefficient, delta_alpha):
     r"""Return the velocity change in a transition with a given q-coefficient
     for a given fractional change in alpha.
@@ -312,7 +313,7 @@ def q_alpha_shift(omega, q_coefficient, delta_alpha):
         The wavenumber, wavelength, or energy of the transition to calculate
         the shift for. Assuming the units are correct this parameter will be
         converted to a wavenumber if necessary internally.
-    q_coefficient : float or `unyt.uniyt_quantity`
+    q_coefficient : float or `unyt.unyt_quantity`
         The *q*-coefficient for the transition. This can be given as a float
         (in which case it is assumed to be in units of reciprocal centimeters),
         or as a `unyt_quantity` with those dimensions.
