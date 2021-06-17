@@ -41,7 +41,8 @@ import varconlib as vcl
 import varconlib.fitting as fit
 from varconlib.miscellaneous import (remove_nans, weighted_mean_and_error,
                                      get_params_file, shift_wavelength,
-                                     velocity2wavelength, wavelength2index)
+                                     velocity2wavelength, wavelength2index,
+                                     wavelength2velocity)
 from varconlib.obs2d import HARPSFile2DScience
 from varconlib.star import Star
 from varconlib.transition_line import roman_numerals
@@ -1382,7 +1383,7 @@ def plot_vs_pair_blendedness(star):
     plt.close('all')
 
 
-def plot_representative_blendedness_plots():
+def create_representative_blendedness_plots():
     """Create a plot showing examples of the various blendedness categories.
 
     """
@@ -1397,68 +1398,86 @@ def plot_representative_blendedness_plots():
 
     obs = HARPSFile2DScience(data_file)
 
+    vesta = Star('Vesta', '/Users/dberke/data_output/Vesta')
+    obs_index = vesta.od_index('2011-09-29T23:30:27.910')  # It's obs 0
+
     # Get the radial velocity.
     radial_velocity = obs.radialVelocity
 
-    transitions = {'category0': ('4575.498Fe1_27',
-                                 '5595.288Ni1_51',
-                                 '6167.066Fe1_61'),
+    transitions = {'category0': ('4219.893V1_16',
+                                 '5224.639Fe1_44',
+                                 '6153.320Fe1_61'),
                    'category1': ('4589.484Cr2_28',
-                                 '5143.171Fe1_42',
+                                 '5523.980Fe1_49',
                                  '6131.832Ni1_60'),
                    'category2': ('4492.660Fe2_25',
                                  '5187.997Ni1_43',
                                  '6245.542Si1_62'),
-                   'category3': ('4223.402Fe1_16',
-                                 '5536.376Fe2_49',
+                   'category3': ('4502.533Ti2_25',
+                                 '5227.994Ti2_44',
                                  '6165.470Ca1_61'),
                    'category4': ('4295.006Fe1_18',
                                  '5146.101Cr1_42',
                                  '5596.208Fe1_51'),
                    'category5': ('4309.365Mn2_19',
                                  '5147.740Fe1_42',
-                                 '5209.550Cr1_44')}
+                                 '5168.927Fe1_43')}
 
     # Create the plot.
-    fig = plt.figure(figsize=(16, 4), tight_layout=True)
+    fig = plt.figure(figsize=(13, 4), tight_layout=True)
     axes = fig.subplots(1, 6, sharey=True, gridspec_kw={'wspace': 0})
+    fig.supxlabel('Relative velocity (km/s)', size=15)
+    axes[0].set_ylabel('Normalized depth')
 
-    for i, category in tqdm(enumerate(transitions.keys())):
-        axes[i].set_xlabel(f'Blendedness: {category[-1]}')
-        colors = cmr.take_cmap_colors('cmr.torch', 3,
-                                      cmap_range=(0.2, 0.8), return_fmt='hex')
+    colors = cmr.take_cmap_colors('cmr.rainforest', 3,
+                                  cmap_range=(0.4, 0.85),
+                                  return_fmt='hex')
+
+    for i, category in enumerate(transitions.keys()):
+        axes[i].annotate(f'Blendedness: {category[-1]}',
+                         (0.1, 0.05), xycoords='axes fraction',
+                         fontsize=14)
+        axes[i].set_xlim(left=-18*u.km/u.s, right=18*u.km/u.s)
+        axes[i].axvline(x=0, color='Gray', linestyle='--', alpha=0.7)
+
         for j, t_label in enumerate(transitions[category]):
-            tqdm.write(f'Working on {t_label}')
+            vprint(f'Working on {t_label}')
             wavelength = float(t_label[:8]) * u.angstrom
             exp_wavelength = shift_wavelength(wavelength, radial_velocity)
             order_num = int(t_label[-2:])
+
+            t_index = vesta.t_index(t_label)
+            offset = vesta.fitOffsetsNormalizedArray[obs_index, t_index]
+            meas_wavelength = vesta.fitMeansArray[obs_index, t_index]
+            vprint(f'Shifting by {offset:.2f}')
+            exp_wavelength = shift_wavelength(wavelength, offset)
 
             wavelength_data = obs.barycentricArray[order_num]
             flux_data = obs.photonFluxArray[order_num]
             error_data = obs.errorArray[order_num]
 
-            plot_range = velocity2wavelength(20 * u.km/u.s,
-                                             exp_wavelength)
 
-            low_index = wavelength2index(exp_wavelength - plot_range,
-                                         wavelength_data)
-            high_index = wavelength2index(exp_wavelength + plot_range,
-                                          wavelength_data)
-            indices = [i for i in range(high_index - low_index)]
+            low_index = wavelength2index(exp_wavelength, wavelength_data) - 30
+            high_index = wavelength2index(exp_wavelength, wavelength_data) + 20
+
+            indices = [wavelength2velocity(meas_wavelength, i).to(u.km/u.s)
+                       for i in wavelength_data[low_index:high_index]]
 
             fluxes = flux_data[low_index:high_index]
-            flux_max = flux_data[low_index:high_index].max()
+            flux_max = fluxes.max()
 
             axes[i].errorbar(indices,
                              fluxes / flux_max,
-                             yerr=error_data[low_index:high_index]/flux_max,
-                             barsabove=True,
+#                             yerr=error_data[low_index:high_index]/flux_max,
+#                             barsabove=True,
+                             marker='o', markersize=3,
+#                             markeredgecolor='Black',
+                             markeredgewidth=1.2,
                              color=colors[j], ecolor='Black',
-                             linestyle='-', marker='', linewidth=2)
+                             linestyle='-', linewidth=2)
 
-    plot_name = plots_dir / 'Blendedness_examples.png'
+    plot_name = plots_dir / 'Blendedness_examples.pdf'
     fig.savefig(str(plot_name), bbox_inches='tight', pad_inches=0.01)
-#    plt.show()
 
 
 def plot_pair_depth_differences(star):
@@ -2540,7 +2559,7 @@ if __name__ == '__main__':
 
 #        plot_vs_pair_blendedness(hd146233)
 
-#        plot_representative_blendedness_plots()
+        create_representative_blendedness_plots()
 
 #        plot_pair_depth_differences(hd146233)
 #        plot_pair_depth_differences(Star('HD134060',
@@ -2548,6 +2567,6 @@ if __name__ == '__main__':
 
 #        create_sigma_s2s_histogram()
 
-        plot_solar_twins_results()
+#        plot_solar_twins_results()
 
 #        create_cosmic_ray_plots()
