@@ -41,7 +41,7 @@ import varconlib as vcl
 import varconlib.fitting as fit
 from varconlib.miscellaneous import (remove_nans, weighted_mean_and_error,
                                      get_params_file, shift_wavelength,
-                                     velocity2wavelength, wavelength2index,
+                                     wavelength2index,
                                      wavelength2velocity)
 from varconlib.obs2d import HARPSFile2DScience
 from varconlib.star import Star
@@ -58,6 +58,28 @@ def pairwise(iterable):
     a, b = tee(iterable)
     next(b, None)
     return zip(a, b)
+
+
+def format_transition_label(transition_label):
+    """Format a transition label for printing with MNRAS ion format.
+
+    Parameters
+    ----------
+    transition_label : str
+         A transition label of the form "4492.660Fe2_25"
+
+    Returns
+    -------
+    str
+        A LaTeX-formatted representation of the transition label.
+    """
+
+    front, order_num = transition_label.split('_')
+    # This mimics the look of ion labels in MNRAS.
+    new_label = f"{front[8:-1]}" + r"\," + r"\textsc{\lowercase{" +\
+        f"{roman_numerals[int(front[-1])]}" + r"}}" + r"\ " + f"{front[:8]}"
+
+    return new_label
 
 
 def get_weighted_mean(values_array, errs_array, time_slice, col_index):
@@ -1389,10 +1411,6 @@ def create_representative_blendedness_plots():
     """
 
     # Vesta observation with SNR = 226
-    data_file = vcl.harps_dir /\
-        'Vesta/data/reduced/'\
-        '2011-09-29/HARPS.2011-09-29T23:30:27.911_e2ds_A.fits'
-
     data_file = '/Users/dberke/Vesta/data/reduced/'\
         '2011-09-29/HARPS.2011-09-29T23:30:27.911_e2ds_A.fits'
 
@@ -1443,7 +1461,6 @@ def create_representative_blendedness_plots():
         for j, t_label in enumerate(transitions[category]):
             vprint(f'Working on {t_label}')
             wavelength = float(t_label[:8]) * u.angstrom
-            exp_wavelength = shift_wavelength(wavelength, radial_velocity)
             order_num = int(t_label[-2:])
 
             t_index = vesta.t_index(t_label)
@@ -1455,7 +1472,6 @@ def create_representative_blendedness_plots():
             wavelength_data = obs.barycentricArray[order_num]
             flux_data = obs.photonFluxArray[order_num]
             error_data = obs.errorArray[order_num]
-
 
             low_index = wavelength2index(exp_wavelength, wavelength_data) - 30
             high_index = wavelength2index(exp_wavelength, wavelength_data) + 20
@@ -1761,7 +1777,7 @@ def create_sigma_s2s_histogram():
 def plot_solar_twins_results():
     """Plot results for 17 pairs with q-coefficients for solar twins"""
 
-    def format_label(pair_label):
+    def format_pair_label(pair_label):
         """Format a pair label for printing with MNRAS ion format.
 
         Parameters
@@ -1778,12 +1794,8 @@ def plot_solar_twins_results():
 
         t1, t2, order_num = pair_label.split('_')
         # This mimics the look of ion labels in MNRAS.
-#        new_label1 = f"{t1[:8]}" + r"\ " + f"{t1[8:-1]}" + r"\," + \
-#            r"\textsc{\lowercase{" + f"{roman_numerals[t1[-1]]}" + r"}}"
         new_label1 = f"{t1[8:-1]}" + r"\," + r"\textsc{\lowercase{" +\
             f"{roman_numerals[t1[-1]]}" + r"}}" + r"\ " + f"{t1[:8]}"
-#        new_label2 = f"{t2[:8]}" + r"\ " + f"{t2[8:-1]}" + r"\," + \
-#            r"\textsc{\lowercase{" + f"{roman_numerals[t2[-1]]}" + r"}}"
         new_label2 = f"{t2[8:-1]}" + r"\," + r"\textsc{\lowercase{" +\
             f"{roman_numerals[t2[-1]]}" + r"}}" + r"\ " + f"{t2[:8]}"
 
@@ -1863,7 +1875,7 @@ def plot_solar_twins_results():
         if i > 5:
             ax_twin.xaxis.set_major_locator(ticker.FixedLocator((-12,)))
             ax_twin.set_xticklabels(('{ion1}\n{ion2}'.format(
-                    **format_label(label)),),
+                    **format_pair_label(label)),),
                                     fontdict={'rotation': 90,
                                               'horizontalalignment': 'left',
                                               'verticalalignment': 'bottom'})
@@ -1871,7 +1883,7 @@ def plot_solar_twins_results():
             ax_twin.xaxis.set_major_locator(ticker.FixedLocator((-11, 12)))
             ax_twin.set_xticklabels((f'Order: {str(order_num)}',
                                      '{ion1}\n{ion2}'.format(
-                                             **format_label(label)),),
+                                             **format_pair_label(label)),),
                                     fontdict={'rotation': 90,
                                               'horizontalalignment': 'left',
                                               'verticalalignment': 'bottom'})
@@ -2205,8 +2217,6 @@ def plot_solar_twins_results():
     pair_label = pair_labels[10]  # 6138--6139
     pair_label = pair_labels[16]
     tqdm.write(f'Using pair {pair_label} for excerpt')
-#    fig_ex.suptitle(r'{ion1},\ {ion2}'.format(
-#                    **format_label(pair_label)), size=16)
     for j, star_name in enumerate(sp1_stars):
         star = stars[star_name]
         pair_index = star.p_index(pair_label)
@@ -2442,6 +2452,112 @@ def create_cosmic_ray_plots():
     fig.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
 
 
+def create_feature_fitting_example_plot():
+    """Create a plot showing the two features in a pair with the automatic fit.
+
+    """
+
+    # Vesta observation with SNR = 226
+    data_file = '/Users/dberke/Vesta/data/reduced/'\
+        '2011-09-29/HARPS.2011-09-29T23:30:27.911_e2ds_A.fits'
+
+    obs = HARPSFile2DScience(data_file)
+
+    # Get the fit.
+    saved_fits_file = vcl.output_dir /\
+        'Vesta/HARPS.2011-09-29T23:30:27.911_e2ds_A/pickles_int/'\
+        'HARPS.2011-09-29T23:30:27.911_e2ds_A_gaussian_fits.lzma'
+    with lzma.open(saved_fits_file, 'rb') as f:
+        fits_list = pickle.loads(f.read())
+
+    vesta = Star('Vesta', '/Users/dberke/data_output/Vesta')
+    obs_index = vesta.od_index('2011-09-29T23:30:27.910')  # It's obs 0
+
+    transitions = ('6138.313Fe1_60', '6139.390Fe1_60')
+
+    fig = plt.figure(figsize=(9, 4), tight_layout=True)
+    axes = fig.subplots(1, 2, sharey=True, gridspec_kw={'wspace': 0})
+    axes[1].sharey(axes[0])
+    axes[0].set_ylim(bottom=0.27, top=1.1)
+    plot_width = 16 * u.km/u.s
+    for ax in axes:
+        ax.set_xlim(left=-plot_width, right=plot_width)
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+    fig.supxlabel('Relative velocity (km/s)', size=14)
+    axes[0].set_ylabel('Normalized depth', size=14)
+
+    for i, t_label in enumerate(transitions):
+        wavelength = float(t_label[:8]) * u.angstrom
+        order_num = int(t_label[-2:])
+        t_index = vesta.t_index(t_label)
+        # Get the fit for this transition:
+        model_fit = fits_list[t_index]
+        offset = vesta.fitOffsetsNormalizedArray[obs_index, t_index]
+        meas_wavelength = vesta.fitMeansArray[obs_index, t_index]
+        exp_wavelength = shift_wavelength(wavelength,
+                                          -model_fit.velocityOffset)
+
+        wavelength_data = obs.barycentricArray[order_num]
+        flux_data = obs.photonFluxArray[order_num]
+        error_data = obs.errorArray[order_num]
+
+        mid_index = wavelength2index(exp_wavelength, wavelength_data)
+        low_index = mid_index - 35
+        high_index = mid_index + 35
+
+        rel_velocities = [wavelength2velocity(meas_wavelength, i).to(u.km/u.s)
+                          for i in wavelength_data[low_index:high_index]]
+
+        mid_vel_index = flux_data[low_index:high_index].argmin()
+
+        fluxes = flux_data[low_index:high_index]
+        flux_max = fluxes.max()
+
+        axes[i].errorbar(rel_velocities,
+                         fluxes/flux_max,
+#                         yerr=error_data[low_index:high_index]/flux_max,
+#                         barsabove=True,
+                         marker='o', markersize=4,
+                         markeredgecolor='Black',
+                         markeredgewidth=1,
+                         color=cmr.torch(0.8), ecolor='Black',
+                         linestyle='-', linewidth=3.7, alpha=0.6,
+                         zorder=5)
+        axes[i].errorbar(rel_velocities[mid_vel_index-3:mid_vel_index+4],
+                         fluxes[mid_vel_index-3:mid_vel_index+4]/flux_max,
+                         marker='o', markersize=6,
+                         markeredgecolor='Black',
+                         markeredgewidth=1.3,
+                         linestyle='-', color=cmr.torch(0.8),
+                         linewidth=4.3, zorder=10)
+
+        # x-values for plotting fit:
+
+        x = np.linspace(wavelength_data[mid_index-20],
+                        wavelength_data[mid_index+15], 200)
+        x_vel = wavelength2velocity(meas_wavelength, x).to(u.km/u.s)
+
+        axes[i].plot(x_vel, fit.gaussian(x.value, *model_fit.popt)/flux_max,
+                     color=cmr.torch(0.3), alpha=0.9, linestyle='-',
+                     zorder=15)
+
+        axes[i].axvline(x=0*u.km/u.s, color='Gray', linestyle='--',
+                        zorder=12)
+#        axes[i].axvline(x=wavelength2velocity(meas_wavelength,
+#                                              exp_wavelength).to(u.km/u.s),
+#                        color='Gray', linestyle=':', zorder=13)
+
+        axes[i].annotate(format_transition_label(transitions[i]),
+                         (0.05, 0.05), xycoords='axes fraction', size=15)
+        axes[i].annotate(r'$\chi^2_\nu:$' + f' {model_fit.chiSquaredNu:.2f}',
+                         (0.95, 0.05), xycoords='axes fraction', size=15,
+                         horizontalalignment='right')
+
+    outfile = plots_dir / 'Fitting_example_plot.pdf'
+    fig.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Create all the necessary'
                                      ' figures and tables for my two papers'
@@ -2559,7 +2675,7 @@ if __name__ == '__main__':
 
 #        plot_vs_pair_blendedness(hd146233)
 
-        create_representative_blendedness_plots()
+#        create_representative_blendedness_plots()
 
 #        plot_pair_depth_differences(hd146233)
 #        plot_pair_depth_differences(Star('HD134060',
@@ -2570,3 +2686,5 @@ if __name__ == '__main__':
 #        plot_solar_twins_results()
 
 #        create_cosmic_ray_plots()
+
+        create_feature_fitting_example_plot()
