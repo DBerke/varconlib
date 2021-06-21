@@ -62,7 +62,7 @@ solar = {'temperature': 5772 * u.K,
          'logg': 4.44}
 
 header = ['name', 'T_eff', '[Fe/H]', 'logg', 'absMag', 'appMag', '(b-y)',
-          'NObsPre', 'NObsPost']
+          'NObsPre', 'NObsPost', 'NObsTot']
 
 for level in ('SP1', 'SP2', 'SP3'):
     lines = []
@@ -75,7 +75,10 @@ for level in ('SP1', 'SP2', 'SP3'):
             else:
                 passes.append(False)
         if all(passes):
-            lines.append(get_star_info(star))
+            star_info = get_star_info(star)
+            # Add the pre and post to get total number of observations.
+            star_info.append(str(int(star_info[-2]) + int(star_info[-1])))
+            lines.append(star_info)
 
     csv_file = vcl.data_dir / f'Stellar_sample_{level}.csv'
     with open(csv_file, 'w', newline='') as f:
@@ -86,7 +89,10 @@ for level in ('SP1', 'SP2', 'SP3'):
 
 lines = []
 for star in tqdm(stars):
-    lines.append(get_star_info(star))
+    star_info = get_star_info(star)
+    # Add the pre and post to get total number of observations.
+    star_info.append(str(int(star_info[-2]) + int(star_info[-1])))
+    lines.append(star_info)
 
 csv_file = vcl.data_dir / 'Stellar_sample_all.csv'
 with open(csv_file, 'w', newline='') as f:
