@@ -1444,19 +1444,21 @@ def create_representative_blendedness_plots():
     # Create the plot.
     fig = plt.figure(figsize=(13, 4), tight_layout=True)
     axes = fig.subplots(1, 6, sharey=True, gridspec_kw={'wspace': 0})
-    fig.supxlabel('Relative velocity (km/s)', size=15)
-    axes[0].set_ylabel('Normalized depth')
+    fig.supxlabel('Relative velocity (km/s)', size=15,
+                  y=0.07)
+    axes[0].set_ylabel('Normalized flux')
 
     colors = cmr.take_cmap_colors('cmr.rainforest', 3,
-                                  cmap_range=(0.4, 0.85),
+                                  cmap_range=(0.5, 0.85),
                                   return_fmt='hex')
 
     for i, category in enumerate(transitions.keys()):
-        axes[i].annotate(f'Blendedness: {category[-1]}',
-                         (0.1, 0.05), xycoords='axes fraction',
-                         fontsize=14)
+        axes[i].annotate(f'{category[-1]}',
+                         (0.83, 0.05), xycoords='axes fraction',
+                         fontsize=24)
         axes[i].set_xlim(left=-18*u.km/u.s, right=18*u.km/u.s)
-        axes[i].axvline(x=0, color='Gray', linestyle='--', alpha=0.7)
+        axes[i].axvline(x=0, color='Gray', linestyle='--', alpha=1,
+            linewidth=1.5)
 
         for j, t_label in enumerate(transitions[category]):
             vprint(f'Working on {t_label}')
@@ -1486,11 +1488,11 @@ def create_representative_blendedness_plots():
                              fluxes / flux_max,
 #                             yerr=error_data[low_index:high_index]/flux_max,
 #                             barsabove=True,
-                             marker='o', markersize=3,
-#                             markeredgecolor='Black',
+                             marker='o', markersize=5,
+                             markeredgecolor='Black',
                              markeredgewidth=1.2,
                              color=colors[j], ecolor='Black',
-                             linestyle='-', linewidth=2)
+                             linestyle='-', linewidth=2.9)
 
     plot_name = plots_dir / 'Blendedness_examples.pdf'
     fig.savefig(str(plot_name), bbox_inches='tight', pad_inches=0.01)
@@ -2380,26 +2382,26 @@ def create_cosmic_ray_plots():
                  histtype='step', color='Black', linewidth=1.5,
                  zorder=5)
     ax_hist.axvline(x=wmean, color='Gray', linestyle='--',
-                    zorder=6)
+                    zorder=6, linewidth=2)
     ax_hist.axvline(x=model_fit.velocityOffset.to(u.m/u.s),
-                    color='Gray', linestyle=':',
+                    color='Gray', linestyle=':', linewidth=2,
                     zorder=6)
 
     # Plot the spectrum:
     ax_plot.errorbar(wavelength_data[low_index:high_index],
                      flux_data[low_index:high_index],
                      yerr=error_data[low_index:high_index],
-                     color=cmr.torch(0.82), linestyle='-', marker='',
-                     ecolor='Gray', linewidth=2.3,
-                     barsabove=True, capsize=2.5,
-                     capthick=1.5, alpha=0.7,
+                     color=cmr.torch(0.84), linestyle='-', marker='',
+                     ecolor='Gray', linewidth=4,
+                     barsabove=True, capsize=4,
+                     capthick=1.5, alpha=0.8, drawstyle='default',
                      zorder=5)
 
     # Plot the spectrum line a bit darker.
     ax_plot.errorbar(wavelength_data[mid_index-3:mid_index+4],
                      flux_data[mid_index-3:mid_index+4],
-                     color=cmr.torch(0.8),
-                     linestyle='-', marker='', linewidth=2.5,
+                     color=cmr.torch(0.8), drawstyle='default',
+                     linestyle='-', marker='', linewidth=5,
                      zorder=8)
 
     # Plot the data points used in fitting with different color.
@@ -2407,10 +2409,10 @@ def create_cosmic_ray_plots():
                      flux_data[mid_index-3:mid_index+4],
                      yerr=error_data[mid_index-3:mid_index+4],
                      color=cmr.torch(0.8), markeredgecolor='Black',
-                     markersize=5,
-                     linestyle='', marker='o', linewidth=2,
+                     markersize=7,
+                     linestyle='', marker='o', linewidth=5,
                      ecolor='Black', barsabove=False,
-                     capsize=3, capthick=1.2,
+                     capsize=4, capthick=1.4,
                      zorder=10)
 
     # Create x-values for the fit.
@@ -2418,15 +2420,15 @@ def create_cosmic_ray_plots():
                     wavelength_data[high_index].value + 1, 1000)
     # Plot the fit:
     ax_plot.plot(x, fit.gaussian(x, *model_fit.popt),
-                 color=cmr.torch(0.3), alpha=0.7, linestyle='-',
-                 zorder=9)
+                 color=cmr.torch(0.3), alpha=0.9, linestyle='-',
+                 zorder=9, linewidth=3)
 
     ax_plot.axvline(model_fit.mean.to(u.angstrom),
-                    color='Gray', linestyle=':',
+                    color='Gray', linestyle=':', linewidth=2,
                     zorder=7, label='Measured offset')
     ax_plot.axvline(shift_wavelength(model_fit.mean.to(u.angstrom),
                                      -model_fit.velocityOffset),
-                    color='Gray', linestyle='--',
+                    color='Gray', linestyle='--', linewidth=2,
                     zorder=6, label='Weighted mean\nof offsets')
 
     ax_plot.legend(loc='lower left',
@@ -2439,7 +2441,7 @@ def create_cosmic_ray_plots():
                      arrowprops={'arrowstyle': '-'},
                      fontsize=14, horizontalalignment='center',
                      zorder=6)
-    ax_plot.annotate('Possibly\naffected?',
+    ax_plot.annotate('Possibly\naffected',
                      (wavelength_data[mid_index-2]-0.003*u.angstrom,
                       flux_data[mid_index-2]+5),
                      xytext=(4658.14, 23200),
@@ -2448,8 +2450,10 @@ def create_cosmic_ray_plots():
                      verticalalignment='bottom',
                      zorder=6)
 
-    outfile = plots_dir / 'Cosmic_ray_effect.png'
-    fig.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
+    outfile = str(plots_dir / 'Cosmic_ray_effect.pdf')
+    fig.savefig(outfile, bbox_inches='tight', pad_inches=0.01)
+    fig.savefig(outfile.replace('.pdf', '.png'),
+                bbox_inches='tight', pad_inches=0.01)
 
 
 def create_feature_fitting_example_plot():
@@ -2470,22 +2474,32 @@ def create_feature_fitting_example_plot():
     with lzma.open(saved_fits_file, 'rb') as f:
         fits_list = pickle.loads(f.read())
 
-    vesta = Star('Vesta', '/Users/dberke/data_output/Vesta')
+    vesta = Star('Vesta_real', '/Users/dberke/data_output/Vesta')
     obs_index = vesta.od_index('2011-09-29T23:30:27.910')  # It's obs 0
 
     transitions = ('6138.313Fe1_60', '6139.390Fe1_60')
 
-    fig = plt.figure(figsize=(9, 4), tight_layout=True)
+    fig = plt.figure(figsize=(10, 3.6), tight_layout=True)
     axes = fig.subplots(1, 2, sharey=True, gridspec_kw={'wspace': 0})
     axes[1].sharey(axes[0])
     axes[0].set_ylim(bottom=0.27, top=1.1)
-    plot_width = 16 * u.km/u.s
+    plot_width = 14.5 * u.km/u.s
     for ax in axes:
         ax.set_xlim(left=-plot_width, right=plot_width)
         ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
-    fig.supxlabel('Relative velocity (km/s)', size=14)
-    axes[0].set_ylabel('Normalized depth', size=14)
+
+        # Set up lines for plotting residuals.
+        vertical_offset = 0.95
+        ax.hlines((vertical_offset - 0.05, vertical_offset + 0.05),
+                  xmin=-4, xmax=4, linestyle='-',
+                  color=cmr.neutral(0.4))
+        ax.hlines(vertical_offset, xmin=-4, xmax=4, linestyle='--',
+                  color=cmr.neutral(0.5))
+
+    fig.supxlabel('Relative velocity (km/s)', size=14,
+                  y=0.08)
+    axes[0].set_ylabel('Normalized flux', size=14)
 
     for i, t_label in enumerate(transitions):
         wavelength = float(t_label[:8]) * u.angstrom
@@ -2502,59 +2516,94 @@ def create_feature_fitting_example_plot():
         flux_data = obs.photonFluxArray[order_num]
         error_data = obs.errorArray[order_num]
 
-        mid_index = wavelength2index(exp_wavelength, wavelength_data)
-        low_index = mid_index - 35
-        high_index = mid_index + 35
+        mid_index = wavelength2index(meas_wavelength, wavelength_data)
+        low_index = mid_index - 37
+        high_index = mid_index + 37
 
-        rel_velocities = [wavelength2velocity(meas_wavelength, i).to(u.km/u.s)
-                          for i in wavelength_data[low_index:high_index]]
+        rel_velocities = [wavelength2velocity(meas_wavelength, wl).to(u.km/u.s)
+                          for wl in wavelength_data[low_index:high_index]]
 
         mid_vel_index = flux_data[low_index:high_index].argmin()
 
         fluxes = flux_data[low_index:high_index]
+        errors = error_data[low_index:high_index]
         flux_max = fluxes.max()
 
+        # Plot the entire spectrum.
         axes[i].errorbar(rel_velocities,
                          fluxes/flux_max,
 #                         yerr=error_data[low_index:high_index]/flux_max,
 #                         barsabove=True,
                          marker='o', markersize=4,
                          markeredgecolor='Black',
+                         markerfacecolor=cmr.torch(0.95),
                          markeredgewidth=1,
+                         drawstyle='steps-mid',
                          color=cmr.torch(0.8), ecolor='Black',
-                         linestyle='-', linewidth=3.7, alpha=0.6,
+                         linestyle='-', linewidth=2.8, alpha=1,
                          zorder=5)
+        # Plot just the central sevan pixels more enhanced.
         axes[i].errorbar(rel_velocities[mid_vel_index-3:mid_vel_index+4],
                          fluxes[mid_vel_index-3:mid_vel_index+4]/flux_max,
                          marker='o', markersize=6,
-                         markeredgecolor='Black',
+                         markeredgecolor=cmr.torch(0.2),
+                         markerfacecolor=cmr.torch(0.95),
                          markeredgewidth=1.3,
-                         linestyle='-', color=cmr.torch(0.8),
-                         linewidth=4.3, zorder=10)
+                         drawstyle='steps-mid',
+                         linestyle='-', color=cmr.torch(0.75),
+                         linewidth=3., zorder=10)
 
         # x-values for plotting fit:
-
-        x = np.linspace(wavelength_data[mid_index-20],
-                        wavelength_data[mid_index+15], 200)
+        x = np.linspace(wavelength_data[mid_index-3],
+                        wavelength_data[mid_index+3], 30)
         x_vel = wavelength2velocity(meas_wavelength, x).to(u.km/u.s)
 
-        axes[i].plot(x_vel, fit.gaussian(x.value, *model_fit.popt)/flux_max,
-                     color=cmr.torch(0.3), alpha=0.9, linestyle='-',
-                     zorder=15)
+        x_full = np.linspace(wavelength_data[mid_index-11],
+                             wavelength_data[mid_index+11], 50)
+        x_vel_full = wavelength2velocity(meas_wavelength, x_full).to(u.km/u.s)
 
-        axes[i].axvline(x=0*u.km/u.s, color='Gray', linestyle='--',
+        # Plot the fit, with an enhanced section in the 7 central pixels.
+        axes[i].plot(x_vel_full,
+                     fit.gaussian(x_full.value, *model_fit.popt)/flux_max,
+                     color=cmr.neutral(0.6), alpha=1, linestyle='--',
+                     linewidth=1.5, zorder=15)
+        # Here's the enhanced part.
+        axes[i].plot(x_vel,
+                     fit.gaussian(x.value, *model_fit.popt)/flux_max,
+                     color=cmr.neutral(0.1), alpha=1, linestyle='-',
+                     linewidth=1.7, zorder=15)
+
+        # Plot a line at 0 velocity.
+        axes[i].axvline(x=0*u.km/u.s, color=cmr.neutral(0.7), linestyle='-',
                         zorder=12)
-#        axes[i].axvline(x=wavelength2velocity(meas_wavelength,
-#                                              exp_wavelength).to(u.km/u.s),
-#                        color='Gray', linestyle=':', zorder=13)
 
+        # Add annotations of transition and chi-squared values.
         axes[i].annotate(format_transition_label(transitions[i]),
-                         (0.05, 0.05), xycoords='axes fraction', size=15)
+                         (0.05, 0.06), xycoords='axes fraction', size=15)
         axes[i].annotate(r'$\chi^2_\nu:$' + f' {model_fit.chiSquaredNu:.2f}',
-                         (0.95, 0.05), xycoords='axes fraction', size=15,
+                         (0.95, 0.06), xycoords='axes fraction', size=15,
                          horizontalalignment='right')
 
-    outfile = plots_dir / 'Fitting_example_plot.pdf'
+        # Plot the residuals.
+        x_values = wavelength_data[mid_index-3:mid_index+4]
+        flux_values = fluxes[mid_vel_index-3:mid_vel_index+4]
+        error_values = errors[mid_vel_index-3:mid_vel_index+4]
+        residuals = (flux_values - fit.gaussian(
+                x_values.value, *model_fit.popt))
+        significances = np.array(residuals) / error_values
+#        print('--------')
+#        print(significances/20+1)
+
+        # Scale the significances to display on the plot.
+        axes[i].plot(rel_velocities[mid_vel_index-3:mid_vel_index+4],
+                     (significances/20)+vertical_offset,
+                     linestyle='', marker='D',
+                     markersize=5,
+                     markerfacecolor=cmr.torch(0.95),
+                     markeredgecolor=cmr.torch(0.2),
+                     markeredgewidth=1.3)
+
+    outfile = plots_dir / 'Fitting_example_plot.png'
     fig.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
 
 
