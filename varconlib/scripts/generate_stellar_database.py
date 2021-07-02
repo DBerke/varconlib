@@ -29,6 +29,46 @@ from varconlib.exceptions import (HDF5FileNotFoundError,
 from varconlib.star import Star
 
 
+# Define two groups of stars for purposes of injecting a fake signal.
+# Group 1 has fewer observations (4480 vs. 6014), but 2/3 of solar twins
+# (and ~80% of observations among them.) This will be the group to have the
+# fake signal injected.
+
+group1 = set(['HD1581', 'HD65907', 'HD136352', 'HD146233', 'HD1461', 'HD59468',
+              'HD45184', 'HD73524', 'HD177565', 'HD43834', 'HD211415',
+              'HD1388', 'HD114853', 'HD68978', 'HD39091', 'HD10180', 'HD20407',
+              'HD108309', 'HD97343', 'HD150433', 'HD140901', 'Vesta',
+              'HD172051', 'HD196761', 'HD10647', 'HD119638', 'HD93385',
+              'HD88742', 'HD20782', 'HD106116', 'HD44594', 'HD144585',
+              'HD38973', 'HD140538', 'HD193193', 'HD67458', 'HD83529',
+              'HD220507', 'HD55693', 'HD111031', 'HD219482', 'HD102117',
+              'HD20619', 'HD78558', 'HD117207', 'HD19467', 'HD208487',
+              'HD72769', 'HD76151', 'HD128674', 'HD361', 'HD73256', 'HD136894',
+              'HD148816', 'HD205536', 'HD105837', 'HD183658', 'HD38277',
+              'HD143114', 'HD171665', 'HD203432', 'HD32724', 'HD68168',
+              'HD92788', 'HD11505', 'HD148211', 'HD196800', 'HD30495',
+              'HD78747', 'HD95521', 'HD108147', 'HD126525', 'HD141937',
+              'HD179949', 'HD184768', 'HD210752', 'HD214953', 'HD222669',
+              'HD37962', 'HD70642', 'HD78660', 'HD96937'])
+group2 = set(['HD190248', 'HD115617', 'HD69830', 'HD20807', 'HD96700',
+              'HD189567', 'HD207129', 'HD38858', 'HD82943', 'HD199288',
+              'HD210918', 'HD134060', 'HD217014', 'HD78429', 'HD90156',
+              'HD102438', 'HD92719', 'HD98281', 'HD17051', 'HD221356',
+              'HD203608', 'HD199960', 'HD4915', 'HD157347', 'HD48938',
+              'HD69655', 'HD134987', 'HD31527', 'HD125276', 'HD38382',
+              'HD44447', 'HD97037', 'HD168871', 'HD45289', 'HD154417',
+              'HD23456', 'HD70889', 'HD157338', 'HD47186', 'HD96423',
+              'HD117105', 'HD97998', 'HD180409', 'HD208704', 'HD90905',
+              'HD177758', 'HD20766', 'HD71479', 'HD7449', 'HD124292',
+              'HD161612', 'HD6735', 'HD125881', 'HD147512', 'HD204385',
+              'HD9782', 'HD117618', 'HD2071', 'HD7570', 'HD168443',
+              'HD189625', 'HD213575', 'HD4391', 'HD75289', 'HD110619',
+              'HD12387', 'HD152391', 'HD215257', 'HD44420', 'HD87838',
+              'HD104982', 'HD121504', 'HD138573', 'HD177409', 'HD1835',
+              'HD197818', 'HD212708', 'HD222582', 'HD28821', 'HD43587',
+              'HD7134', 'HD88725'])
+
+
 def append_dir(dir1, dir2):
     """Append dir2 to dir2.
 
@@ -74,8 +114,8 @@ def get_star(star_path, verbose=False, recreate=False):
     assert star_path.exists(), FileNotFoundError('Star directory'
                                                  f' {star_path}'
                                                  ' not found.')
-    # Flip boolean value, since to recreate (True) the star requires setting its
-    # load_data argument to False.
+    # Flip boolean value, since to recreate (True) the star requires setting
+    # its load_data argument to False.
     recreate = not recreate
     try:
         return Star(star_path.stem, star_path, load_data=recreate)
@@ -134,8 +174,8 @@ def get_transition_data_point(star, time_slice, col_index):
                                                weights=errs.value**-2,
                                                returned=True)
     except ZeroDivisionError:
-        # If all the observations have been masked out, just return a 4-tuple of
-        # NaNs.
+        # If all the observations have been masked out, just return a 4-tuple
+        # of NaNs.
         return tuple([u.unyt_quantity(np.nan, units=u.m/u.s, dtype=float)] * 4)
 
     weighted_mean *= u.m/u.s
@@ -190,8 +230,8 @@ def get_pair_data_point(star, time_slice, col_index):
                                                weights=errs.value**-2,
                                                returned=True)
     except ZeroDivisionError:
-        # If all the observations have been masked out, just return a 4-tuple of
-        # NaNs.
+        # If all the observations have been masked out, just return a 4-tuple
+        # of NaNs.
         return tuple([u.unyt_quantity(np.nan, units=u.m/u.s, dtype=float)] * 4)
 
     weighted_mean *= u.m/u.s
@@ -246,6 +286,11 @@ def main():
         if star is None:
             continue
         else:
+            # Inject fake signal here.
+            if args.inject_fake_signal:
+                if star_dir in group1:
+                    pass
+
             if args.casagrande2011:
                 star.getStellarParameters('Casagrande2011')
             elif args.nordstrom2004:
@@ -469,6 +514,9 @@ if __name__ == '__main__':
                         " database.")
     parser.add_argument('--transitions-only', action='store_true',
                         help='Exclude information on pair measurements.')
+    parser.add_argument('--inject-fake-signal', action='store_true',
+                        help='Inject a fake signal when recreating stars.'
+                        ' (Requires --recreate-stars to work.)')
 
     paper = parser.add_mutually_exclusive_group()
     paper.add_argument('--casagrande2011', action='store_true',

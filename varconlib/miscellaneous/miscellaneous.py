@@ -303,7 +303,7 @@ def wavelength2velocity(wavelength1, wavelength2):
 
 
 @returns(length/time)
-def q_alpha_shift(omega, q_coefficient, delta_alpha):
+def q_alpha_shift(omega, q_coefficient, frac_change_alpha):
     r"""Return the velocity change in a transition with a given q-coefficient
     for a given fractional change in alpha.
 
@@ -317,8 +317,9 @@ def q_alpha_shift(omega, q_coefficient, delta_alpha):
         The *q*-coefficient for the transition. This can be given as a float
         (in which case it is assumed to be in units of reciprocal centimeters),
         or as a `unyt_quantity` with those dimensions.
-    delta_alpha : float
-        A fractional change in the value of alpha to use for the calculation.
+    frac_change_alpha : float
+        A fractional change in the value of alpha to use for the calculation;
+        should be a value very close to 1.
 
     Returns
     -------
@@ -339,7 +340,7 @@ def q_alpha_shift(omega, q_coefficient, delta_alpha):
     if isinstance(q_coefficient, (float, int)):
         q_coefficient *= u.cm ** -1
 
-    new_value = original_value + q_coefficient * (delta_alpha ** 2 - 1)
+    new_value = original_value + q_coefficient * (frac_change_alpha ** 2 - 1)
 
     return wavelength2velocity(original_value.to(u.angstrom,
                                                  equivalence='spectral'),

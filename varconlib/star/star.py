@@ -39,7 +39,8 @@ from varconlib.exceptions import (HDF5FileNotFoundError,
                                   StarDirectoryNotFoundError)
 from varconlib.fitting import calc_chi_squared_nu
 from varconlib.miscellaneous import wavelength2velocity as wave2vel
-from varconlib.miscellaneous import get_params_file, shift_wavelength
+from varconlib.miscellaneous import (get_params_file, shift_wavelength,
+                                     q_alpha_shift)
 
 
 class Star(object):
@@ -253,7 +254,9 @@ class Star(object):
                    '/arrays/pair_model_values':
                        'pairModelArray',
                    '/arrays/pair_systematic_errors':
-                       'pairSysErrorsArray'}
+                       'pairSysErrorsArray',
+                    '/arrays/fake_velocity_shifts':
+                        'fakeVelocityShifts'}
 
     other_attributes = {'/metadata/version': 'version',
                         '/arrays/reduced_chi_squareds': 'chiSquaredNuArray',
@@ -278,7 +281,8 @@ class Star(object):
                         '/data/absolute_magnitude': 'absoluteMagnitude',
                         '/data/apparent_magnitude': 'apparentMagnitude',
                         '/data/color': 'color',
-                        '/data/logg': 'logg'}
+                        '/data/logg': 'logg',
+                        '/fake_data/q_shifts_dict': 'q_shifts_dict'}
 
     # Define some custom namedbidict objects.
     DateMap = namedbidict('ObservationDateMap', 'date', 'index')
@@ -1156,6 +1160,99 @@ class Star(object):
             # If for some reason it runs through everything and still doesn't
             # find an answer, raise an error:
             raise RuntimeError('Unable to find correction!')
+
+    def _injectFakeSignal(self, data_file, alpha_ppb):
+        """Inject fake signal into transition wavelengths/offsets.
+
+        Parameters
+        ----------
+        data_file : str or `pathlib.Path`
+            The path to a file containing estimated q-coefficients for at least
+            some transitions.
+        alpha_ppb : int or float
+            The desired change in alpha, in parts-per-billion.
+
+        """
+
+        if isinstance(data_file, str):
+            data_file = Path(data_file)
+
+        self.q_shifts_dict = {}
+        self.fakeVelocityShifts = np.zeros_like(self.fitOffsetsArray,
+                                                dtype=float)
+        # Here we define the change in alpha to use.
+        frac_change_alpha = (1e9 + alpha_ppb) / 1e9
+
+        with open(data_file, 'r') as f:
+            # Drop the header.
+            f.readline()
+            lines = f.readlines()
+
+        for line in lines:
+            if line == '\n':
+                continue  # Remove blank separator lines.
+            else:
+                line = line.split('|')
+            wavelength = line[0].strip()
+            wavenumber = float(line[1].strip())
+            ion = line[2].strip()
+            q_value = int(line[-2].strip())
+            element, ionization = ion.split(' ')
+            # TODO Should be generalized to Roman numerals dictionary.
+            if ionization == 'I':
+                ionization = '1'
+            elif ionization == 'II':
+                ionization = '2'
+            else:
+                raise RuntimeError(f'Ionzation value of {ionization}'
+                                   ' not handled.')
+            t_label = wavelength + element + ionization
+
+            try:
+                self.q_shifts_dict[t_label]
+            except KeyError:
+                self.q_shifts_dict[t_label] = q_alpha_shift(
+                        wavenumber * u.cm**-1,
+                        q_value,
+                        frac_change_alpha)
+
+        for key in self._transition_bidict.keys():
+            transition = key.split('_')[0]
+            try:
+                delta_v = self.q_shifts_dict[transition]
+            except KeyError:
+                continue
+
+            t_index = self.t_index(key)
+            # Apply the delta(v) calculated to all this transition's
+            # measurements, both wavelengths and offsets.
+            self.fakeVelocityShifts[:, t_index] = delta_v
+
+        # The critical step: actually apply the fake velocity shifts to the
+        # two critical arrays:
+        self.fitOffsetsArray += self.fakeVelocityShifts
+        self.fitMeansArray = shift_wavelength(self.fitMeansArray,
+                                              self.fakeVelocityShifts)
+
+        # Now re-perform the necessary steps from intialization on the
+        # artificially-shifted arrays.
+
+        # Apply the CCD corrections to all measured offsets:
+        self.fitOffsetsCorrectedArray = self.fitOffsetsArray -\
+            self.ccdCorrectionArray
+        # And to the measured wavelengths, but due to the implementation of
+        # shift_wavelength(), invert them first to apply them correctly
+        # ('subtract' them).
+        self.fitMeansCCDCorrectedArray = shift_wavelength(
+            self.fitMeansArray, -1 * self.ccdCorrectionArray)
+
+        # Figure out the median value of the offsets and subtract it, to
+        # normalize out any correlated variation in RV from planets.
+        self.obsRVOffsetsArray = np.nanmedian(
+                self.fitOffsetsCorrectedArray,
+                axis=1).reshape((self.fitMeansArray.shape[0], 1))
+        self.fitOffsetsNormalizedArray = self.fitOffsetsCorrectedArray -\
+            self.obsRVOffsetsArray
 
     @property
     def formatHeader(self):
