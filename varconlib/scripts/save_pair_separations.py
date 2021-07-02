@@ -230,7 +230,8 @@ if __name__ == '__main__':
                         help="Create a file containing static information for"
                         " each star.")
     parser.add_argument('-P', '--pairs', action='store_true',
-                        help="Create files for each pair.")
+                        help="Create CSV files with all the information for"
+                        " each pair.")
 
     parser.add_argument('--get-star-coords', action='store_true',
                         help='Query Simbad for coordinates for all the stars'
