@@ -2479,7 +2479,7 @@ def create_feature_fitting_example_plot():
 
     transitions = ('6138.313Fe1_60', '6139.390Fe1_60')
 
-    fig = plt.figure(figsize=(10, 3.6), tight_layout=True)
+    fig = plt.figure(figsize=(8.5, 3.3), tight_layout=True)
     axes = fig.subplots(1, 2, sharey=True, gridspec_kw={'wspace': 0})
     axes[1].sharey(axes[0])
     axes[0].set_ylim(bottom=0.27, top=1.1)
@@ -2489,28 +2489,34 @@ def create_feature_fitting_example_plot():
         ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
 
+        x_min = -2.9
+        x_max = 2.5
+
         # Set up lines for plotting residuals.
         vertical_offset = 0.95
         ax.hlines((vertical_offset - 0.05, vertical_offset + 0.05),
-                  xmin=-4, xmax=4, linestyle='-',
-                  color=cmr.neutral(0.4))
-        ax.hlines(vertical_offset, xmin=-4, xmax=4, linestyle='--',
-                  color=cmr.neutral(0.5))
+                  xmin=x_min, xmax=x_max, linestyle='-',
+                  color=cmr.neutral(0.4), zorder=3)
+        ax.hlines(vertical_offset, xmin=x_min, xmax=x_max, linestyle='--',
+                  color=cmr.neutral(0.5) ,zorder=4)
+        ax.axvspan(xmin=x_min, xmax=x_max, alpha=0.8,
+                   color=cmr.neutral(0.9),
+                   zorder=2)
 
     fig.supxlabel('Relative velocity (km/s)', size=14,
                   y=0.08)
     axes[0].set_ylabel('Normalized flux', size=14)
 
     for i, t_label in enumerate(transitions):
-        wavelength = float(t_label[:8]) * u.angstrom
+#        wavelength = float(t_label[:8]) * u.angstrom
         order_num = int(t_label[-2:])
         t_index = vesta.t_index(t_label)
         # Get the fit for this transition:
         model_fit = fits_list[t_index]
-        offset = vesta.fitOffsetsNormalizedArray[obs_index, t_index]
+#        offset = vesta.fitOffsetsNormalizedArray[obs_index, t_index]
         meas_wavelength = vesta.fitMeansArray[obs_index, t_index]
-        exp_wavelength = shift_wavelength(wavelength,
-                                          -model_fit.velocityOffset)
+#        exp_wavelength = shift_wavelength(wavelength,
+#                                          -model_fit.velocityOffset)
 
         wavelength_data = obs.barycentricArray[order_num]
         flux_data = obs.photonFluxArray[order_num]
@@ -2540,18 +2546,18 @@ def create_feature_fitting_example_plot():
                          markeredgewidth=1,
                          drawstyle='steps-mid',
                          color=cmr.torch(0.8), ecolor='Black',
-                         linestyle='-', linewidth=2.8, alpha=1,
+                         linestyle='-', linewidth=1.9, alpha=1,
                          zorder=5)
         # Plot just the central sevan pixels more enhanced.
         axes[i].errorbar(rel_velocities[mid_vel_index-3:mid_vel_index+4],
                          fluxes[mid_vel_index-3:mid_vel_index+4]/flux_max,
-                         marker='o', markersize=6,
+                         marker='o', markersize=7,
                          markeredgecolor=cmr.torch(0.2),
                          markerfacecolor=cmr.torch(0.95),
                          markeredgewidth=1.3,
                          drawstyle='steps-mid',
-                         linestyle='-', color=cmr.torch(0.75),
-                         linewidth=3., zorder=10)
+                         linestyle='-', color=cmr.sunburst(0.45),
+                         linewidth=3.2, zorder=10)
 
         # x-values for plotting fit:
         x = np.linspace(wavelength_data[mid_index-3],
@@ -2571,11 +2577,11 @@ def create_feature_fitting_example_plot():
         axes[i].plot(x_vel,
                      fit.gaussian(x.value, *model_fit.popt)/flux_max,
                      color=cmr.neutral(0.1), alpha=1, linestyle='-',
-                     linewidth=1.7, zorder=15)
+                     linewidth=2., zorder=15)
 
         # Plot a line at 0 velocity.
         axes[i].axvline(x=0*u.km/u.s, color=cmr.neutral(0.7), linestyle='-',
-                        zorder=12)
+                        zorder=7)
 
         # Add annotations of transition and chi-squared values.
         axes[i].annotate(format_transition_label(transitions[i]),
@@ -2601,9 +2607,9 @@ def create_feature_fitting_example_plot():
                      markersize=5,
                      markerfacecolor=cmr.torch(0.95),
                      markeredgecolor=cmr.torch(0.2),
-                     markeredgewidth=1.3)
+                     markeredgewidth=1.3, zorder=13)
 
-    outfile = plots_dir / 'Fitting_example_plot.png'
+    outfile = plots_dir / 'Fitting_example_plot.pdf'
     fig.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
 
 
