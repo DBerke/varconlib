@@ -437,7 +437,7 @@ def main():
     star_transition_offsets_stds *= star.fitErrorsArray.units
     star_temperatures *= u.K
     if not args.transitions_only:
-        star_pair_separations *= star.pairSeparationsArray.units
+        star_pair_separations *= u.m/u.s
         star_pair_separations_EotWM *= star.pairSepErrorsArray.units
         star_pair_separations_EotM *= star.pairSepErrorsArray.units
 
