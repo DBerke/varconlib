@@ -527,11 +527,12 @@ def find_sys_scatter(model_func, x_data, y_data, err_array, beta0,
     n_sigma : float
         The number of sigma outside of which a data point is considered an
         outlier.
-    tolerance : float, Default : 0.001
-        The distance from one within which the chi-squared per degree of freedom
-        must fall for the iteration to exit. (Note that if the chi-squared value
-        is naturally less than one on the first iteration, the iteration with
-        end even if the value is not closer to one than the tolerance.)
+     tolerance : float, Default : 0.001
+        The distance from one within which the chi-squared per degree of
+        freedom must fall for the iteration to exit. (Note that if the
+        chi-squared value is naturally less than one on the first iteration,
+        the iteration will end even if the value is not closer to one than the
+        tolerance.)
     verbose : bool, Default : False
         Whether to print out more diagnostic information on the process.
 
