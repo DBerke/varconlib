@@ -635,6 +635,12 @@ class Star(object):
         # present for each transition, in pre- and post-fiber change eras.
         sigma_sys_array = np.full_like(model_values_array, np.nan, dtype=float)
 
+        # Only use these in an appropriate 'if' block to check if the star has
+        # the appropriate type of observations, otherwise subtle bugs will
+        # occur!
+        pre_slice = slice(None, self.fiberSplitIndex)
+        post_slice = slice(self.fiberSplitIndex, None)
+
         for key, col_num in tqdm(self._transition_bidict.items()):
 
             label_pre = key + '_pre'
@@ -645,8 +651,6 @@ class Star(object):
             sigma_sys_array[1, col_num] = sigma_sys_dict[label_post].value
 
             if self.hasObsPre:
-
-                pre_slice = slice(None, self.fiberSplitIndex)
                 # Compute the model value for this transition and star.
                 model_value = u.unyt_quantity(function(
                         stellar_params, *coeffs_dict[label_pre]),
@@ -659,20 +663,33 @@ class Star(object):
                     model_value
 
             if self.hasObsPost:
-
-                post_slice = slice(self.fiberSplitIndex, None)
-                model_value = u.unyt_array(function(stellar_params,
-                                                    *coeffs_dict[label_post]),
-                                           units=u.m/u.s)
+                model_value = u.unyt_array(function(
+                        stellar_params, *coeffs_dict[label_post]),
+                        units=u.m/u.s)
                 model_values_array[1, col_num] = model_value.value
                 corrected_array[post_slice, col_num] =\
                     self.fitOffsetsNormalizedArray[post_slice, col_num] -\
                     model_value
 
-        # True means outlier; this finds all the points more than n_sigma away
-        # from zero after correction.
-        self.transitionOutliersMask = abs(corrected_array) -\
-            n_sigma * self.fitErrorsArray > 0
+        # Create a mask for where points are greater outliers than specified
+        # by n_sigma (remember, 'True' means 'masked').
+        total_err_array = np.full_like(self.fitErrorsArray, np.nan,
+                                       dtype=float)
+        if self.hasObsPre:
+            total_err_array[pre_slice, :] =\
+                np.sqrt(self.fitErrorsArray[pre_slice, :] ** 2 +
+                        (sigma_sys_array[0, :] * u.m/u.s) ** 2)
+
+        if self.hasObsPost:
+            total_err_array[post_slice, :] =\
+                np.sqrt(self.fitErrorsArray[post_slice, :] ** 2 +
+                        (sigma_sys_array[1, :] * u.m/u.s) ** 2)
+
+        significance_array = abs(corrected_array / total_err_array)
+        # Set transition outliers mask to True (masked) where significance
+        # exceeds n_sigma.
+        self.transitionOutliersMask = np.where(significance_array > n_sigma,
+                                               True, False)
 
         # Set all outlier values and associated errors in model-corrected array
         # to NaN.
@@ -803,6 +820,12 @@ class Star(object):
         # present for each transition, in pre- and post-fiber change eras.
         sigma_sys_array = np.full_like(model_values_array, np.nan, dtype=float)
 
+        # Create these slices here, but only use them in an appropriate 'if'
+        # block if the star has the right observations, otherwise subtle bugs
+        # will occur!
+        pre_slice = slice(None, self.fiberSplitIndex)
+        post_slice = slice(self.fiberSplitIndex, None)
+
         for key, col_num in tqdm(self._pair_bidict.items()):
 
             label_pre = key + '_pre'
@@ -813,8 +836,6 @@ class Star(object):
             sigma_sys_array[1, col_num] = sigma_sys_dict[label_post].value
 
             if self.hasObsPre:
-
-                pre_slice = slice(None, self.fiberSplitIndex)
                 # Compute the model_value for this transition.
                 model_value = u.unyt_quantity(function(
                     stellar_params, *coeffs_dict[label_pre]),
@@ -827,11 +848,6 @@ class Star(object):
                     model_value
 
             if self.hasObsPost:
-
-                # Note: only define post_slice if the star has post-change
-                # observations, otherwise it grabs all pre-change observations
-                # as self.fiberSplitIndex is None.
-                post_slice = slice(self.fiberSplitIndex, None)
                 model_value = u.unyt_quantity(function(
                     stellar_params, *coeffs_dict[label_post]),
                                            units=u.m/u.s)
@@ -841,8 +857,25 @@ class Star(object):
                     model_value
 
         # self.pairOutliersMask = mask_array.to_ndarray()
-        self.pairOutliersMask = abs(corrected_array) -\
-            n_sigma * self.pairSepErrorsArray > 0
+#        self.pairOutliersMask = abs(corrected_array) -\
+#            n_sigma * self.pairSepErrorsArray > 0
+        total_err_array = np.full_like(self.pairSepErrorsArray, np.nan,
+                                       dtype=float)
+        if self.hasObsPre:
+            total_err_array[pre_slice, :] =\
+                np.sqrt(self.pairSepErrorsArray[pre_slice, :] ** 2 +
+                        (sigma_sys_array[0, :] * u.m/u.s) ** 2)
+
+        if self.hasObsPost:
+            total_err_array[post_slice, :] =\
+                np.sqrt(self.pairSepErrorsArray[post_slice, :] ** 2 +
+                        (sigma_sys_array[1, :] * u.m/u.s) ** 2)
+
+        significance_array = abs(corrected_array / total_err_array)
+        # Set pair outliers mask to True (masked) where significance exceeds
+        # n_sigma.
+        self.pairOutliersMask = np.where(significance_array > n_sigma,
+                                         True, False)
 
         # Mask any outlier values in the pair separations and error arrays.
         corrected_array[self.pairOutliersMask] = np.nan
