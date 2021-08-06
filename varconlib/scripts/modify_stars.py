@@ -75,13 +75,14 @@ def recreate_star(star_dir):
     try:
         Star(star_dir.stem, star_dir, load_data=False)
     except PickleFilesNotFoundError:
-        newstar_dir = Path('/Volumes/External Storage/data_output') /\
+        new_star_dir = Path('/Volumes/External Storage/data_output') /\
             star_dir.stem
         tqdm.write('Using external storage files.')
         Star(star_dir.stem, new_star_dir, load_data=False, output_dir=star_dir)
 
 
-def create_transition_model_corrected_arrays(star_dir):
+def create_transition_model_corrected_arrays(star_dir, function='quadratic',
+                                             n_sigma=2.5):
     """
     Create the transition model-corrected arrays for a Star from a given
     directory.
@@ -91,6 +92,10 @@ def create_transition_model_corrected_arrays(star_dir):
     ----------
     star_dir : `pathlib.Path`
         The directory in which to find the star's files.
+    function : str, Default: 'quadratic'
+        The model to use, such as 'linear' or 'quadratic'.
+    n_sigma : float, Default: 2.5
+        The limit to use for sigma clipping.
 
     Returns
     -------
@@ -100,13 +105,14 @@ def create_transition_model_corrected_arrays(star_dir):
 
     tqdm.write(f'Working on {star_dir.stem}')
     star = Star(star_dir.stem, star_dir, load_data=True)
-    star.createTransitionModelCorrectedArrays(model_func='quadratic',
-                                              n_sigma=2.5)
+    star.createTransitionModelCorrectedArrays(model_func=function,
+                                              n_sigma=n_sigma)
     star.createPairSeparationArrays()
     star.saveDataToDisk()
 
 
-def create_pair_model_corrected_arrays(star_dir):
+def create_pair_model_corrected_arrays(star_dir, function='quadratic',
+                                       n_sigma=4.0):
     """
     Create the pair model-corrected array for a Star from a given directory.
 
@@ -114,6 +120,10 @@ def create_pair_model_corrected_arrays(star_dir):
     ----------
     star_dir : `pathlib.Path`
         The directory in which to find the star's files.
+    function : str, Default: 'quadratic'
+        The model to use, such as 'linear' or 'quadratic'.
+    n_sigma : float, Default: 4.0
+        The limit to use for sigma clipping.
 
     Returns
     -------
@@ -123,8 +133,8 @@ def create_pair_model_corrected_arrays(star_dir):
 
     tqdm.write(f'Working on {star_dir.stem}')
     star = Star(star_dir.stem, star_dir, load_data=True)
-    star.createPairModelCorrectedArrays(model_func='quadratic',
-                                        n_sigma=4.0)
+    star.createPairModelCorrectedArrays(model_func=function,
+                                        n_sigma=n_sigma)
     star.saveDataToDisk()
 
 
@@ -212,9 +222,16 @@ if __name__ == '__main__':
     parser.add_argument('--pairs', action='store_true',
                         help='Create the pair model-corrected arrays for'
                         ' stars.')
+    parser.add_argument('--linear', action='store_true',
+                        help='Use a linear function for creating the model-'
+                        'corrected arrays.')
     parser.add_argument('--pixel-positions', action='store_true',
                         help='Read pickled fits to add pixel positions to'
                         ' star.')
+    parser.add_argument('--sigma', action='store', type=float,
+                        help='The sigma limit to use for rejecting outliers;'
+                        ' if unspecified, the default is 2.5 for transitions'
+                        ' and 4.0 for pairs.')
     parser.add_argument('--update-property', action='store', type=str,
                         help='Update the property with the given name.')
 
@@ -234,9 +251,18 @@ if __name__ == '__main__':
         p_umap(recreate_star, star_dirs)
 
     if args.transitions:
-        p_umap(create_transition_model_corrected_arrays, star_dirs)
+        if args.linear:
+            tqdm.write('Using linear function.')
+            p_umap(partial(create_transition_model_corrected_arrays,
+                           function='linear'), star_dirs)
+        else:
+            p_umap(create_transition_model_corrected_arrays, star_dirs)
 
     if args.pairs:
+        if args.linear:
+            tqdm.write('Using linear function.')
+            p_umap(partial(create_pair_model_corrected_arrays,
+                           function='linear'), star_dirs)
         p_umap(create_pair_model_corrected_arrays, star_dirs)
 
     if args.pixel_positions:
