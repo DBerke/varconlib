@@ -1237,7 +1237,7 @@ class Star(object):
             elif ionization == 'II':
                 ionization = '2'
             else:
-                raise RuntimeError(f'Ionzation value of {ionization}'
+                raise RuntimeError(f'Ionization value of {ionization}'
                                    ' not handled.')
             t_label = wavelength + element + ionization
 
@@ -1267,7 +1267,7 @@ class Star(object):
         self.fitMeansArray = shift_wavelength(self.fitMeansArray,
                                               self.fakeVelocityShifts)
 
-        # Now re-perform the necessary steps from intialization on the
+        # Now re-perform the necessary steps from initialization on the
         # artificially-shifted arrays.
 
         # Apply the CCD corrections to all measured offsets:
