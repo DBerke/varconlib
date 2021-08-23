@@ -42,7 +42,8 @@ import varconlib.fitting as fit
 from varconlib.miscellaneous import (remove_nans, weighted_mean_and_error,
                                      get_params_file, shift_wavelength,
                                      wavelength2index,
-                                     wavelength2velocity)
+                                     wavelength2velocity,
+                                     velocity2wavelength)
 from varconlib.obs2d import HARPSFile2DScience
 from varconlib.star import Star
 from varconlib.transition_line import roman_numerals
@@ -566,6 +567,105 @@ def create_sigma_sys_hist():
     ax.legend(shadow=True)
 
     plt.show()
+
+
+def create_transition_density_plot():
+    """Create a plot showing the density of transitions from the Kurucz list.
+
+    """
+
+    transitions_list = [4652.593, 4653.460, 4759.449,
+                        4760.600, 4799.873, 4800.072,
+                        5138.510, 5143.171, 5187.346,
+                        5200.158, 6123.910, 6138.313,
+                        6139.390, 6153.320, 6155.928,
+                        6162.452, 6168.150, 6175.044,
+                        6192.900, 6202.028, 6242.372,
+                        6244.834] * u.angstrom
+
+    kurucz_file = vcl.data_dir / "gfallvac08oct17.dat"
+    col_widths = (11, 7, 6, 12, 5, 11, 12, 5, 11, 6, 6, 6, 4, 2, 2, 3, 6, 3, 6,
+                  5, 5, 3, 3, 4, 5, 5, 6)
+    col_names = ("wavelength", "log gf", "elem", "energy1", "J1", "label1",
+                 "energy2", "J2", "label2", "gammaRad", "gammaStark",
+                 "vanderWaals", "ref", "nlte1",  "nlte2", "isotope1",
+                 "hyperf1", "isotope2", "logIsotope", "hyperfshift1",
+                 "hyperfshift2", "code", "landeGeven", "landeGodd",
+                 "isotopeShift")
+    col_dtypes = (float, float, "U6", float, float, "U11", float, float, "U11",
+                  float, float, float, "U4", int, int, int, float, int, float,
+                  int, int, "U3", "U3", "U4", int, int, float)
+
+    print('Reading Kurucz line list...')
+    kurucz_data = np.genfromtxt(kurucz_file, delimiter=col_widths,
+                                autostrip=True,
+                                skip_header=842959, skip_footer=987892,
+                                names=col_names, dtype=col_dtypes,
+                                usecols=(0, 2, 3, 4, 5, 6, 7, 8, 18))
+
+    # Use the SNR=316 observation of Vesta.
+    data_file = Path('/Users/dberke/Vesta/data/reduced/2011-09-29/'
+                     'HARPS.2011-09-29T23:30:27.911_e2ds_A.fits')
+    data_obs = HARPSFile2DScience(data_file)
+
+    rad_vel = data_obs.radialVelocity
+
+    for wavelength in transitions_list[1:2]:
+        plot_half_width = 17 * u.km/u.s
+        shifted_wl = shift_wavelength(wavelength, rad_vel)
+        lower_lim = velocity2wavelength(-plot_half_width,
+                                        shifted_wl) + shifted_wl
+        upper_lim = velocity2wavelength(plot_half_width,
+                                        shifted_wl) + shifted_wl
+        unshifted_lower_lim = velocity2wavelength(-plot_half_width,
+                                                  wavelength) + wavelength
+        unshifted_upper_lim = velocity2wavelength(plot_half_width,
+                                                  wavelength) + wavelength
+
+        order = data_obs.findWavelength(shifted_wl,
+                                        data_obs.barycentricArray)
+        index_min = wavelength2index(lower_lim,
+                                     data_obs.barycentricArray[order])
+        index_max = wavelength2index(upper_lim,
+                                     data_obs.barycentricArray[order]) + 1
+
+        fig = plt.figure(figsize=(6.5, 4.5), tight_layout=True)
+        ax = fig.add_subplot(1, 1, 1)
+
+        ax.set_xlim(left=lower_lim, right=upper_lim)
+        ax.set_ylim(bottom=0.19, top=1.1)
+#        ax.tick_params(top=False)
+        ax.set_xlabel(r'Wavelength $(\mathrm{\mathring{A}})$')
+        ax.set_ylabel('Normalised flux')
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+
+        ax.axvline(shifted_wl, ymin=0, ymax=1, color='Black',
+                   linestyle=':', linewidth=2, zorder=15)
+
+        x_values = data_obs.barycentricArray[order, index_min:index_max]
+        y_values = data_obs.photonFluxArray[order, index_min:index_max]
+        y_values /= y_values.max()
+
+        transitions = 0
+        tqdm.write('Parsing Kurucz lines...')
+        for transition in tqdm(kurucz_data, unit='transitions'):
+            wl = transition['wavelength'] * u.nm
+            if unshifted_lower_lim < wl < unshifted_upper_lim:
+                transitions += 1
+                ax.axvline(shift_wavelength(wl.to(u.angstrom), rad_vel),
+                           ymin=0.92, ymax=0.96, color='Gray', linestyle='-',
+                           linewidth=1.4, zorder=5)
+        tqdm.write(f'Found {transitions} transitions in wavelength range.')
+        ax.plot(x_values, y_values,
+                color='SandyBrown',
+                drawstyle='steps-mid', linewidth=2.8,
+                marker='', zorder=10)
+
+        plot_path = Path('/Users/dberke/Pictures/paper_plots_and_tables/plots')
+        out_file = plot_path /\
+            f'Transition_density_plot_{wavelength.value}.pdf'
+        fig.savefig(str(out_file), bbox_inches='tight', pad_inches=0.01)
 
 
 def create_parameter_dependence_plot(use_cached=False, min_bin_size=5):
@@ -1419,9 +1519,6 @@ def create_representative_blendedness_plots():
     vesta = Star('Vesta', '/Users/dberke/data_output/Vesta')
     obs_index = vesta.od_index('2011-09-29T23:30:27.910')  # It's obs 0
 
-    # Get the radial velocity.
-    radial_velocity = obs.radialVelocity
-
     transitions = {'category0': ('4219.893V1_16',
                                  '5224.639Fe1_44',
                                  '6153.320Fe1_61'),
@@ -1444,9 +1541,9 @@ def create_representative_blendedness_plots():
     # Create the plot.
     fig = plt.figure(figsize=(13, 4), tight_layout=True)
     axes = fig.subplots(1, 6, sharey=True, gridspec_kw={'wspace': 0})
-    fig.supxlabel('Relative velocity (km/s)', size=15,
+    fig.supxlabel('Relative velocity (km/s)', size=16,
                   y=0.07)
-    axes[0].set_ylabel('Normalized flux')
+    axes[0].set_ylabel('Normalised flux')
 
     colors = cmr.take_cmap_colors('cmr.rainforest', 3,
                                   cmap_range=(0.5, 0.85),
@@ -1458,7 +1555,7 @@ def create_representative_blendedness_plots():
                          fontsize=24)
         axes[i].set_xlim(left=-18*u.km/u.s, right=18*u.km/u.s)
         axes[i].axvline(x=0, color='Gray', linestyle='--', alpha=1,
-            linewidth=1.5)
+                linewidth=1.5)
 
         for j, t_label in enumerate(transitions[category]):
             vprint(f'Working on {t_label}')
@@ -1580,7 +1677,7 @@ def plot_pair_depth_differences(star):
 
     ax_pre.set_xlabel('Model offset (m/s)')
     ax_chi_squared.set_xlabel(r'$\chi^2_{\nu}$', fontsize=18)
-    ax_pre.set_ylabel('Normalized mean depth of pair')
+    ax_pre.set_ylabel('normalised mean depth of pair')
 
     ax_chi_squared.tick_params(labelleft=False)
 
@@ -1776,7 +1873,7 @@ def create_sigma_s2s_histogram():
     vprint(f'p-value: {p_value}')
 
 
-def plot_solar_twins_results():
+def plot_solar_twins_results(star_postfix=''):
     """Plot results for 17 pairs with q-coefficients for solar twins"""
 
     def format_pair_label(pair_label):
@@ -1810,7 +1907,8 @@ def plot_solar_twins_results():
     pair_labels = np.loadtxt(pairs_file, dtype=str)
 
     # Get the 18 solar twins.
-    stars = {star_name: Star(star_name, vcl.output_dir / star_name)
+    stars = {star_name: Star(star_name + star_postfix,
+                             vcl.output_dir / star_name)
              for star_name in sp1_stars}
 
     # Set out lists of star for the top and bottom panels.
@@ -2022,95 +2120,99 @@ def plot_solar_twins_results():
                         :fiber_split_index, pair_index], return_mask=True)
                 errors = star.pairModelErrorsArray[:fiber_split_index,
                                                    pair_index][mask]
+                plot = True
                 try:
                     value, error = weighted_mean_and_error(values, errors)
                 except ZeroDivisionError:
                     # This indicates no value for a particular 'cell', so just
                     # plot something there to indicate that.
-                    axes[(row, i)].plot(0, j, color='Black', marker='x',
+                    axes[(row, i)].plot(0, j-0.15, color='Black', marker='x',
                                         markersize=7, zorder=10)
-                    continue
-                # Compute error with sigma_** included.
-                sigma_s2s = star.pairSysErrorsArray[0, pair_index]
-                full_error = np.sqrt(error**2 + sigma_s2s**2)
-                sig_stat = float((value / error).value)
-                sig_sys = float((value / full_error).value)
-                pre_stat.append(sig_stat)
-                pre_sys.append(sig_sys)
-                if abs(sig_sys) > sigma_significance:
-                    vprint(f'{star.name}: {pair_label}:'
-                           f' (Pre) {sig_sys:.2f}')
-                pre_values.append(value)
-                pre_err_stat.append(error)
-                pre_err_sys.append(full_error)
-                if (star.name == 'HD1835') and\
-                        (pair_label == '4759.449Ti1_4760.600Ti1_32'):
-                    vprint('For HD 1835, 4759.449Ti1_4760.600Ti1_32:')
-                    vprint(f'Value: {value:.3f}, error: {full_error:.3f}')
-                # First plot an errorbar with sigma_** included.
-                axes[(row, i)].errorbar(value, j-0.15,
-                                        xerr=full_error,
-                                        ecolor=pre_color,
-                                        marker='',
-                                        capsize=3,
-                                        capthick=1.5,
-                                        elinewidth=1.4,
-                                        zorder=11)
-                # Then plot just the star's statistical error.
-                axes[(row, i)].errorbar(value, j-0.15,
-                                        xerr=error,
-                                        markerfacecolor=pre_color,
-                                        markeredgecolor='Black',
-                                        ecolor=pre_color,
-                                        markeredgewidth=2,  # controls capthick
-                                        marker='o',
-                                        markersize=9,
-                                        capsize=5,
-                                        elinewidth=4,
-                                        zorder=12)
+                    plot = False
+                if plot:
+                    # Compute error with sigma_** included.
+                    sigma_s2s = star.pairSysErrorsArray[0, pair_index]
+                    full_error = np.sqrt(error**2 + sigma_s2s**2)
+                    sig_stat = float((value / error).value)
+                    sig_sys = float((value / full_error).value)
+                    pre_stat.append(sig_stat)
+                    pre_sys.append(sig_sys)
+                    if abs(sig_sys) > sigma_significance:
+                        vprint(f'{star.name}: {pair_label}:'
+                               f' (Pre) {sig_sys:.2f}')
+                    pre_values.append(value)
+                    pre_err_stat.append(error)
+                    pre_err_sys.append(full_error)
+                    if (star.name == 'HD1835') and\
+                            (pair_label == '4759.449Ti1_4760.600Ti1_32'):
+                        vprint('For HD 1835, 4759.449Ti1_4760.600Ti1_32:')
+                        vprint(f'Value: {value:.3f}, error: {full_error:.3f}')
+                    # First plot an errorbar with sigma_** included.
+                    axes[(row, i)].errorbar(value, j-0.15,
+                                            xerr=full_error,
+                                            ecolor=pre_color,
+                                            marker='',
+                                            capsize=3,
+                                            capthick=1.5,
+                                            elinewidth=1.4,
+                                            zorder=11)
+                    # Then plot just the star's statistical error.
+                    axes[(row, i)].errorbar(value, j-0.15,
+                                            xerr=error,
+                                            markerfacecolor=pre_color,
+                                            markeredgecolor='Black',
+                                            ecolor=pre_color,
+                                            markeredgewidth=2,
+                                            marker='o',
+                                            markersize=9,
+                                            capsize=5,
+                                            elinewidth=4,
+                                            zorder=12)
             # Get the post-change values.
             if star.hasObsPost:
                 values, mask = remove_nans(star.pairModelOffsetsArray[
                         fiber_split_index:, pair_index], return_mask=True)
                 errors = star.pairModelErrorsArray[fiber_split_index:,
                                                    pair_index][mask]
+                plot = True
                 try:
                     value, error = weighted_mean_and_error(values, errors)
                 except ZeroDivisionError:
-                    axes[(row, i)].plot(0, j, color='Black', marker='x',
+                    axes[(row, i)].plot(0, j+0.15, color='Black', marker='x',
                                         markersize=7)
-                    continue
-                sigma_s2s = star.pairSysErrorsArray[1, pair_index]
-                full_error = np.sqrt(error**2 + sigma_s2s**2)
-                sig_stat = float((value / error).value)
-                sig_sys = float((value / full_error).value)
-                post_stat.append(sig_stat)
-                post_sys.append(sig_sys)
-                if abs(sig_sys) > sigma_significance:
-                    vprint(f'{star.name}: {pair_label}:'
-                           f' (Post) {sig_sys:.2f}')
-                post_values.append(value)
-                post_err_stat.append(error)
-                post_err_sys.append(full_error)
-                axes[(row, i)].errorbar(value, j+0.15,
-                                        xerr=full_error,
-                                        ecolor=post_color,
-                                        marker='',
-                                        capsize=4,
-                                        capthick=1.5,
-                                        elinewidth=1.5,
-                                        zorder=13)
-                axes[(row, i)].errorbar(value, j+0.15,
-                                        xerr=error,
-                                        markerfacecolor=post_color,
-                                        markeredgecolor='Black',
-                                        ecolor=post_color,
-                                        markeredgewidth=2,
-                                        marker='D',
-                                        markersize=8.5,
-                                        capsize=5,
-                                        elinewidth=4,
-                                        zorder=14)
+                    plot = False
+                if plot:
+                    sigma_s2s = star.pairSysErrorsArray[1, pair_index]
+                    full_error = np.sqrt(error**2 + sigma_s2s**2)
+                    sig_stat = float((value / error).value)
+                    sig_sys = float((value / full_error).value)
+                    post_stat.append(sig_stat)
+                    post_sys.append(sig_sys)
+                    if abs(sig_sys) > sigma_significance:
+                        vprint(f'{star.name}: {pair_label}:'
+                               f' (Post) {sig_sys:.2f}')
+                    post_values.append(value)
+                    post_err_stat.append(error)
+                    post_err_sys.append(full_error)
+                    axes[(row, i)].errorbar(value, j+0.15,
+                                            xerr=full_error,
+                                            ecolor=post_color,
+                                            marker='',
+                                            capsize=4,
+                                            capthick=1.5,
+                                            elinewidth=1.5,
+                                            zorder=13)
+                    axes[(row, i)].errorbar(value, j+0.15,
+                                            xerr=error,
+                                            markerfacecolor=post_color,
+                                            markeredgecolor='Black',
+                                            ecolor=post_color,
+                                            markeredgewidth=2,
+                                            marker='D',
+                                            markersize=8.5,
+                                            capsize=5,
+                                            elinewidth=4,
+                                            zorder=14)
         # Print some metrics for the pair.
         pre_val_arr = np.array(pre_values)
         pre_err_arr_stat = np.array(pre_err_stat)
@@ -2176,10 +2278,10 @@ def plot_solar_twins_results():
     ax_hist.legend(loc='upper right', fontsize=16,
                    shadow=True)
 
-    outfile = plots_dir / 'Pair_offsets_17_pairs.pdf'
+    outfile = plots_dir / f'Pair_offsets_17_pairs{star_postfix}.pdf'
     fig.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
 
-    histfile = plots_dir / 'Pair_offsets_histograms.pdf'
+    histfile = plots_dir / f'Pair_offsets_histograms{star_postfix}.pdf'
     fig_hist.savefig(str(histfile), bbox_inches='tight', pad_inches=0.01)
 
     # Create an excerpt of a single column.
@@ -2505,7 +2607,7 @@ def create_feature_fitting_example_plot():
 
     fig.supxlabel('Relative velocity (km/s)', size=14,
                   y=0.08)
-    axes[0].set_ylabel('Normalized flux', size=14)
+    axes[0].set_ylabel('normalised flux', size=14)
 
     for i, t_label in enumerate(transitions):
 #        wavelength = float(t_label[:8]) * u.angstrom
@@ -2623,6 +2725,10 @@ if __name__ == '__main__':
     parser.add_argument('--figures', action='store_true',
                         help='Create and save plots and figures.')
 
+    parser.add_argument('--star-postfix', action='store', type=str,
+                        default='',
+                        help='The exact postfix (with leading underscore)'
+                        ' to append to the star names.')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help="Print out more information about the script's"
                         " output.")
@@ -2721,6 +2827,8 @@ if __name__ == '__main__':
 
 #        create_sigma_sys_hist()
 
+        create_transition_density_plot()
+
 #         create_parameter_dependence_plot(use_cached=True, min_bin_size=5)
 
         # plot_duplicate_pairs(Star('Vesta', '/Users/dberke/data_output/Vesta'))
@@ -2728,7 +2836,8 @@ if __name__ == '__main__':
 
         # create_radial_velocity_plot()
 
-#        plot_vs_pair_blendedness(hd146233)
+#        plot_vs_pair_blendedness(Star('HD146233',
+#                                      '/Users/dberke/data_output/HD146233'))
 
 #        create_representative_blendedness_plots()
 
@@ -2738,8 +2847,8 @@ if __name__ == '__main__':
 
 #        create_sigma_s2s_histogram()
 
-#        plot_solar_twins_results()
+#        plot_solar_twins_results(args.star_postfix)
 
 #        create_cosmic_ray_plots()
 
-        create_feature_fitting_example_plot()
+#        create_feature_fitting_example_plot()
