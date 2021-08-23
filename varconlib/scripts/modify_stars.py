@@ -254,16 +254,18 @@ if __name__ == '__main__':
         if args.linear:
             tqdm.write('Using linear function.')
             p_umap(partial(create_transition_model_corrected_arrays,
-                           function='linear'), star_dirs)
+                           function='linear', n_sigma=args.sigma), star_dirs)
         else:
-            p_umap(create_transition_model_corrected_arrays, star_dirs)
+            p_umap(partial(create_transition_model_corrected_arrays,
+                           n_sigma=args.sigma), star_dirs)
 
     if args.pairs:
         if args.linear:
             tqdm.write('Using linear function.')
             p_umap(partial(create_pair_model_corrected_arrays,
-                           function='linear'), star_dirs)
-        p_umap(create_pair_model_corrected_arrays, star_dirs)
+                           function='linear', n_sigma=args.sigma), star_dirs)
+        p_umap(partial(create_pair_model_corrected_arrays,
+                       n_sigma=args.sigma), star_dirs)
 
     if args.pixel_positions:
         p_umap(add_pixel_data_to_star, star_dirs)
