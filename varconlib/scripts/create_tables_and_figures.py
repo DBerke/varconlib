@@ -184,17 +184,17 @@ def create_HR_diagram_plot():
     """
 
     # Get all stars from the Nordstrom et al. 2004 catalog.
-    nordstrom_table = vcl.data_dir / 'Nordstrom+2004_table1.dat'
-    all_colors, all_mags = np.loadtxt(nordstrom_table,
-                                      dtype=str, unpack=True,
-                                      delimiter='|', usecols=(10, 16))
-    nordstrom_mags, nordstrom_colors = [], []
-    for mag, color in zip(all_mags, all_colors):
-        try:
-            nordstrom_mags.append(float(mag))
-            nordstrom_colors.append(float(color))
-        except ValueError:
-            pass
+#    nordstrom_table = vcl.data_dir / 'Nordstrom+2004_table1.dat'
+#    all_colors, all_mags = np.loadtxt(nordstrom_table,
+#                                      dtype=str, unpack=True,
+#                                      delimiter='|', usecols=(10, 16))
+#    nordstrom_mags, nordstrom_colors = [], []
+#    for mag, color in zip(all_mags, all_colors):
+#        try:
+#            nordstrom_mags.append(float(mag))
+#            nordstrom_colors.append(float(color))
+#        except ValueError:
+#            pass
 
     # Get stars in our initial selection.
     nordstrom_stellar_sample_file = vcl.data_dir / "StellarSampleData_full.csv"
@@ -209,8 +209,11 @@ def create_HR_diagram_plot():
                   glob('/Users/dberke/data_output/[H]*')]
 
     sp1_list, sp3_list, remainder_list = [], [], []
-    temp_lim = 6077 * u.K
+    temp_lim = 6072 * u.K
     metal_lim = -0.45
+    total_obs = 0
+    total_too_hot = 0
+    total_metal_poor = 0
     tqdm.write('Gathering stars...')
     for star_name in tqdm(star_names):
         star = Star(star_name, vcl.output_dir / star_name)
@@ -218,8 +221,10 @@ def create_HR_diagram_plot():
         # tqdm.write(f'{star_name} is in {category}')
         if star.temperature > temp_lim:
             del star
+            total_too_hot += 1
         elif star.metallicity < metal_lim:
             del star
+            total_metal_poor += 1
         else:
             category = find_star_category(star)
             if category == 'SP1':
@@ -228,11 +233,16 @@ def create_HR_diagram_plot():
                 sp3_list.append(star)
             else:
                 remainder_list.append(star)
+            total_obs += star.getNumObs()
             try:
                 num_planets = star.specialAttributes['has_planets']
                 tqdm.write(f'{star_name}: {num_planets} planets')
             except KeyError:
                 pass
+
+    vprint(f'Found {total_obs} total observations for all solar-type stars.')
+    vprint(f'Found {total_too_hot} stars that were too hot.')
+    vprint(f'Found {total_metal_poor} stars that were too metal-poor.')
 
     sp1_colors, sp1_mags = [], []
     sp3_colors, sp3_mags = [], []
@@ -302,6 +312,11 @@ def create_HR_diagram_plot():
 
     filename = output_dir / 'plots/Sample_HR_diagram.pdf'
     fig.savefig(str(filename), bbox_inches='tight', pad_inches=0.01)
+
+    vprint(f'{len(star_colors)} in initial selection.')
+    vprint(f'{len(other_colors)} in solar-type stars.')
+    vprint(f'{len(sp3_colors)} in solar analogs (SP3).')
+    vprint(f'{len(sp1_colors)} in solar twins (SP1).')
 
 
 def create_example_pair_sep_plots():
@@ -418,7 +433,7 @@ def create_example_pair_sep_plots():
     ax3.set_xlabel('[Fe/H]', size=18)
 
     for ax in (ax1, ax2):
-        ax.set_ylabel('Normalized pair\nseparation (m/s)', size=16)
+        ax.set_ylabel('Normalised pair\nseparation (m/s)', size=16)
     ax3.set_ylabel('Pair model offsets (m/s)', size=16)
 
     ax1.xaxis.set_minor_locator(ticker.AutoMinorLocator())
@@ -493,12 +508,16 @@ def create_example_pair_sep_plots():
     mask_quad = results_quad['mask_list'][-1]
     residuals_quad = ma.array(results_quad['residuals'], mask=mask_quad)
     sigma_s2s = results_quad['sys_err_list'][-1] * u.m/u.s
+    chi_squared = results_quad['chi_squared_list'][-1]
     x_data.mask = mask_quad
     err_array.mask = mask_quad
     names.mask = mask_quad
 
+    # Add sigma_** and chi-squared to plot as annotation.
     ax3.annotate(r'$\sigma_{**}=\,$'
-                 f'{sigma_s2s:.2f}',
+                 f'{sigma_s2s:.2f}\n'
+                 r'$\chi^2_\nu=\,$'
+                 f'{chi_squared:.2f}',
                  xy=(0, 0), xytext=(0.03, 0.97),
                  textcoords='axes fraction', size=18,
                  horizontalalignment='left', verticalalignment='top')
@@ -582,6 +601,7 @@ def create_transition_density_plot():
                         6162.452, 6168.150, 6175.044,
                         6192.900, 6202.028, 6242.372,
                         6244.834] * u.angstrom
+    transitions_list = [4653.460] * u.angstrom
 
     kurucz_file = vcl.data_dir / "gfallvac08oct17.dat"
     col_widths = (11, 7, 6, 12, 5, 11, 12, 5, 11, 6, 6, 6, 4, 2, 2, 3, 6, 3, 6,
@@ -610,7 +630,7 @@ def create_transition_density_plot():
 
     rad_vel = data_obs.radialVelocity
 
-    for wavelength in transitions_list[1:2]:
+    for wavelength in transitions_list[:]:
         plot_half_width = 17 * u.km/u.s
         shifted_wl = shift_wavelength(wavelength, rad_vel)
         lower_lim = velocity2wavelength(-plot_half_width,
@@ -1219,7 +1239,7 @@ def create_radial_velocity_plot():
 
     parts = pair_label.split('_')
     blue_label = '_'.join((parts[0], parts[2]))
-    red_label = '_'.join((parts[1], parts[2]))
+#    red_label = '_'.join((parts[1], parts[2]))
 
     star_names = [d.split('/')[-1] for d in
                   glob('/Users/dberke/data_output/[HV]*')]
@@ -1240,7 +1260,7 @@ def create_radial_velocity_plot():
     for star in tqdm(star_list):
 
         pre_slice = slice(None, star.fiberSplitIndex)
-        post_slice = slice(star.fiberSplitIndex, None)
+#        post_slice = slice(star.fiberSplitIndex, None)
 
         col_index = star.p_index(pair_label)
 
@@ -1267,20 +1287,25 @@ def create_radial_velocity_plot():
     pair_seps_pre = np.array(pair_seps_pre)[mask_pre]
     mean_sep_pre = np.mean(pair_seps_pre)
 
-    fig = plt.figure(figsize=(5, 6), tight_layout=True)
+    fig = plt.figure(figsize=(5, 5), tight_layout=True)
     gs = GridSpec(nrows=2, ncols=1, figure=fig,
                   height_ratios=(1, 0.4), hspace=0)
     ax = fig.add_subplot(gs[0, 0])
     ax_mean = fig.add_subplot(gs[1, 0], sharex=ax)
 
     ax.set_xlim(left=2870, right=3140)
-    ax.set_ylim(bottom=-90, top=90)
-    # Denote the CCD sub-boundary in pixels.
-    ax.axvline(x=boundary_pix, linestyle='--', color='Blue',
-               label='Blue crossing', zorder=5)
+    ax.set_ylim(bottom=-90, top=75)
 
+    harps_pix_width = 0.829  # km/s
     for axis in (ax, ax_mean):
-        axis.axhline(y=0, linestyle='--', color='Gray', zorder=1)
+        axis.axhline(y=0, linestyle='--', color='DarkGray',
+                     linewidth=2, zorder=1)
+        # Denote the CCD sub-boundary in pixels.
+        axis.axvline(x=boundary_pix, linestyle='--', color=cmr.guppy(0.8),
+                     label='Blue crossing', linewidth=2.5, zorder=5)
+        axis.axvline(boundary_pix - np.round(mean_sep_pre / harps_pix_width),
+                     linestyle='-.', color=cmr.guppy(0.2),
+                     label='Red crossing', linewidth=2.5, zorder=5)
 
     ax_mean.set_ylim(bottom=-8, top=8)
     ax.tick_params(labelbottom=False)
@@ -1288,19 +1313,16 @@ def create_radial_velocity_plot():
     ax_mean.yaxis.set_minor_locator(ticker.AutoMinorLocator())
     ax_mean.xaxis.set_minor_locator(ticker.AutoMinorLocator())
 
-    harps_pix_width = 0.829  # km/s
-    ax.axvline(boundary_pix - np.round(mean_sep_pre / harps_pix_width),
-               linestyle='-.', color='Red',
-               label='Red crossing', zorder=5)
-
     ax.set_ylabel('Model offset (m/s)')
     ax_mean.set_ylabel('Mean (m/s)')
     ax_mean.set_xlabel('Pixel number')
 
+    # Plot the model offsets.
     ax.errorbar(pixels_pre, offsets_pre,
                 linestyle='',
                 markeredgecolor=None,
-                marker='.', color='Chocolate',
+                marker='.', color=cmr.redshift(0.5),
+                markersize=1.8,
                 alpha=0.3, zorder=2)
 
     # Create some bins to measure in:
@@ -1546,16 +1568,20 @@ def create_representative_blendedness_plots():
     axes[0].set_ylabel('Normalised flux')
 
     colors = cmr.take_cmap_colors('cmr.rainforest', 3,
-                                  cmap_range=(0.5, 0.85),
+                                  cmap_range=(0.45, 0.85),
                                   return_fmt='hex')
 
     for i, category in enumerate(transitions.keys()):
         axes[i].annotate(f'{category[-1]}',
-                         (0.83, 0.05), xycoords='axes fraction',
+                         (0.78, 0.07), xycoords='axes fraction',
                          fontsize=24)
         axes[i].set_xlim(left=-18*u.km/u.s, right=18*u.km/u.s)
         axes[i].axvline(x=0, color='Gray', linestyle='--', alpha=1,
-                linewidth=1.5)
+                        linewidth=1.5, zorder=2)
+        axes[i].axhline(y=1, linestyle=':', color='Gray',
+                        linewidth=1.8, zorder=1)
+        axes[i].xaxis.set_minor_locator(ticker.AutoMinorLocator())
+        axes[i].yaxis.set_minor_locator(ticker.AutoMinorLocator())
 
         for j, t_label in enumerate(transitions[category]):
             vprint(f'Working on {t_label}')
@@ -1570,7 +1596,7 @@ def create_representative_blendedness_plots():
 
             wavelength_data = obs.barycentricArray[order_num]
             flux_data = obs.photonFluxArray[order_num]
-            error_data = obs.errorArray[order_num]
+#            error_data = obs.errorArray[order_num]
 
             low_index = wavelength2index(exp_wavelength, wavelength_data) - 30
             high_index = wavelength2index(exp_wavelength, wavelength_data) + 20
@@ -1585,11 +1611,14 @@ def create_representative_blendedness_plots():
                              fluxes / flux_max,
 #                             yerr=error_data[low_index:high_index]/flux_max,
 #                             barsabove=True,
-                             marker='o', markersize=5,
-                             markeredgecolor='Black',
-                             markeredgewidth=1.2,
+#                             marker=markers[j], markersize=4,
+                             marker='',
+#                             markeredgecolor='Black',
+#                             markeredgewidth=1.5,
                              color=colors[j], ecolor='Black',
-                             linestyle='-', linewidth=2.9)
+                             drawstyle='steps-mid',
+                             linestyle='-', linewidth=2.3,
+                             zorder=j+5)
 
     plot_name = plots_dir / 'Blendedness_examples.pdf'
     fig.savefig(str(plot_name), bbox_inches='tight', pad_inches=0.01)
@@ -1868,7 +1897,7 @@ def create_sigma_s2s_histogram():
 
     ks_value, p_value = ks_2samp(pre_sigma_s2s_blend_2,
                                  post_sigma_s2s_blend_2)
-    vprint('For the Kologorov-Smirnov test:')
+    vprint('For the Kolmogorov-Smirnov test:')
     vprint(f'KS statistic: {ks_value}')
     vprint(f'p-value: {p_value}')
 
@@ -2576,7 +2605,7 @@ def create_feature_fitting_example_plot():
     with lzma.open(saved_fits_file, 'rb') as f:
         fits_list = pickle.loads(f.read())
 
-    vesta = Star('Vesta_real', '/Users/dberke/data_output/Vesta')
+    vesta = Star('Vesta', '/Users/dberke/data_output/Vesta')
     obs_index = vesta.od_index('2011-09-29T23:30:27.910')  # It's obs 0
 
     transitions = ('6138.313Fe1_60', '6139.390Fe1_60')
@@ -2607,7 +2636,7 @@ def create_feature_fitting_example_plot():
 
     fig.supxlabel('Relative velocity (km/s)', size=14,
                   y=0.08)
-    axes[0].set_ylabel('normalised flux', size=14)
+    axes[0].set_ylabel('Normalised flux', size=14)
 
     for i, t_label in enumerate(transitions):
 #        wavelength = float(t_label[:8]) * u.angstrom
@@ -2642,24 +2671,24 @@ def create_feature_fitting_example_plot():
                          fluxes/flux_max,
 #                         yerr=error_data[low_index:high_index]/flux_max,
 #                         barsabove=True,
-                         marker='o', markersize=4,
-                         markeredgecolor='Black',
-                         markerfacecolor=cmr.torch(0.95),
-                         markeredgewidth=1,
+#                         marker='o', markersize=4,
+#                         markeredgecolor='Black',
+#                         markerfacecolor=cmr.torch(0.95),
+#                         markeredgewidth=1,
                          drawstyle='steps-mid',
                          color=cmr.torch(0.8), ecolor='Black',
-                         linestyle='-', linewidth=1.9, alpha=1,
+                         linestyle='-', linewidth=1.8, alpha=1,
                          zorder=5)
         # Plot just the central sevan pixels more enhanced.
         axes[i].errorbar(rel_velocities[mid_vel_index-3:mid_vel_index+4],
                          fluxes[mid_vel_index-3:mid_vel_index+4]/flux_max,
-                         marker='o', markersize=7,
-                         markeredgecolor=cmr.torch(0.2),
-                         markerfacecolor=cmr.torch(0.95),
-                         markeredgewidth=1.3,
+#                         marker='o', markersize=6,
+#                         markeredgecolor=cmr.torch(0.65),
+#                         markerfacecolor=cmr.torch(1.),
+#                         markeredgewidth=1,
                          drawstyle='steps-mid',
-                         linestyle='-', color=cmr.sunburst(0.45),
-                         linewidth=3.2, zorder=10)
+                         linestyle='-', color=cmr.torch(0.6),
+                         linewidth=2.7, zorder=10)
 
         # x-values for plotting fit:
         x = np.linspace(wavelength_data[mid_index-3],
@@ -2699,6 +2728,8 @@ def create_feature_fitting_example_plot():
         residuals = (flux_values - fit.gaussian(
                 x_values.value, *model_fit.popt))
         significances = np.array(residuals) / error_values
+        print(f'For {t_label} the significances are:')
+        print(significances)
 #        print('--------')
 #        print(significances/20+1)
 
@@ -2706,9 +2737,9 @@ def create_feature_fitting_example_plot():
         axes[i].plot(rel_velocities[mid_vel_index-3:mid_vel_index+4],
                      (significances/20)+vertical_offset,
                      linestyle='', marker='D',
-                     markersize=5,
+                     markersize=4,
                      markerfacecolor=cmr.torch(0.95),
-                     markeredgecolor=cmr.torch(0.2),
+                     markeredgecolor=cmr.torch(0.25),
                      markeredgewidth=1.3, zorder=13)
 
     outfile = plots_dir / 'Fitting_example_plot.pdf'
@@ -2823,18 +2854,18 @@ if __name__ == '__main__':
 
 #        create_HR_diagram_plot()
 
-#         create_example_pair_sep_plots()
+         create_example_pair_sep_plots()
 
 #        create_sigma_sys_hist()
 
-        create_transition_density_plot()
+#        create_transition_density_plot()
 
 #         create_parameter_dependence_plot(use_cached=True, min_bin_size=5)
 
         # plot_duplicate_pairs(Star('Vesta', '/Users/dberke/data_output/Vesta'))
         # plot_duplicate_pairs(hd146233)
 
-        # create_radial_velocity_plot()
+#         create_radial_velocity_plot()
 
 #        plot_vs_pair_blendedness(Star('HD146233',
 #                                      '/Users/dberke/data_output/HD146233'))
