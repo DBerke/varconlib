@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 import pickle
 from pprint import pprint
-from time import sleep, time
+import time as py_time
 import sys
 
 from adjustText import adjust_text
@@ -878,9 +878,9 @@ if __name__ == '__main__':
 
     vprint = vcl.verbose_print(args.verbose)
 
-    start_time = time()
+    start_time = py_time.time()
 
     main()
 
-    duration = time() - start_time
+    duration = py_time.time() - start_time
     print(f'Finished in {duration:.2f} seconds.')
