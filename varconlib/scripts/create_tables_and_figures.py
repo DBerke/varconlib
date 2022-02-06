@@ -54,6 +54,39 @@ from varconlib.star import Star
 from varconlib.transition_line import roman_numerals
 
 
+stars_used = set(['HD10180', 'HD102117', 'HD102438', 'HD104982', 'HD106116',
+                  'HD108309', 'HD110619', 'HD111031', 'HD114853', 'HD11505',
+                  'HD115617', 'HD117105', 'HD117207', 'HD117618', 'HD12387',
+                  'HD124292', 'HD125881', 'HD126525', 'HD128674', 'HD134060',
+                  'HD134987', 'HD136352', 'HD136894', 'HD138573', 'HD1388',
+                  'HD140538', 'HD140901', 'HD141937', 'HD143114', 'HD144585',
+                  'HD1461', 'HD146233', 'HD147512', 'HD150433', 'HD152391',
+                  'HD154417', 'HD157338', 'HD157347', 'HD1581', 'HD161612',
+                  'HD168443', 'HD168871', 'HD171665', 'HD172051', 'HD177409',
+                  'HD177565', 'HD1835', 'HD183658', 'HD184768', 'HD189567',
+                  'HD189625', 'HD190248', 'HD19467', 'HD196761', 'HD197818',
+                  'HD199960', 'HD203432', 'HD20407', 'HD204385', 'HD205536',
+                  'HD20619', 'HD2071', 'HD207129', 'HD20766', 'HD20782',
+                  'HD20807', 'HD208704', 'HD210918', 'HD211415', 'HD212708',
+                  'HD213575', 'HD217014', 'HD220507', 'HD222582', 'HD222669',
+                  'HD28821', 'HD30495', 'HD31527', 'HD32724', 'HD361',
+                  'HD37962', 'HD38277', 'HD38858', 'HD38973', 'HD39091',
+                  'HD43587', 'HD43834', 'HD4391', 'HD44420', 'HD44447',
+                  'HD44594', 'HD45184', 'HD45289', 'HD47186', 'HD4915',
+                  'HD55693', 'HD59468', 'HD65907', 'HD6735', 'HD67458',
+                  'HD68168', 'HD68978', 'HD69655', 'HD69830', 'HD70642',
+                  'HD70889', 'HD7134', 'HD72769', 'HD73256', 'HD73524',
+                  'HD7449', 'HD76151', 'HD78429', 'HD78558', 'HD78660',
+                  'HD82943', 'HD83529', 'HD88742', 'HD90156', 'HD92719',
+                  'HD92788', 'HD95521', 'HD96423', 'HD96700', 'HD96937',
+                  'HD97037', 'HD97343', 'HD9782', 'HD98281', 'Vesta'])
+
+sp1_stars = set(['Vesta', 'HD1835', 'HD19467', 'HD20782', 'HD30495',
+                 'HD45184', 'HD25289', 'HD76151', 'HD78429', 'HD78660',
+                 'HD138573', 'HD146233', 'HD157347', 'HD171665',
+                 'HD183658', 'HD220507', 'HD222582'])
+
+
 def pairwise(iterable):
     """Return successive pairs from an iterable.
 
@@ -1711,7 +1744,7 @@ def plot_pair_depth_differences(star):
 
     ax_pre.set_xlabel('Model offset (m/s)')
     ax_chi_squared.set_xlabel(r'$\chi^2_{\nu}$', fontsize=18)
-    ax_pre.set_ylabel('normalised mean depth of pair')
+    ax_pre.set_ylabel('Mean normalised depth of pair')
 
     ax_chi_squared.tick_params(labelleft=False)
 
@@ -1969,7 +2002,8 @@ def plot_solar_twins_results(star_postfix=''):
                                  len(block3_stars),
                                  len(block4_stars)))
     # Set the "velocity" title to be below the figure.
-    fig.supxlabel('Velocity (m/s)', fontsize=18)
+    fig.supxlabel('Diffrence between pair velocity separation and model (m/s)',
+                  fontsize=18)
 
     # Create a dict to hold all the axes.
     axes = {}
@@ -2338,7 +2372,7 @@ def plot_solar_twins_results(star_postfix=''):
     for axis in ['top', 'right', 'bottom', 'left']:
         ax_ex.spines[axis].set_linewidth(2.1)
         ax_ex.spines[axis].set_zorder(20)
-    ax_ex.set_xlabel('Model offset (m/s)', size=15)
+    ax_ex.set_xlabel('Pair model offset (m/s)', size=15)
 
     # Add labels to axis.
     # Create the locations for major ticks to put the star name labels at.
@@ -2555,7 +2589,7 @@ def create_cosmic_ray_plots():
     x = np.linspace(wavelength_data[low_index].value - 1,
                     wavelength_data[high_index].value + 1, 1000)
     # Plot the fit:
-    ax_plot.plot(x, fit.gaussian(x, *model_fit.popt),
+    ax_plot.plot(x, fit.integrated_gaussian(x, *model_fit.popt),
                  color=cmr.torch(0.3), alpha=0.9, linestyle='-',
                  zorder=9, linewidth=3)
 
@@ -2630,11 +2664,13 @@ def create_feature_fitting_example_plot():
 
         # Set up lines for plotting residuals.
         vertical_offset = 0.95
+        # Create the ±1 sigma lines:
         ax.hlines((vertical_offset - 0.05, vertical_offset + 0.05),
                   xmin=x_min, xmax=x_max, linestyle='-',
                   color=cmr.neutral(0.4), zorder=3)
+        # Create the offset "0" line:
         ax.hlines(vertical_offset, xmin=x_min, xmax=x_max, linestyle='--',
-                  color=cmr.neutral(0.5) ,zorder=4)
+                  color=cmr.neutral(0.5), zorder=4)
         ax.axvspan(xmin=x_min, xmax=x_max, alpha=0.8,
                    color=cmr.neutral(0.9),
                    zorder=2)
@@ -2657,6 +2693,8 @@ def create_feature_fitting_example_plot():
         wavelength_data = obs.barycentricArray[order_num]
         flux_data = obs.photonFluxArray[order_num]
         error_data = obs.errorArray[order_num]
+        pixel_lower_data = obs.pixelLowerArray[order_num]
+        pixel_upper_data = obs.pixelUpperArray[order_num]
 
         mid_index = wavelength2index(meas_wavelength, wavelength_data)
         low_index = mid_index - 37
@@ -2704,6 +2742,9 @@ def create_feature_fitting_example_plot():
                              wavelength_data[mid_index+11], 50)
         x_vel_full = wavelength2velocity(meas_wavelength, x_full).to(u.km/u.s)
 
+#        vprint(x_full)
+#        vprint(x_vel_full)
+
         # Plot the fit, with an enhanced section in the 7 central pixels.
         axes[i].plot(x_vel_full,
                      fit.gaussian(x_full.value, *model_fit.popt)/flux_max,
@@ -2728,13 +2769,27 @@ def create_feature_fitting_example_plot():
 
         # Plot the residuals.
         x_values = wavelength_data[mid_index-3:mid_index+4]
+        x_low_values = pixel_lower_data[mid_index-3:mid_index+4]
+        x_high_values = pixel_upper_data[mid_index-3:mid_index+4]
         flux_values = fluxes[mid_vel_index-3:mid_vel_index+4]
         error_values = errors[mid_vel_index-3:mid_vel_index+4]
-        residuals = (flux_values - fit.gaussian(
-                x_values.value, *model_fit.popt))
+        pixel_values = [p for p in zip(x_low_values.value,
+                                       x_high_values.value)]
+        vprint(pixel_values)
+        vprint(model_fit.popt)
+        residuals = []
+        for flux, pixel_edge in zip(flux_values, pixel_values):
+            residuals.append(flux - fit.integrated_gaussian(
+                    pixel_edge, *model_fit.popt))
+#        residuals = [flux_values - fit.integrated_gaussian(
+#                pixel_values, *model_fit.popt)]
         significances = np.array(residuals) / error_values
-        print(f'For {t_label} the significances are:')
-        print(significances)
+        vprint(f'For {t_label} the significances are:')
+        vprint(significances)
+        vprint('Residuals:')
+        vprint(residuals)
+        vprint('Errors:')
+        vprint(error_values)
 #        print('--------')
 #        print(significances/20+1)
 
