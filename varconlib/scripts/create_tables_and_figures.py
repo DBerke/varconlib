@@ -12,16 +12,19 @@ thesis.
 
 import argparse
 import csv
+from fractions import Fraction
+from glob import glob
 from inspect import signature
 from itertools import tee
-from glob import glob
 import lzma
 from math import ceil
 import os
 from pathlib import Path
 import pickle
+import re
 import sys
 
+from bidict import bidict
 import cmasher as cmr
 import h5py
 import hickle
@@ -38,6 +41,8 @@ from tqdm import tqdm
 import unyt as u
 
 import varconlib as vcl
+from varconlib.exceptions import (NewCoefficientsNotFoundError,
+                                  BlazeFileNotFoundError)
 import varconlib.fitting as fit
 from varconlib.miscellaneous import (remove_nans, weighted_mean_and_error,
                                      get_params_file, shift_wavelength,
@@ -2746,6 +2751,289 @@ def create_feature_fitting_example_plot():
     fig.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
 
 
+def create_transition_and_pair_tables():
+    """
+    Create tables of pairs and transitions.
+    """
+
+    tqdm.write('Unpickling transitions list.')
+    with open(vcl.final_selection_file, 'r+b') as f:
+        transitions_list = pickle.load(f)
+    vprint(f'Found {len(transitions_list)} transitions.')
+
+    tqdm.write('Unpickling pairs list.')
+    with open(vcl.final_pair_selection_file, 'r+b') as f:
+        pairs_list = pickle.load(f)
+    vprint(f'Found {len(pairs_list)} pairs.')
+
+    tables_dir = output_dir / 'tables'
+    if not tables_dir.exists():
+        os.mkdir(tables_dir)
+
+    vprint(f'Found {len(transitions_list)} transitions.')
+    low_blend_transitions = [transition for transition in transitions_list
+                             if transition.blendedness < 3]
+    vprint(f'Found {len(low_blend_transitions)} transitions'
+           ' with blendedness < 3.')
+
+    if args.verbose:
+        for i, transition in enumerate(low_blend_transitions):
+            pairs_found_in = []
+            for p, pair in enumerate(pairs_list):
+                if transition in pair:
+                    pairs_found_in.append(p)
+
+            vprint(f'{transition.label}: {pairs_found_in}')
+
+    pairs_table_file = tables_dir / 'pairs_table.txt'
+
+    transition_headers = [r'$\lambda^a$',
+                          r'$\omega^b$',
+                          'Ion$^c$',
+                          r'$E^d$',
+                          'Configuration$^e$',
+                          '$J^f$',
+                          r'$E^g$',
+                          'Configuration$^h$',
+                          '$J^i$',
+                          'Orders$^j$']
+
+    n = 5
+    fraction = ceil(len(low_blend_transitions) / n)
+
+#        slices = (slice(0, fraction), slice(fraction, 2 * fraction),
+#                  slice(2 * fraction, None))
+    slices = [slice(m * fraction, (m+1) * fraction) for m in range(n)]
+    for i, s in enumerate(slices):
+        transitions_formatted_list = []
+        transitions_table_file = tables_dir / f'transitions_table_{i}.txt'
+        for transition in tqdm(low_blend_transitions[s]):
+            line = [f'{transition.wavelength.to(u.angstrom).value:.3f}',
+                    f'{transition.wavenumber.value:.3f}',
+                    ''.join((transition.atomicSymbol,
+                             r'\,\textsc{',
+                             roman_numerals[
+                                 transition.ionizationState].lower(), '}')),
+                    transition.lowerEnergy.value,
+                    transition.lowerOrbital,
+                    str(Fraction(transition.lowerJ)),
+                    transition.higherEnergy.value,
+                    transition.higherOrbital,
+                    str(Fraction(transition.higherJ)),
+                    transition.ordersToFitIn]
+
+            transitions_formatted_list.append(line)
+
+        transitions_output = tabulate(transitions_formatted_list,
+                                      headers=transition_headers,
+                                      tablefmt='latex_raw',
+                                      floatfmt=('.3f', '.3f', '',
+                                                '.3f', '', '',
+                                                '.3f', '', '', ''))
+
+        if transitions_table_file.exists():
+            os.unlink(transitions_table_file)
+        with open(transitions_table_file, 'w') as f:
+            f.write(transitions_output)
+
+
+def get_program_ids():
+    """
+    Return a list of program IDs from stars used.
+    """
+
+    star_files = [d for d in
+                  glob('/Volumes/External Storage/HARPS/*/*/*/*/*e2ds_A.fits')]
+#    print(len(star_files))
+#    print(star_files[:10])
+
+    id_all_dict = {}
+    id_sp1_dict = {}
+    odd_ids_dict = {'Udry': [],
+                    'Pepe': []}
+    odd_ids = set(['Udry', 'Pepe'])
+
+    for file in tqdm(star_files[:]):
+        parts = file.split('/')
+#        print(parts)
+        # Check if it's a star that we used:
+        if not parts[4] in stars_used:
+            continue
+        # Check if the date file has an underscore appended, for files we
+        # didn't use.
+        if parts[7][0] == '_':
+            print(f'Found a bad date: {parts[4]}: {parts[7]}')
+            continue
+        # If it's a file that doesn't even have wavelength arrays, continue:
+        try:
+            obs = HARPSFile2DScience(file)
+        except (NewCoefficientsNotFoundError,
+                BlazeFileNotFoundError):
+            continue
+        # Assume it's a star we use at this point.
+        prog_id = obs.getHeaderCard('HIERARCH ESO OBS PROG ID')
+#        print(f'PROG ID is {prog_id}')
+        try:
+            id_all_dict[prog_id] += 1
+        except KeyError:
+            id_all_dict[prog_id] = 1
+
+        if prog_id in odd_ids:
+            odd_ids_dict[prog_id].append(file)
+
+        if parts[4] in sp1_stars:
+            try:
+                id_sp1_dict[prog_id] += 1
+            except KeyError:
+                id_sp1_dict[prog_id] = 1
+
+    print('For all stars:')
+    for key in id_all_dict.keys():
+        print(key, sep=', ')
+    for key in id_all_dict.keys():
+        print(f'{key}: {id_all_dict[key]}')
+    print(f'{len(id_all_dict.keys())} total program IDs.')
+    print(f'Total observations: {sum([v for v in id_all_dict.values()])}')
+
+    print('For solar twins:')
+    print(id_sp1_dict)
+    for key in id_sp1_dict.keys():
+        print(f'{key}: {id_sp1_dict[key]}')
+    print(f'{len(id_sp1_dict.keys())} total program IDs.')
+    print(f'Total observations: {sum([v for v in id_sp1_dict.values()])}')
+
+    for file in odd_ids_dict['Pepe']:
+        print(file)
+    print(odd_ids_dict['Udry'])
+
+
+def create_fit_info_table():
+    """
+    Create a table of fit coefficients and sigma_** for pairs.
+    """
+
+    def parse_label(label):
+
+        p1, p2, order = label.split('_')
+
+        wv1, el1, ion1 = p1[:8], p1[8:-1], p1[-1]
+        wv2, el2, ion2 = p2[:8], p2[8:-1], p2[-1]
+
+        label1 = ''.join(
+                [el1, r'\,\textsc{',
+                 roman_numerals[int(ion1)], r'}\,', wv1])
+        label2 = ''.join(
+                [el2, r'\,\textsc{',
+                 roman_numerals[int(ion2)], r'}\,', wv2])
+
+        return label1, label2, order
+
+    def format_sci_notation(matchobj):
+
+        if matchobj.group(1) is not None:
+            return str(matchobj.group(1)) +\
+                r'\num{' + str(matchobj.group(2)) + '}'
+        else:
+            return r'\num{' + str(matchobj.group(2)) + '}'
+
+    tables_dir = output_dir / 'tables'
+
+    tqdm.write('Unpickling pairs list.')
+    with open(vcl.final_pair_selection_file, 'r+b') as f:
+        pairs_list = pickle.load(f)
+    vprint(f'Found {len(pairs_list)} pairs in the list.')
+
+    tqdm.write('Loading fitting results file...')
+    filename = vcl.output_dir /\
+        'fit_params/quadratic_pairs_4.0sigma_params.hdf5'
+    fit_results_dict = get_params_file(filename)
+    coeffs_dict = fit_results_dict['coeffs']
+    sigma_sys_dict = fit_results_dict['sigmas_sys']
+
+    pair_headers = ['', 'Pair label', 'Ord.', r'\sigsys', r'$a$',
+                    r'$b_1$', r'$c_1$', r'$d_1$',
+                    r'$b_2$', r'$c_2$', r'$d_2$']
+
+    good_pairs = []
+    for pair in tqdm(pairs_list):
+        if not all(n < 3 for n in pair.blendTuple):
+            vprint(f'Passing pair with {pair.blendTuple}.')
+            continue
+        good_pairs.append(pair)
+    print(f'Found {len(good_pairs)} pairs with max blendednes <= 2.')
+
+    total_instances = 0
+    for pair in good_pairs:
+        total_instances += len(pair.ordersToMeasureIn)
+    print(f'Total of {total_instances} instances.')
+
+    for era in ('pre', 'post'):
+        # Max rows per table.
+        max_rows = 26
+        table_num = 1
+
+        tqdm.write(f'Collecting information for each pair for {era}...')
+        table_lines = []
+        for pair in good_pairs:
+            for order_num in pair.ordersToMeasureIn:
+                label = '_'.join([pair.label, str(order_num)])
+                vprint(20 * '-')
+                vprint(f'Analyzing {label}...')
+                dict_label = '_'.join([label, era])
+
+                line = [*parse_label(label), sigma_sys_dict[dict_label]]
+                line.extend(coeffs_dict[dict_label])
+                table_lines.append(line)
+
+        # Do some mumbo-jumbo to figure out the number of tables that will be
+        # made.
+        num_pages = len(table_lines) // max_rows + 2
+
+        page_lines = []
+        make_table = False
+        breakout = False
+        while (len(page_lines) <= max_rows):
+            try:
+                page_lines.append(table_lines.pop())
+            except IndexError:
+                make_table = True
+                breakout = True
+
+            if len(page_lines) == max_rows:
+                make_table = True
+
+            if make_table:
+
+                pairs_table_file = tables_dir /\
+                    f'pairs_table_{era}_{num_pages-table_num}.txt'
+                table_num += 1
+
+                pairs_output = tabulate(
+                        reversed(page_lines),
+                        headers=pair_headers,
+                        tablefmt='latex_raw',
+                        floatfmt=('', '', '', '.2f',
+                                  '.2f', '.2f', '.2f',
+                                  '.2f', '.2e', '.2f', '.2f')).replace(' -',
+                                                                       ' $-$')
+
+                # This matches numbers in scientific notation (minus sign
+                # optional) and wraps them in a \num{} command.
+                pairs_output = re.sub(r"(\$\-\$)?(\d\.\d{2}e\-?\d{2})",
+                                      format_sci_notation, pairs_output)
+                if pairs_table_file.exists():
+                    os.unlink(pairs_table_file)
+                with open(pairs_table_file, 'w') as f:
+                    f.write(pairs_output)
+
+                page_lines = []
+
+                make_table = False
+                if breakout:
+                    break
+
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Create all the necessary'
                                      ' figures and tables for my two papers'
@@ -2785,76 +3073,18 @@ if __name__ == '__main__':
 
     if args.tables:
 
-        tqdm.write('Unpickling transitions list.')
-        with open(vcl.final_selection_file, 'r+b') as f:
-            transitions_list = pickle.load(f)
-        vprint(f'Found {len(transitions_list)} transitions.')
+#        create_transition_and_pair_tables()
 
-        tqdm.write('Unpickling pairs list.')
-        with open(vcl.final_pair_selection_file, 'r+b') as f:
-            pairs_list = pickle.load(f)
-        vprint(f'Found {len(pairs_list)} pairs.')
+#        get_program_ids()
 
-        tables_dir = output_dir / 'tables'
-        if not tables_dir.exists():
-            os.mkdir(tables_dir)
-
-        pairs_table_file = tables_dir / 'pairs_table.txt'
-
-        transition_headers = [r'Wavelength (\AA, vacuum)',
-                              r'Wavenumber (\si{\per\centi\meter})',
-                              'Species',
-                              r'Energy (\si{\per\centi\meter})',
-                              'Orbital configuration',
-                              'J',
-                              r'Energy (\si{\per\centi\meter})',
-                              'Orbital configuration',
-                              'J',
-                              'Orders to fit in']
-
-        n = 3
-        fraction = ceil(len(transitions_list) / n)
-
-        slices = (slice(0, fraction), slice(fraction, 2 * fraction),
-                  slice(2 * fraction, None))
-        for i, s in enumerate(slices):
-            transitions_formatted_list = []
-            transitions_table_file = tables_dir / f'transitions_table_{i}.txt'
-            for transition in tqdm(transitions_list[s]):
-                line = [f'{transition.wavelength.to(u.angstrom).value:.3f}',
-                        f'{transition.wavenumber.value:.3f}',
-                        ''.join((r'\ion{', transition.atomicSymbol,
-                                 '}{',
-                                 roman_numerals[
-                                     transition.ionizationState].lower(), '}')),
-                        transition.lowerEnergy.value,
-                        transition.lowerOrbital,
-                        transition.lowerJ,
-                        transition.higherEnergy.value,
-                        transition.higherOrbital,
-                        transition.higherJ,
-                        transition.ordersToFitIn]
-
-                transitions_formatted_list.append(line)
-
-            transitions_output = tabulate(transitions_formatted_list,
-                                          headers=transition_headers,
-                                          tablefmt='latex_raw',
-                                          floatfmt=('.3f', '.3f', '',
-                                                    '.3f', '', '',
-                                                    '.3f', '', '', ''))
-
-            if transitions_table_file.exists():
-                os.unlink(transitions_table_file)
-            with open(transitions_table_file, 'w') as f:
-                f.write(transitions_output)
+        create_fit_info_table()
 
     if args.figures:
 #        hd146233 = Star('HD146233', '/Users/dberke/data_output/HD146233')
 
 #        create_HR_diagram_plot()
 
-         create_example_pair_sep_plots()
+#         create_example_pair_sep_plots()
 
 #        create_sigma_sys_hist()
 
@@ -2882,4 +3112,4 @@ if __name__ == '__main__':
 
 #        create_cosmic_ray_plots()
 
-#        create_feature_fitting_example_plot()
+        create_feature_fitting_example_plot()
