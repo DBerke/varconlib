@@ -14,6 +14,7 @@ import argparse
 from pathlib import Path
 
 from astropy.io import fits
+import cmasher as cmr
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
@@ -219,13 +220,15 @@ if args.velocity_delta:
     plt.show()
 
 if args.paper_figure:
-    fig = plt.figure(figsize=(8, 8), tight_layout=True)
+    fig = plt.figure(figsize=(7, 5), tight_layout=True)
     ax1 = fig.add_subplot(2, 1, 1)
     ax2 = fig.add_subplot(2, 1, 2)
-    ax1.set_ylim(bottom=-75 * u.m / u.s, top=75 * u.m / u.s)
-    ax2.set_ylim(bottom=-75 * u.m / u.s, top=75 * u.m / u.s)
-    ax1.set_xlim(left=3770 * u.angstrom, right=5325 * u.angstrom)
-    ax2.set_xlim(left=5325 * u.angstrom, right=6930 * u.angstrom)
+    ax1.set_ylim(bottom=-50 * u.m / u.s, top=50 * u.m / u.s)
+    ax2.set_ylim(bottom=-50 * u.m / u.s, top=50 * u.m / u.s)
+#    ax1.set_xlim(left=3770 * u.angstrom, right=5325 * u.angstrom)
+#    ax2.set_xlim(left=5325 * u.angstrom, right=6930 * u.angstrom)
+    ax1.set_xlim(left=4895 * u.angstrom, right=5105  * u.angstrom)
+    ax2.set_xlim(left=6195 * u.angstrom, right=6405 * u.angstrom)
     ylabel = r'$\Delta v$ (m/s)'
     xlabel = r'Wavelength (\AA)'
 
@@ -233,32 +236,40 @@ if args.paper_figure:
         ax.set_ylabel(ylabel)
         ax.set_xlabel(xlabel)
         ax.axhline(0, color='Black', linewidth=2, alpha=1)
-        ax.yaxis.set_minor_locator(ticker.MultipleLocator(base=10))
-        ax.yaxis.grid(which='major', color='SlateGray', alpha=0.7,
-                      linestyle='-')
-        ax.yaxis.grid(which='minor', color='Gray', alpha=0.5,
-                      linestyle='-.')
-        ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=50))
-        ax.xaxis.grid(which='major', color='SlateGray', alpha=0.7,
-                      linestyle='--')
-        ax.xaxis.grid(which='minor', color='Gray', alpha=0.5,
-                      linestyle=':')
-        ax.xaxis.set_tick_params(which='major', width=2, length=6)
-        ax.xaxis.set_tick_params(which='minor', width=1.5, length=4)
-        ax.yaxis.set_tick_params(which='major', width=2, length=5)
-        ax.yaxis.set_tick_params(which='minor', width=1.5, length=3)
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator())
+#        ax.yaxis.grid(which='major', color='SlateGray', alpha=0.7,
+#                      linestyle='-')
+#        ax.yaxis.grid(which='minor', color='Gray', alpha=0.5,
+#                      linestyle='-.')
+#        ax.xaxis.set_minor_locator(ticker.MultipleLocator(base=50))
+#        ax.xaxis.grid(which='major', color='SlateGray', alpha=0.7,
+#                      linestyle='--')
+#        ax.xaxis.grid(which='minor', color='Gray', alpha=0.5,
+#                      linestyle=':')
+#        ax.xaxis.set_tick_params(which='major', width=2, length=6)
+#        ax.xaxis.set_tick_params(which='minor', width=1.5, length=4)
+#        ax.yaxis.set_tick_params(which='major', width=2, length=5)
+#        ax.yaxis.set_tick_params(which='minor', width=1.5, length=3)
 
     for order in trange(0, 72):
         if order % 2:
             order_color = 'MediumSlateBlue'
+            order_color = cmr.torch(0.75)
             order_linestyle = '-'
         else:
             order_color = 'MidnightBlue'
-            order_linestyle = '--'
+            order_color = cmr.torch(0.2)
+            order_linestyle = '-'
         vel_new_old = wavelength2velocity(new_wv[order, :], old_wv[order, :])
         ax1.plot(new_wv[order, :], vel_new_old,
-                 color=order_color, linestyle=order_linestyle)
+                 color=order_color, linestyle=order_linestyle,
+                 linewidth=2)
         ax2.plot(new_wv[order, :], vel_new_old,
-                 color=order_color, linestyle=order_linestyle)
+                 color=order_color, linestyle=order_linestyle,
+                 linewidth=2)
 
-    plt.show()
+    out_file = '/Users/dberke/Pictures/paper_plots_and_tables/plots/' +\
+        'HARPS_old-new_calibration.pdf'
+#    plt.show()
+    fig.savefig(out_file, bbox_inches='tight', pad_inches=0.01)
