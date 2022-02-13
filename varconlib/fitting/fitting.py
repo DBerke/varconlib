@@ -228,7 +228,7 @@ def gaussian(x, a, b, c, d=0):
     a : float
         The amplitude of the Gaussian. Must be Real.
     b : float
-        The median (also the center) of the Gaussian. Must be Real.
+        The mean (also the center) of the Gaussian. Must be Real.
     c : float
         The standard deviation of the Gaussian. Must be non-zero.
 
