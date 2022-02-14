@@ -53,6 +53,12 @@ harps_dir = Path(config['PATHS']['harps_dir'])
 # Directory where most data output from analysis goes.
 output_dir = Path(config['PATHS']['output_dir'])
 
+# Directory for HARPS wavelength calibration files.
+harps_wavelength_cals_dir = Path(config['PATHS']['harps_wavelength_cal_dir'])
+
+# Directory containing blaze files for HARPS.
+harps_blaze_files_dir = Path(config['PATHS']['harps_blaze_files_dir'])
+
 # The directory to store generated stellar databases in.
 databases_dir = output_dir / 'stellar_databases'
 

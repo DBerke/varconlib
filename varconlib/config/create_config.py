@@ -16,10 +16,10 @@ config_path = Path(__file__).parent / 'variables.cfg'
 config = configparser.ConfigParser()
 
 config['PATHS'] = {'HARPS_dir': '/Volumes/External Storage/HARPS',
-                   'blaze_file_dir': '${HARPS_dir}/blaze_files',
-                   'wavelength_cal_dir': '${HARPS_dir}/wavelength_calibration',
+                   'harps_blaze_files_dir': '${HARPS_dir}/blaze_files',
+                   'harps_wavelength_cal_dir':
+                       '${HARPS_dir}/wavelength_calibration',
                    'pictures_dir': '/Users/dberke/Pictures',
-                   'stars_dir': '${pictures_dir}/Stars',
                    'output_dir': '/Users/dberke/data_output',
                    'temp_dir': '/Users/dberke/tmp'}
 

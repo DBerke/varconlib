@@ -28,10 +28,9 @@ from varconlib.exceptions import (BadRadialVelocityError,
 from varconlib.miscellaneous import wavelength2index, shift_wavelength
 
 
-# Read some path variables from the config file.
-# These are for directories outside the package parent directory.
-blaze_file_dir = Path(vcl.config['PATHS']['blaze_file_dir'])
-wavelength_cals_dir = Path(vcl.config['PATHS']['wavelength_cal_dir'])
+# Get path variables from the config.
+harps_wavelength_cals_dir = vcl.harps_wavelength_cals_dir
+harps_blaze_files_dir = vcl.harps_blaze_files_dir
 
 pixel_geom_files_dir = vcl.data_dir / 'pixel_geom_files'
 pixel_size_file = pixel_geom_files_dir / 'pixel_geom_size_HARPS_2004_A.fits'
@@ -559,7 +558,7 @@ class HARPSFile2DScience(HARPSFile2D):
 
         file_date = blaze_file[6:16]
 
-        blaze_file_path = blaze_file_dir /\
+        blaze_file_path = harps_blaze_files_dir /\
             'data/reduced/{}'.format(file_date) /\
             blaze_file
 
@@ -584,7 +583,7 @@ class HARPSFile2DScience(HARPSFile2D):
         """
 
         cal_file_name = self.getHeaderCard("HIERARCH ESO DRS CAL TH FILE")
-        cal_file_path = wavelength_cals_dir / cal_file_name
+        cal_file_path = harps_wavelength_cals_dir / cal_file_name
 
         if not cal_file_path.exists():
             raise NewCoefficientsNotFoundError("Calibration file not found:"

@@ -8,20 +8,19 @@ Created on Fri Mar 15 16:56:34 2019
 Script to generate synthetic e2ds spectra.
 """
 
-import os
 import datetime
+import os
+from pathlib import Path
+
+from astropy.io import fits
 import numpy as np
 from numpy.random import normal
-import configparser
-from pathlib import Path
-from astropy.io import fits
 from tqdm import tqdm, trange
-from obs2d import HARPSFile2D
 
-config = configparser.ConfigParser(interpolation=configparser.
-                                   ExtendedInterpolation())
-config.read('/Users/dberke/code/config/variables.cfg')
-data_dir = Path(config['PATHS']['data_dir'])
+from obs2d import HARPSFile2D
+import varconlib as vcl
+
+data_dir = vcl.data_dir
 base_file = data_dir / 'HARPS.2012-02-26T04:02:48.797_e2ds_A.fits'
 
 synth_dir = data_dir / 'syntheticSpectra'
@@ -53,8 +52,8 @@ blaze_file = base_obs.getHeaderCard('HIERARCH ESO DRS BLAZE FILE')
 
 file_date = blaze_file[6:16]
 
-blaze_file_dir = Path(config['PATHS']['blaze_file_dir'])
-blaze_file_path = blaze_file_dir / 'data/reduced/{}'.format(file_date)\
+blaze_files_dir = vcl.harps_blaze_files_dir
+blaze_file_path = blaze_files_dir / 'data/reduced/{}'.format(file_date)\
                     / blaze_file
 
 blaze_file_path = Path('/Users/dberke/code/data/'
