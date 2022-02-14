@@ -16,7 +16,8 @@ import pytest
 import unyt as u
 
 import varconlib
-from varconlib.exceptions import WavelengthNotFoundInArrayError
+from varconlib.exceptions import (WavelengthNotFoundInArrayError,
+                                  NewCoefficientsNotFoundError)
 from varconlib.miscellaneous import wavelength2index
 from varconlib.obs2d import HARPSFile2D, HARPSFile2DScience
 
@@ -38,17 +39,6 @@ def generic_test_file(tmpdir_factory):
     shutil.copy(str(base_test_file), str(test_file))
 
     return test_file
-
-
-#@pytest.fixture(scope='function')
-#def temporary_generic_test_file(tmpdir):
-#    # Find the pristine test file to clone for use in the tests.
-#
-#    test_file = Path(tmpdir) / 'test_fits_file.fits'
-#
-#    shutil.copy(str(base_test_file), str(test_file))
-#
-#    return test_file
 
 
 class TestGeneric2DFile(object):
@@ -183,5 +173,8 @@ class TestScience2DFile(object):
 
     def testUpdateFile(self, generic_test_file):
         a = HARPSFile2DScience(generic_test_file)
-        a = HARPSFile2DScience(generic_test_file, update=['ALL'])
+        try:
+            a = HARPSFile2DScience(generic_test_file, update=['ALL'])
+        except NewCoefficientsNotFoundError:
+            pytest.skip('Coefficient files not available.')
         assert a.getHeaderCard('INSTRUME') == 'HARPS'
