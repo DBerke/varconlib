@@ -194,14 +194,16 @@ class TestShiftWavelength(object):
             vcl.shift_wavelength(wavelength, shift_velocity)
 
     def testShiftSingleWavelength(self, wavelength):
-        assert pytest.approx(vcl.shift_wavelength(wavelength,
-                                                  500 * u.km / u.s),
-                             5008.3991 * u.angstrom)
+        assert vcl.shift_wavelength(
+                wavelength,
+                500 * u.km / u.s).value == pytest.approx(5008.3391)
 
     def testShiftMultipleWavelengths(self, wavelength_array):
-        assert pytest.approx(vcl.shift_wavelength(wavelength_array[:2],
-                                                  100 * u.km / u.s),
-                             [4001.33425638, 4501.50103843] * u.angstrom)
+        assert vcl.shift_wavelength(
+                wavelength_array[:2],
+                100 * u.km / u.s) == pytest.approx(
+                        [4001.33425638,
+                         4501.50103843] * u.angstrom)
 
     def testShiftMultipleWithSuperluminal(self):
         wavelengths = [400, 500, 600] * u.nm
