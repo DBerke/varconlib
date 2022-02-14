@@ -546,6 +546,7 @@ class Star(object):
                 self.airmassArray[obs_num] = fit.airmass
                 self.calSourceArray[obs_num] = fit.calibrationSource
                 self.calFileArray[obs_num] = fit.calibrationFile
+                break
 
         # Iterate through all the fits in the pickled list and save their
         # values only if the fit was 'good' (i.e., a mean value exists and
