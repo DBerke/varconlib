@@ -576,7 +576,7 @@ class Star(object):
                 self.pixelArray[obs_num, col_num] = fit.centralIndex
 
     def createTransitionModelCorrectedArrays(self, model_func='quadratic',
-                                             filename=None, n_sigma=2.5):
+                                             filename=None, n_sigma=3.):
         """Return an array corrected by a function and a mask of outliers.
 
         This method takes a function of three stellar parameters (temperature,
@@ -788,7 +788,7 @@ class Star(object):
             The path to a file containing a model function and fitting
             coefficients for each pair. If not given, the filename will be
             created from `model_func`.
-        n_sigma : float, Default : 5.0
+        n_sigma : float, Default : 4.0
             The number of standard deviations a point must be away from the
             value for this pair found by correcting using the fitting
             function to be considered an outlier (and thus masked).
