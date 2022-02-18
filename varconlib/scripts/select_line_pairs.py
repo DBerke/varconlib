@@ -716,16 +716,17 @@ if __name__ == '__main__':
     data_dir = vcl.data_dir
     masks_dir = vcl.masks_dir
     pickle_dir = vcl.pickle_dir
+    linelists_dir = vcl.linelists_dir
 
     # These two files produces wavelengths in air, in Angstroms.
-    redFile = data_dir / "BRASS2018_Sun_PrelimGraded_Lobel.csv"
-    blueFile = data_dir / "BRASS2018_Sun_PrelimSpectroWeblines_Lobel.csv"
+    redFile = linelists_dir / "BRASS2018_Sun_PrelimGraded_Lobel.csv"
+    blueFile = linelists_dir / "BRASS2018_Sun_PrelimSpectroWeblines_Lobel.csv"
 
     # This file produces wavelengths in vacuum, in nm.
-    purpleFile = data_dir / 'BRASS_Vac_Line_Depths_All.csv'
+    purpleFile = linelists_dir / 'BRASS_Vac_Line_Depths_All.csv'
 
     # Define useful values relating to the Kurucz line list.
-    KuruczFile = data_dir / "gfallvac08oct17.dat"
+    KuruczFile = linelists_dir / "gfallvac08oct17.dat"
 
     colWidths = (11, 7, 6, 12, 5, 11, 12, 5, 11, 6, 6, 6, 4, 2, 2, 3, 6, 3, 6,
                  5, 5, 3, 3, 4, 5, 5, 6)

@@ -33,6 +33,8 @@ pickle_dir = data_dir / 'pickles'
 
 spectra_dir = data_dir / 'spectra'
 
+linelists_dir = data_dir / 'linelists'
+
 pixel_geom_files_dir = data_dir / 'pixel_geom_files'
 
 # The pickle file containing the final selection of transitions to use.
