@@ -783,7 +783,7 @@ if __name__ == '__main__':
                                           float, float))
         tqdm.write("Read purple line list.")
 
-        tqdm.write('Reading Kurucz line list...')
+        tqdm.write('Reading Kurucz line list (might take a while)...')
         KuruczData = np.genfromtxt(KuruczFile, delimiter=colWidths,
                                    autostrip=True,
                                    skip_header=842959, skip_footer=987892,
@@ -796,7 +796,7 @@ if __name__ == '__main__':
         tqdm.write('Parsing BRASS line list...')
         for b_transition in tqdm(purpleData, unit='transitions'):
             wl = b_transition[0] * u.nm
-            elem = vcl.elements[b_transition[1]]
+            elem = vcl.elements.inv[b_transition[1]]
             ion = b_transition[2]
             eLow = b_transition[3] * u.eV
             depth = b_transition[5]
