@@ -13,8 +13,9 @@ import argparse
 from copy import deepcopy
 import pickle
 import datetime
-from math import sqrt, isclose
 from fractions import Fraction
+from math import sqrt, isclose
+import os
 from time import sleep
 from pathlib import Path
 
@@ -248,13 +249,20 @@ def harmonize_lists(transitions1, transitions2, spectral_mask,
 
         # Go through lines in the second list and store any that match.
         for line2 in transitions2:
-            if (line2.atomicNumber == line1.atomicNumber)\
-              and (line2.ionizationState == line1.ionizationState):
-
+            # Do a little optimization to speed up the checking:
+            if line2.atomicNumber != line1.atomicNumber:
+                continue
+            elif line2.ionizationState != line1.ionizationState:
+                continue
+            else:
                 energy_diff = abs(line2.lowerEnergy - line1.lowerEnergy)
                 wavelength_diff = abs(line2.wavelength - line1.wavelength)
                 same_species_lines.append((line2, wavelength_diff,
                                            energy_diff))
+
+                if (energy_diff > delta_energy) or\
+                        (wavelength_diff > delta_wavelength):
+                    continue
 
                 # If both line lists include higher energies for the orbitals,
                 # match those as well using the energy tolerance.
@@ -856,7 +864,12 @@ if __name__ == '__main__':
                                       energy_tolerance=args.delta_energy)
 
         # Create a pickled file of the transitions that have been found.
-        pickle_file_backup = pickle_dir / 'backups/transitions_{}.pkl'.format(
+        if not pickle_dir.exists():
+            os.mkdir(pickle_dir)
+        backups_dir = pickle_dir / 'backups'
+        if not backups_dir.exists():
+            os.mkdir(backups_dir)
+        pickle_file_backup = backups_dir / 'transitions_{}.pkl'.format(
                 datetime.date.today().isoformat())
         tqdm.write('Saving transitions to {}'.format(pickle_file))
         with open(pickle_file, 'wb') as f:
