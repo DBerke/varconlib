@@ -53,7 +53,7 @@ with open(final_pair_selection_file, 'rb') as g:
 
 print(f'Found {len(pairs)} total pairs.')
 
-base_file = vcl.data_dir / 'HARPS.2005-05-02T03:49:08.735_e2ds_A.fits'
+base_file = vcl.spectra_dir / 'HARPS.2005-05-02T03:49:08.735_e2ds_A.fits'
 
 obs = HARPSFile2DScience(base_file)
 
