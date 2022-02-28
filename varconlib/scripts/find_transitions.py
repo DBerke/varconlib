@@ -268,12 +268,6 @@ parser.add_argument('-rv', '--radial-velocity', action='store', type=float,
                     help='Radial velocity to use for the star, in km/s.'
                     ' If not given will use the value from the FITS files.')
 
-parser.add_argument('--pixel-positions', action='store_true',
-                    default=False,
-                    help='Use new pixel positions.')
-parser.add_argument('--new-coefficients', action='store_true',
-                    default=False,
-                    help='Use new calibration coefficients.')
 parser.add_argument('--integrated-gaussian', action='store_true',
                     default=False,
                     help='Fit using an integrated Gaussian.')
