@@ -121,7 +121,8 @@ def find_transitions_in_obs(obs_path):
     fits_list = []
     fit_transitions = 0
     # tqdm.write('Fitting transitions...')
-    for transition in transitions_list:
+    for transition in tqdm(transitions_list) if args.single_threaded\
+                                             else transitions_list:
         for order_num in transition.ordersToFitIn:
             vprint(f'Attempting fit of {transition} in order'
                    f' {order_num}')
@@ -268,12 +269,6 @@ parser.add_argument('-rv', '--radial-velocity', action='store', type=float,
                     help='Radial velocity to use for the star, in km/s.'
                     ' If not given will use the value from the FITS files.')
 
-parser.add_argument('--pixel-positions', action='store_true',
-                    default=False,
-                    help='Use new pixel positions.')
-parser.add_argument('--new-coefficients', action='store_true',
-                    default=False,
-                    help='Use new calibration coefficients.')
 parser.add_argument('--integrated-gaussian', action='store_true',
                     default=False,
                     help='Fit using an integrated Gaussian.')
@@ -379,25 +374,18 @@ with open(vcl.final_selection_file, 'rb') as f:
 tqdm.write(f'Found {len(transitions_list)} transitions.')
 
 # Set variables for using new calibration methods.
-pix_pos = True if args.pixel_positions else False
+pix_pos = True
 if pix_pos:
     tqdm.write('Using new pixel positions.')
-new_coeffs = True if args.new_coefficients else False
+new_coeffs = True
 if new_coeffs:
     tqdm.write('Using new wavelength calibration coefficients.')
 
 # Define directory suffixes based on arguments:
-if (not args.pixel_positions) and (not args.new_coefficients):
-    suffix = 'old'
-elif args.pixel_positions and (not args.new_coefficients):
-    suffix = 'pix'
-elif (not args.pixel_positions) and args.new_coefficients:
-    suffix = 'coeffs'
-elif args.pixel_positions and args.new_coefficients:
-    if args.integrated_gaussian:
-        suffix = 'int'
-    else:
-        suffix = 'new'
+if args.integrated_gaussian:
+    suffix = 'int'
+else:
+    suffix = 'gauss'
 
 total = len(data_files) - args.start
 

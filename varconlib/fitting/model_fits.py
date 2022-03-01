@@ -440,8 +440,10 @@ class GaussianFit(object):
                      label=r'Fit ($\chi^2_\nu=${:.3f}, $\sigma=${:.4f})'.
                      format(self.chiSquaredNu, self.sigma))
 
+        # Replace underscore in label so LaTeX won't crash on it.
         ax1.legend(loc='upper center', framealpha=0.6, fontsize=9,
-                   ncol=2, title=self.label, title_fontsize=10,
+                   ncol=2, title=self.label.replace('_', r'\_'),
+                   title_fontsize=10,
                    labelspacing=0.4)
 
         # Add in some guidelines.
@@ -459,6 +461,7 @@ class GaussianFit(object):
                  linestyle='', marker='D', linewidth=1.5, markersize=5)
 
         # Save the resultant plot.
+
         fig.savefig(str(context_plot_path))
         if verbose:
             tqdm.write('Created wider context plot at {}'.format(
