@@ -26,6 +26,9 @@ from varconlib.miscellaneous import (shift_wavelength, velocity2wavelength,
 # This line prevents the wavelength formatting from being in the form of
 # scientific notation.
 matplotlib.rcParams['axes.formatter.useoffset'] = False
+# Don't use TeX for font rendering, as these are just diagnostic plots and it
+# slows everything way down.
+matplotlib.rcParams['text.usetex'] = False
 
 
 class GaussianFit(object):
@@ -442,7 +445,9 @@ class GaussianFit(object):
 
         # Replace underscore in label so LaTeX won't crash on it.
         ax1.legend(loc='upper center', framealpha=0.6, fontsize=9,
-                   ncol=2, title=self.label.replace('_', r'\_'),
+                   ncol=2,
+                   title=self.label.replace('_', r'\_') if\
+                       matplotlib.rcParams['text.usetex'] else self.label,
                    title_fontsize=10,
                    labelspacing=0.4)
 
@@ -462,7 +467,7 @@ class GaussianFit(object):
 
         # Save the resultant plot.
 
-        fig.savefig(str(context_plot_path))
+        fig.savefig(str(context_plot_path), format="png")
         if verbose:
             tqdm.write('Created wider context plot at {}'.format(
                     context_plot_path))
@@ -473,7 +478,7 @@ class GaussianFit(object):
         ax1.set_ylim(top=self.fluxes.max() * 1.15,
                      bottom=self.fluxes.min() * 0.95)
 
-        fig.savefig(str(close_up_plot_path))
+        fig.savefig(str(close_up_plot_path), format="png")
         if verbose:
             tqdm.write('Created close up plot at {}'.format(
                     close_up_plot_path))
