@@ -2870,10 +2870,10 @@ def create_transition_and_pair_tables():
                              roman_numerals[
                                  transition.ionizationState].lower(), '}')),
                     transition.lowerEnergy.value,
-                    transition.lowerOrbital,
+                    transition.lowerOrbital.replace('.', ''),
                     str(Fraction(transition.lowerJ)),
                     transition.higherEnergy.value,
-                    transition.higherOrbital,
+                    transition.higherOrbital.replace('.', ''),
                     str(Fraction(transition.higherJ)),
                     transition.ordersToFitIn]
 
@@ -3128,11 +3128,11 @@ if __name__ == '__main__':
 
     if args.tables:
 
-#        create_transition_and_pair_tables()
+        create_transition_and_pair_tables()
 
 #        get_program_ids()
 
-        create_fit_info_table()
+#        create_fit_info_table()
 
     if args.figures:
 #        hd146233 = Star('HD146233', '/Users/dberke/data_output/HD146233')

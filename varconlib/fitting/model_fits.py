@@ -426,6 +426,7 @@ class GaussianFit(object):
                      yerr=self.errorArray[self.lowContinuumIndex - 1:
                                           self.highContinuumIndex + 1],
                      color='SandyBrown', ecolor='Sienna',
+                     marker='o', markersize=5,
                      label='Flux', barsabove=True)
 
         # Generate some x-values across the plot range.

@@ -302,6 +302,7 @@ def main():
     elif args.quad_cross_term:
         model_func = fit.quad_cross_term_model
 
+    # Generate the model name from the name of the functionm, minus the "model"
     model_name = '_'.join(model_func.__name__.split('_')[:-1])
 
     if args.transitions:
@@ -834,7 +835,7 @@ if __name__ == '__main__':
                                      ' parameters.')
     parser.add_argument('--full-range', action='store_true',
                         help='Plot the full range of values instead of'
-                        ' restricting to a  fixed range.')
+                        ' restricting to a fixed range.')
     parser.add_argument('--label-outliers', action='store_true',
                         help='Label the points which are more than'
                         ' 3 sigma away from the mean.')
