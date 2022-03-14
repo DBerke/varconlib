@@ -28,6 +28,7 @@ import unyt as u
 import varconlib as vcl
 from varconlib.miscellaneous import wavelength2velocity as wave2vel
 from varconlib.miscellaneous import velocity2wavelength as vel2wave
+from varconlib.miscellaneous import parse_spectral_mask_file
 from varconlib.obs2d import HARPSFile2DScience
 from varconlib.transition_line import Transition
 from varconlib.transition_pair import TransitionPair
@@ -98,35 +99,6 @@ def save_and_format_selections(good_transitions, good_pairs):
             f.write('\n')
             for transition in pair:
                 f.write(transition.formatInNistStyle())
-
-
-def parse_spectral_mask_file(file):
-    """Parses a spectral mask file from maskSpectralRegions.py
-
-    Parameters
-    ----------
-    file : str or Path object
-        A path to a text file to parse. Normally this would come from
-        maskSpectralRegions.py, but the general format is a series of
-        comma-separated floats, two per line, that each define a 'bad'
-        region of the spectrum.
-
-    Returns
-    -------
-    list
-        A list of tuples parsed from the file, each one delimiting the
-        boundaries of a 'bad' spectral region.
-    """
-    with open(file, 'r') as f:
-        lines = f.readlines()
-    masked_regions = []
-    for line in lines:
-        if '#' in line:
-            continue
-        start, end = line.rstrip('\n').split(',')
-        masked_regions.append((float(start), float(end)))
-
-    return masked_regions
 
 
 def line_is_masked(line, mask):
@@ -781,6 +753,8 @@ if __name__ == '__main__':
     no_CCD_bounds_file = masks_dir / 'unusable_spectrum_noCCDbounds.txt'
     # Path('data/unusable_spectrum_noCCDbounds.txt')
 
+    if args.verbose:
+        tqdm.write('Parsing spectral mask files...')
     mask_CCD_bounds = parse_spectral_mask_file(CCD_bounds_file)
     mask_no_CCD_bounds = parse_spectral_mask_file(no_CCD_bounds_file)
 

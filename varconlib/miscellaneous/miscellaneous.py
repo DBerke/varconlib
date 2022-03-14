@@ -408,6 +408,35 @@ def weighted_mean_and_error(values, errors):
     return weighted_mean, error_on_weighted_mean
 
 
+def parse_spectral_mask_file(file):
+    """Parses a spectral mask file from maskSpectralRegions.py
+
+    Parameters
+    ----------
+    file : str or Path object
+        A path to a text file to parse. Normally this would come from
+        maskSpectralRegions.py, but the general format is a series of
+        comma-separated floats, two per line, that each define a 'bad'
+        region of the spectrum.
+
+    Returns
+    -------
+    list
+        A list of tuples parsed from the file, each one delimiting the
+        boundaries of a 'bad' spectral region.
+    """
+    with open(file, 'r') as f:
+        lines = f.readlines()
+    masked_regions = []
+    for line in lines:
+        if '#' in line:
+            continue
+        start, end = line.rstrip('\n').split(',')
+        masked_regions.append((float(start), float(end)))
+
+    return masked_regions
+
+
 def get_params_file(filename):
     """Return the fitting function and parameters from a given HDF5 file.
 
