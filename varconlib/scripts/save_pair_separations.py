@@ -189,6 +189,15 @@ def main():
         with open(vcl.final_pair_selection_file, 'r+b') as f:
             pairs_list = pickle.load(f)
 
+        # Everything with units in m/s
+        pair_properties_header = ['star_name', 'Nobs',
+                                  'model_offset_pair', 'err_stat_pair',
+                                  'err_sys_pair', 'chisq_nu_pair',
+                                  'offset_transition1', 't_stat_err1',
+                                  't_sys_err1', 'chisq_nu1',
+                                  'offset_transition2', 't_stat_err2',
+                                  't_sys_err2', 'chisq_nu2']
+
         tqdm.write('Writing out data for each pair.')
         for pair in tqdm(pairs_list):
             for order_num in pair.ordersToMeasureIn:
@@ -213,7 +222,7 @@ def main():
 
                     with open(csv_file, 'w', newline='') as f:
                         datawriter = csv.writer(f)
-                        datawriter.writerow(star.formatHeader)
+                        datawriter.writerow(pair_properties_header)
                         for row in info_list:
                             datawriter.writerow(row)
 

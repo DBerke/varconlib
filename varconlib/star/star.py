@@ -1027,14 +1027,14 @@ class Star(object):
             elif not item:
                 info_list[i] = 'nan'
 
-        # Everything with units in m/s
-        self._formatHeader = ['star_name', 'Nobs',
-                              'model_offset_pair', 'err_stat_pair',
-                              'err_sys_pair', 'chisq_nu_pair',
-                              'offset_transition1', 't_stat_err1',
-                              't_sys_err1', 'chisq_nu1',
-                              'offset_transition2', 't_stat_err2',
-                              't_sys_err2', 'chisq_nu2']
+#        # Everything with units in m/s
+#        self._formatHeader = ['star_name', 'Nobs',
+#                              'model_offset_pair', 'err_stat_pair',
+#                              'err_sys_pair', 'chisq_nu_pair',
+#                              'offset_transition1', 't_stat_err1',
+#                              't_sys_err1', 'chisq_nu1',
+#                              'offset_transition2', 't_stat_err2',
+#                              't_sys_err2', 'chisq_nu2']
 
         return info_list
 
@@ -1287,11 +1287,6 @@ class Star(object):
                 axis=1).reshape((self.fitMeansArray.shape[0], 1))
         self.fitOffsetsNormalizedArray = self.fitOffsetsCorrectedArray -\
             self.obsRVOffsetsArray
-
-    @property
-    def formatHeader(self):
-        """Return a list of the data returned by self.formatPairData"""
-        return self._formatHeader
 
     @property
     def ccdSystematicsDict(self):
