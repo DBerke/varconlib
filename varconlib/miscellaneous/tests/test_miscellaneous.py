@@ -66,8 +66,12 @@ class TestWavelength2Velocity(object):
 class TestVelocity2Wavelenth(object):
 
     def testVelocities(self):
+        assert vcl.velocity2wavelength(0. * u.km / u.s, 500 * u.nm) ==\
+            pytest.approx(0. * u.nm)
         assert vcl.velocity2wavelength(10 * u.km / u.s, 500 * u.nm) ==\
             pytest.approx(0.0166782 * u.nm)
+        assert vcl.velocity2wavelength(-10 * u.km / u.s, 500 * u.nm) ==\
+            pytest.approx(-0.0166782 * u.nm)
         assert vcl.velocity2wavelength(10 * u.km / u.s, 500 * u.nm,
                                        unit=u.angstrom) == pytest.approx(
                                                0.16678205 * u.angstrom)
@@ -76,16 +80,18 @@ class TestVelocity2Wavelenth(object):
                                                16.67820476 * u.pm)
 
     @given(vel=st.builds(make_velocity_mpers,
-           st.floats(min_value=float(-u.c.value), max_value=float(u.c.value))),
+           st.floats(min_value=0.001, max_value=float(u.c.value))),
            wl=st.builds(make_wavelength_nm,
            st.floats(min_value=300, max_value=700)))
-    def testArbitraryVelocities(self, vel, wl):
-        if vel == 0:
-            assert vcl.velocity2wavelength(vel, wl) == 0 * u.nm
-        elif vel > 0:
-            assert vcl.velocity2wavelength(vel, wl) > 0 * u.nm
-        elif vel < 0:
-            assert vcl.velocity2wavelength(vel, wl) < 0 * u.nm
+    def testArbitraryPositiveVelocities(self, vel, wl):
+        assert vcl.velocity2wavelength(vel, wl) > 0 * u.nm
+
+    @given(vel=st.builds(make_velocity_mpers,
+           st.floats(min_value=float(-u.c.value), max_value=-0.001)),
+           wl=st.builds(make_wavelength_nm,
+           st.floats(min_value=300, max_value=700)))
+    def testArbitraryNegativeVelocities(self, vel, wl):
+        assert vcl.velocity2wavelength(vel, wl) < 0 * u.nm
 
 
 class TestDate2Index(object):
