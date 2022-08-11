@@ -255,8 +255,8 @@ class Star(object):
                        'pairModelArray',
                    '/arrays/pair_systematic_errors':
                        'pairSysErrorsArray',
-                    '/arrays/fake_velocity_shifts':
-                        'fakeVelocityShifts'}
+                   '/arrays/fake_velocity_shifts':
+                       'fakeVelocityShifts'}
 
     other_attributes = {'/metadata/version': 'version',
                         '/arrays/reduced_chi_squareds': 'chiSquaredNuArray',
