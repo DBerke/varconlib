@@ -612,9 +612,13 @@ class Star(object):
         # Use the parameters derived from results with outliers removed.
         if filename is None:
             file_dir = vcl.output_dir / 'fit_params'
+            # Check for .csv first.
             filename = file_dir /\
-                f'{model_func}_transitions_{n_sigma:.1f}sigma_params.hdf5'
-        fit_results_dict = get_params_file(filename)
+                f'{model_func}_transitions_{n_sigma:.1f}sigma_params.csv'
+            if not filename.exists:
+                filename = filename.with_suffix('.hdf5')
+                tqdm.write('No CSV file found, falling back to HDF5.')
+        fit_results_dict = get_params_file(filename, ext='csv')
         function = fit_results_dict['model_func']
         coeffs_dict = fit_results_dict['coeffs']
         sigma_sys_dict = fit_results_dict['sigmas_sys']
@@ -797,8 +801,12 @@ class Star(object):
 
         # Use the parameters derived from results with outliers removed.
         if filename is None:
+            # Check for .csv first.
             filename = vcl.output_dir /\
-                f'fit_params/{model_func}_pairs_{n_sigma:.1f}sigma_params.hdf5'
+                f'fit_params/{model_func}_pairs_{n_sigma:.1f}sigma_params.csv'
+            if not filename.exists():
+                filename = filename.with_suffix('.hdf5')
+                tqdm.write('No CSV file found, falling back to HDF5.')
         fit_results_dict = get_params_file(filename)
         function = fit_results_dict['model_func']
         coeffs_dict = fit_results_dict['coeffs']
@@ -1038,7 +1046,7 @@ class Star(object):
 
         return info_list
 
-    def saveDataToDisk(self, file_path=None):
+    def saveDataToDisk(self, file_path=None, data_format='text'):
         """Save important data arrays to disk in HDF5 format.
 
         Saves various arrays which are time-consuming to create to disk in HDF5
@@ -1050,6 +1058,13 @@ class Star(object):
             The directory to save the data in. If  a string, it will be
             converted to a `Path` object. The actual file saved will be this
             directory + "{self.name}_data.hdf5"
+        data_format: str, Default: "hdf5"
+            Allowed options are "text" and "hdf5" (deprectated, likely will not
+            work across installations). This controls the format the Star's
+            data is saved in. "hdf5" will create a single HDF5 file named
+            "<Star.name>_data.hdfd". Text will create a folder named
+            "<Star.name>_data", within which will be folders named "arrays",
+            "bidicts", "data", and possibly "fake_data".
 
         """
 

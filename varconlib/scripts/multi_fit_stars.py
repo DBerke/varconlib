@@ -18,6 +18,7 @@ import pickle
 from pprint import pprint
 import time as py_time
 import sys
+import warnings
 
 from adjustText import adjust_text
 import h5py
@@ -365,7 +366,8 @@ def main():
     # Figure out how many parameters the model function takes, so we know how
     # many to dynamically give it later. Subtract 1 for the parameter which
     # takes the stellar parameters.
-    params_list = [0 for i in range(len(signature(model_func).parameters)-1)]
+    num_params = len(signature(model_func).parameters) - 1
+    params_list = [0 for i in range(num_params)]
 
     # Define the folder to put plots in.
     output_dir = vcl.output_dir
@@ -812,21 +814,54 @@ def main():
     output_dir = output_dir / 'fit_params'
     hdf5_file = output_dir /\
         f'{model_name}_{fit_target}_{args.sigma:.1f}sigma_params.hdf5'
+
     if not hdf5_file.parent.exists():
         os.mkdir(hdf5_file.parent)
 
     vprint(f'Writing HDF5 file with fit parameters at {hdf5_file}')
-    if hdf5_file.exists():
-        os.unlink(hdf5_file)
-    with h5py.File(hdf5_file, mode='a') as f:
-        f.attrs['type'] = 'A file containing a fitting function and the' +\
-                          ' parameters for it for each transition or pair' +\
-                          'in /coeffs_dict'
-        hickle.dump(model_func, f, path='/fitting_function')
-        hickle.dump(coefficients_dict, f, path='/coeffs_dict')
-        hickle.dump(covariance_dict, f, path='/covariance_dict')
-        hickle.dump(sigmas_dict, f, path='/sigmas_dict')
-        hickle.dump(sigma_sys_dict, f, path='/sigma_sys_dict')
+#    if hdf5_file.exists():
+#        os.unlink(hdf5_file)
+#    with h5py.File(hdf5_file, mode='a') as f:
+#        f.attrs['type'] = 'A file containing a fitting function and the' +\
+#                          ' parameters for it for each transition or pair' +\
+#                          'in /coeffs_dict'
+#        hickle.dump(model_func, f, path='/fitting_function')
+#        hickle.dump(coefficients_dict, f, path='/coeffs_dict')
+#        hickle.dump(covariance_dict, f, path='/covariance_dict')
+#        hickle.dump(sigmas_dict, f, path='/sigmas_dict')
+#        hickle.dump(sigma_sys_dict, f, path='/sigma_sys_dict')
+
+    # Save an alternate file in CSV format to avoid pickling incompatibilities
+    # across installations.
+    csv_file = output_dir /\
+        f'{model_name}_{fit_target}_{args.sigma:.1f}sigma_params.csv'
+    vprint(f'Writing CSV file with fit parameters at {csv_file}')
+
+    if csv_file.exists():
+        os.unlink(csv_file)
+    with open(csv_file, 'w', newline='') as csvfile:
+        fieldnames = ['label', 'sigmas', 'sigmas_sys']
+        coeff_labels = [f'coeff{i}' for i in range(num_params)]
+        uncert_labels = [f'uncert{i}' for i in range(num_params)]
+        fieldnames.extend(coeff_labels)
+        fieldnames.extend(uncert_labels)
+        writer = csv.writer(csvfile,
+                            delimiter=',')
+
+        writer.writerow(fieldnames)
+        for label in coefficients_dict.keys():
+            line = [label,
+                    sigmas_dict[label].value,
+                    sigma_sys_dict[label].value]
+            line.extend(coefficients_dict[label])
+            line.extend(np.sqrt(np.diag(covariance_dict[label])))
+            writer.writerow(line)
+
+#            writer.writerow({'label': label,
+#                             'sigmas': sigmas_dict[label].value,
+#                             'sigmas_sys': sigma_sys_dict[label].value,
+#                             'coeffs': coefficients_dict[label],
+#                             'covariance': covariance_dict[label]})
 
 
 if __name__ == '__main__':
@@ -881,7 +916,14 @@ if __name__ == '__main__':
 
     start_time = py_time.time()
 
-    main()
+    # Filter out multiple redundant UserWarnings from numpy of the form
+    # Warning: 'partition' will ignore the 'mask' of the MaskedArray. I don't
+    # know what they mean, but the don't seem too cause any issues.
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            'ignore',
+            message="Warning: 'partition' will ignore the 'mask' of the MaskedArray.")
+        main()
 
     duration = py_time.time() - start_time
     print(f'Finished in {duration:.2f} seconds.')

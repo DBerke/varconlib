@@ -11,7 +11,9 @@ across multiple scripts, but which don't really have any commonality.
 
 
 import configparser
+import csv
 import datetime as dt
+from inspect import signature
 from pathlib import Path
 
 from bidict import bidict
@@ -24,6 +26,7 @@ from unyt.dimensions import length, time
 
 
 import varconlib as vcl
+import varconlib.fitting.fitting as fit
 
 # Need to find the base directory path dynamically on import so it works when
 # testing with Travis.
@@ -437,7 +440,7 @@ def parse_spectral_mask_file(file):
     return masked_regions
 
 
-def get_params_file(filename):
+def get_params_file(filename, ext=None):
     """Return the fitting function and parameters from a given HDF5 file.
 
     This functions takes what is assumed to be a valid filename, checks it to
@@ -447,26 +450,34 @@ def get_params_file(filename):
     Parameters
     ----------
     filename : str or `pathlib.Path` object
-        A string representing an HDF5 filename containing results from a run
-        of the script multi_fit_stars.py.
+        A string representing an HDF5 or CSV filename containing results from a
+        run of the script multi_fit_stars.py.
+
+    ext: str, valid choices: ['hdf5', 'csv']
+        If not given will try to guess
+        from the file extension.
 
     Returns
     -------
     dict
-        A dictionary containing information from the file. Valid keys are:
+        A dictionary containing information from the file. Each sub-dictionary
+        containg the same keys, being labels for each transition (or pair) plus
+        the time period they refer to (e.g., "4205.650Cr1_15_pre")
+        Valid keys for this dictionary are:
             'model_func': the `function` object used in the fit.
-            'coeffs': a dictionary containing as keys the labels for each
-                transition + the time period (pre or post) it applies to, and
-                as values the coefficients found from the fit for each
-                transition.
-            'covars': a dictionary containing the same keys as 'coeffs', and as
-                values the covariance matrix for each transition.
-            'sigmas': a dictionary containing the same keys as 'coeffs', and as
-                values the standard deviations found for each transition.
-            'sigmas_sys': a dictionary with the same keys as 'coeffs', and as
-                values the additional systematic error found for each
-                transition.
-
+            'sigmas': a dictionary containing the standard deviations found for
+                each transition.
+            'sigmas_sys': a dictionary containing the additional systematic
+                error found for each transition beyond that accounted for by
+                the statistical uncertainties alone.
+            'coeffs': a dictionary containing the coefficients found from the
+                fit for each transition. Each value is a list, with as many
+                coefficients as needed for the model indicated in `filename`.
+            'uncert': a dictionary containing the uncertainties, calculated
+                from the covariance matrix of the model fit, for each instance
+                of transition of pair. Similarly to the `coeffs` dictionary,
+                each value is a list with the same number of entries as for
+                `coeffs`.
     """
 
     if not isinstance(filename, Path):
@@ -474,19 +485,70 @@ def get_params_file(filename):
             raise TypeError('Given file name must be str or pathlib.Path.\n'
                             f'Type: {type(filename)}')
         else:
-            hdf5_file = Path(filename)
+            file_path = Path(filename)
     else:
-        hdf5_file = filename
-    if not hdf5_file.exists():
+        file_path = filename
+    if not file_path.exists():
         raise FileNotFoundError('The given filename could not be found:\n'
-                                f'Given filename: {hdf5_file}')
+                                f'Given filename: {file_path}')
 
     results = {}
-    with h5py.File(hdf5_file, 'r') as f:
-        results['model_func'] = hickle.load(f, path='/fitting_function')
-        results['coeffs'] = hickle.load(f, path='/coeffs_dict')
-        results['covars'] = hickle.load(f, path='/covariance_dict')
-        results['sigmas'] = hickle.load(f, path='/sigmas_dict')
-        results['sigmas_sys'] = hickle.load(f, path='/sigma_sys_dict')
 
+    if ext is None:
+        if filename[-3:].lower() == 'csv':
+            ext = 'csv'
+        elif filename[-4:].lower() == 'hdf5':
+            ext = 'hdf5'
+        else:
+            raise RuntimeError("File extension must be '.csv' or '.hdf5', or"
+                               "else the 'ext' parameter must be passed.")
+
+    if ext.lower() == 'hdf5':
+
+        with h5py.File(file_path, 'r') as f:
+            results['model_func'] = hickle.load(f, path='/fitting_function')
+            results['coeffs'] = hickle.load(f, path='/coeffs_dict')
+            results['covars'] = hickle.load(f, path='/covariance_dict')
+            results['sigmas'] = hickle.load(f, path='/sigmas_dict')
+            results['sigmas_sys'] = hickle.load(f, path='/sigma_sys_dict')
+
+    elif ext.lower() == 'csv':
+
+        # Need to get the model function from the fitting.fitting module by
+        # generating its name from the filename.
+        func_name = '_'.join([str(file_path.name).split('_')[0], 'model'])
+        model_func = getattr(fit, func_name)
+
+        num_coeffs = len(signature(model_func).parameters) - 1
+        coeff_labels = [f'coeff{n}' for n in range(num_coeffs)]
+        uncert_labels = [f'uncert{n}' for n in range(num_coeffs)]
+
+        coeffs_dict = {}
+        covariance_dict = {}
+        sigmas_dict = {}
+        sigma_sys_dict = {}
+
+        fieldnames = ['label', 'sigmas', 'sigmas_sys']
+        fieldnames.extend(coeff_labels)
+        fieldnames.extend(uncert_labels)
+
+        with open(file_path, newline='') as f:
+            reader = csv.DictReader(f, fieldnames=fieldnames, delimiter=',')
+            reader.__next__()
+            for row in reader:
+                label = row['label']
+                sigmas_dict[label] = float(row['sigmas']) * u.m / u.s
+                sigma_sys_dict[label] = float(row['sigmas_sys']) * u.m / u.s
+                coeffs = [float(row[lbl]) for lbl in coeff_labels]
+                coeffs_dict[label] = coeffs
+                uncerts = [float(row[lbl]) for lbl in uncert_labels]
+                covariance_dict[label] = uncerts
+
+        results['model_func'] = model_func
+        results['coeffs'] = coeffs_dict
+        results['covars'] = covariance_dict
+        results['sigmas'] = sigmas_dict
+        results['sigmas_sys'] = sigma_sys_dict
+
+    # Regardless of format, return results (hopefully identical)
     return results
