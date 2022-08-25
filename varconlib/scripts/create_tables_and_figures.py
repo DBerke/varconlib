@@ -24,16 +24,15 @@ import pickle
 import re
 import sys
 
-from bidict import bidict
 import cmasher as cmr
 import h5py
 import hickle
-import numpy as np
-import numpy.ma as ma
 from matplotlib.gridspec import GridSpec
 import matplotlib.lines as mlines
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import numpy as np
+import numpy.ma as ma
 from scipy.optimize import curve_fit
 from scipy.stats import ks_2samp
 from tabulate import tabulate
@@ -53,6 +52,7 @@ from varconlib.obs2d import HARPSFile2DScience
 from varconlib.star import Star
 from varconlib.transition_line import roman_numerals
 
+plt.rcParams['text.usetex'] = True
 
 stars_used = set(['HD10180', 'HD102117', 'HD102438', 'HD104982', 'HD106116',
                   'HD108309', 'HD110619', 'HD111031', 'HD114853', 'HD11505',
@@ -1156,7 +1156,7 @@ def plot_duplicate_pairs(star):
 
     # Plot the results
 
-    fig = plt.figure(figsize=(10, 4.5), tight_layout=True)
+    fig = plt.figure(figsize=(10, 4.6), tight_layout=True)
     gs = GridSpec(1, 2, figure=fig, wspace=0)
     ax_measured = fig.add_subplot(gs[0, 0])
     ax_corrected = fig.add_subplot(gs[0, 1])
@@ -1183,7 +1183,7 @@ def plot_duplicate_pairs(star):
         # ax.yaxis.grid(which='minor', color='Gray', alpha=0.6,
         #               linestyle='--')
         ax.axvline(x=0, linestyle='-', color='Gray')
-        ax.set_xlim(left=-60, right=60)
+        ax.set_xlim(left=-59, right=59)
         ax.set_ylim(bottom=-1, top=55)
         # ax.yaxis.set_minor_locator(ticker.AutoMinorLocator())
         ax.tick_params(left=False, right=False, labelleft=False)
@@ -1212,11 +1212,16 @@ def plot_duplicate_pairs(star):
         pairs_sigma = np.nanstd(pair_diffs)
         model_sigma = np.nanstd(model_diffs)
 
+        dup_color1 = cmr.watermelon(0.15)
+        dup_ecolor1 = cmr.watermelon(0.08)
+        dup_color2 = cmr.watermelon(0.85)
+        dup_ecolor2 = cmr.watermelon(0.92)
+
         ax_measured.errorbar(pair_diffs, pair_indices,
                              xerr=pair_errs,
-                             capsize=2, capthick=2,
+                             color=dup_color1, capsize=2, capthick=2,
                              elinewidth=2,
-                             color='Chocolate', markeredgecolor='Black',
+                             ecolor=dup_ecolor1, markeredgecolor='Black',
                              linestyle='', marker='o',
                              label=r'Pair $\chi^2_\nu$:'
                              f' {pairs_chisq:.2f}, RMS: {pairs_sigma:.2f}')
@@ -1232,9 +1237,9 @@ def plot_duplicate_pairs(star):
                              verticalalignment='bottom')
         ax_corrected.errorbar(model_diffs, pair_indices,
                               xerr=model_errs,
-                              color='DodgerBlue', capsize=2, capthick=2,
+                              color=dup_color2, capsize=2, capthick=2,
                               elinewidth=2,
-                              ecolor='DodgerBlue', markeredgecolor='Black',
+                              ecolor=dup_ecolor2, markeredgecolor='Black',
                               linestyle='', marker='D',
                               label=r'Model $\chi^2_\nu$:'
                               f' {model_chisq:.2f}, RMS: {model_sigma:.2f}')
@@ -1253,7 +1258,7 @@ def plot_duplicate_pairs(star):
     # plt.show(fig)
     output_dir = Path('/Users/dberke/Pictures/paper_plots_and_tables/plots')
     outfile = output_dir /\
-        f'{star.name}_duplicate_pairs.png'
+        f'{star.name}_duplicate_pairs.pdf'
     fig.savefig(str(outfile))
     plt.close('all')
 
@@ -1563,6 +1568,160 @@ def plot_vs_pair_blendedness(star):
     ax.margins(0, 0)
     fig.savefig(str(filename), bbox_inches='tight', pad_inches=0.01)
     plt.close('all')
+
+
+def plot_vs_max_pair_blendedness():
+    """Create a plot of the chi-squared values of each pair againsts it maximum
+    blendedness.
+    """
+    plots_dir = Path('/Users/dberke/Pictures/paper_plots_and_tables/plots')
+
+#    filename = vcl.output_dir /\
+#        'fit_params/quadratic_pairs_4.0sigma_params.hdf5'
+#    fit_results_dict = get_params_file(filename)
+#    coeffs_dict = fit_results_dict['coeffs']
+#    model_func = fit_results_dict['model_func']
+
+    tqdm.write('Unpickling pairs list.')
+    with open(vcl.final_pair_selection_file, 'r+b') as f:
+        pairs_list = pickle.load(f)
+    vprint(f'Found {len(pairs_list)} pairs in the list.')
+
+    labels = []
+    max_blends = []
+
+    tqdm.write('Getting pair max blendedness...')
+    for pair in pairs_list:
+        for order_num in pair.ordersToMeasureIn:
+            labels.append('_'.join((pair.label, str(order_num))))
+            max_blends.append(np.max(pair.blendTuple))
+
+    tqdm.write('Reading data from stellar database file...')
+
+    with h5py.File(db_file, mode='r') as f:
+
+        pair_column_dict = hickle.load(f, path='/pair_column_index')
+
+        star_names = hickle.load(f, path='/star_row_index')
+
+    cols = list(pair_column_dict.values())
+
+    results_pre = {0: [],
+                   1: [],
+                   2: [],
+                   3: [],
+                   4: [],
+                   5: []}
+    results_post = {0: [],
+                    1: [],
+                    2: [],
+                    3: [],
+                    4: [],
+                    5: []}
+
+    results_array = np.zeros((2, len(stars_used), len(labels)))
+    errors_array = np.zeros((2, len(stars_used), len(labels)))
+
+    for i, star_name in enumerate(star_names):
+
+        star = Star(star_name, f'/Users/dberke/data_output/{star_name}')
+
+        pre_slice = slice(None, star.fiberSplitIndex)
+        post_slice = slice(star.fiberSplitIndex, None)
+
+        for col in tqdm(cols):
+
+            if star.hasObsPre:
+                weighted_mean, err = get_weighted_mean(
+                        star.pairModelOffsetsArray,
+                        star.pairModelErrorsArray,
+                        pre_slice, col)
+
+                results_array[0, i, col] = weighted_mean
+                errors_array[0, i, col] = err
+            else:
+                results_array[0, i, col] = np.nan
+                errors_array[0, i, col] = np.nan
+
+            if star.hasObsPost:
+                weighted_mean, err = get_weighted_mean(
+                        star.pairModelOffsetsArray,
+                        star.pairModelErrorsArray,
+                        post_slice, col)
+
+                results_array[1, i, col] = weighted_mean
+                errors_array[1, i, col] = err
+            else:
+                results_array[1, i, col] = np.nan
+                errors_array[1, i, col] = np.nan
+
+    for col in tqdm(cols):
+
+        blendedness = max_blends[col]
+        vprint(f'Max blendedness for {labels[col]} is'
+               f' {blendedness}')
+
+        chi_sq_pre = fit.calc_chi_squared_nu(
+                remove_nans(results_array[0, :, col]),
+                remove_nans(errors_array[0, :, col]), 1)
+        chi_sq_post = fit.calc_chi_squared_nu(
+                remove_nans(results_array[1, :, col]),
+                remove_nans(errors_array[1, :, col]), 1)
+
+        vprint(f'  chi^2 pre is {chi_sq_pre:.1f} for {labels[col]}'
+               f' with max blendedness = {blendedness}')
+        vprint(f'  chi^2 post is {chi_sq_post:.1f} for {labels[col]}'
+               f' with max blendedness = {blendedness}')
+        results_pre[blendedness].append(chi_sq_pre)
+        results_post[blendedness].append(chi_sq_post)
+
+    fig = plt.figure(figsize=(10, 3.4), tight_layout=True)
+    gs = GridSpec(ncols=6, nrows=1, figure=fig, wspace=0)
+    fig.supxlabel(r'Maximum blendedness', fontsize=14, y=0.07)
+    fig.supylabel(r'$\chi^2_\nu$')
+
+    bins = np.linspace(0, 50, 100)
+    y_major_ticks = (1, 3, 5, 7)
+    y_minor_ticks = (2, 4, 6)
+    plot_bottom, plot_top = 0.25, 8.5
+
+    for i, key in enumerate(results_pre.keys()):
+        ax = fig.add_subplot(gs[0, i])
+        if i == 0:
+            first_ax = ax
+        ax.set_ylim(bottom=plot_bottom, top=plot_top)
+        if i != 0:
+            ax.tick_params(axis='y', which='both',
+                           labelleft=False)
+        ax.tick_params(axis='x', which='both', labelbottom=False,
+                       bottom=False, top=False, labelsize=12)
+        ax.yaxis.set_major_locator(ticker.FixedLocator(y_major_ticks))
+        ax.yaxis.set_minor_locator(ticker.FixedLocator(y_minor_ticks))
+        ax.annotate(f'{len(results_pre[key])}', (0.95, 0.95),
+                    xycoords='axes fraction',
+                    xytext=(0.96, 0.93),
+                    textcoords='axes fraction',
+                    verticalalignment='top',
+                    horizontalalignment='right',
+                    fontsize=14)
+        ax.set_xlabel(r'$\mathrm{N}_\mathrm{max}=' + rf'{i}$')
+        ax.hist(results_pre[key], bins=bins,
+                orientation='horizontal',
+                density=True, histtype='step', linewidth=2.2,
+                color=cmr.torch(0.75),
+                label='Pre')
+
+        ax.hist(results_post[key], bins=bins,
+                orientation='horizontal',
+                density=True, histtype='step', linewidth=2.2,
+                color=cmr.torch(0.3),
+                label='Post')
+
+    first_ax.legend(loc='upper left', fontsize=13, markerscale=0.7,
+                    shadow=True)
+
+    filename = plots_dir / 'Chi-squared_vs_max_blendedness.pdf'
+    fig.savefig(str(filename), bbox_inches='tight', pad_inches=0.01)
 
 
 def create_representative_blendedness_plots():
@@ -2002,7 +2161,7 @@ def plot_solar_twins_results(star_postfix=''):
                                  len(block3_stars),
                                  len(block4_stars)))
     # Set the "velocity" title to be below the figure.
-    fig.supxlabel('Diffrence between pair velocity separation and model (m/s)',
+    fig.supxlabel('Difference between pair velocity separation and model (m/s)',
                   fontsize=18)
 
     # Create a dict to hold all the axes.
@@ -2806,7 +2965,7 @@ def create_feature_fitting_example_plot():
     fig.savefig(str(outfile), bbox_inches='tight', pad_inches=0.01)
 
 
-def create_transition_and_pair_tables():
+def create_transitions_table():
     """
     Create tables of pairs and transitions.
     """
@@ -2839,8 +2998,6 @@ def create_transition_and_pair_tables():
                     pairs_found_in.append(p)
 
             vprint(f'{transition.label}: {pairs_found_in}')
-
-    pairs_table_file = tables_dir / 'pairs_table.txt'
 
     transition_headers = [r'$\lambda^a$',
                           r'$\omega^b$',
@@ -2962,17 +3119,20 @@ def get_program_ids():
     print(odd_ids_dict['Udry'])
 
 
-def create_fit_info_table():
+def create_fit_info_tables():
     """
     Create a table of fit coefficients and sigma_** for pairs.
     """
 
-    def parse_label(label):
+    def parse_label(label, ASCII=False):
 
         p1, p2, order = label.split('_')
 
         wv1, el1, ion1 = p1[:8], p1[8:-1], p1[-1]
         wv2, el2, ion2 = p2[:8], p2[8:-1], p2[-1]
+
+        if ASCII:
+            return p1, p2, order
 
         label1 = ''.join(
                 [el1, r'\,\textsc{',
@@ -3087,6 +3247,34 @@ def create_fit_info_table():
                 if breakout:
                     break
 
+    # Now make the ASCII version for the paper.
+    pair_headers = ['Transition 1', 'Transition 2', 'Order', 'sigsys', 'a',
+                    'b_1', 'c_1', 'd_1',
+                    'b_2', 'c_2', 'd_2']
+
+    for era in ('pre', 'post'):
+        tqdm.write(f'Collecting information for each pair for {era}...')
+        table_lines = []
+        for pair in tqdm(pairs_list):
+            for order_num in pair.ordersToMeasureIn:
+                label = '_'.join([pair.label, str(order_num)])
+                vprint(20 * '-')
+                vprint(f'Analyzing {label}...')
+                dict_label = '_'.join([label, era])
+
+                line = [*parse_label(label, ASCII=True),
+                        sigma_sys_dict[dict_label]]
+                line.extend(coeffs_dict[dict_label])
+                table_lines.append(line)
+
+        pairs_table_file = tables_dir / f'pairs_table_{era}.csv'
+        if pairs_table_file.exists():
+            os.unlink(pairs_table_file)
+        with open(pairs_table_file, 'w') as csvfile:
+            tablewriter = csv.writer(csvfile, delimiter=',')
+            tablewriter.writerow(pair_headers)
+            tablewriter.writerows(table_lines)
+
 
 
 if __name__ == '__main__':
@@ -3128,43 +3316,43 @@ if __name__ == '__main__':
 
     if args.tables:
 
-        create_transition_and_pair_tables()
+#        create_transitions_table()
 
-#        get_program_ids()
+        get_program_ids()
 
-#        create_fit_info_table()
+#        create_fit_info_tables()
 
     if args.figures:
-#        hd146233 = Star('HD146233', '/Users/dberke/data_output/HD146233')
+        hd146233 = Star('HD146233', '/Users/dberke/data_output/HD146233')
 
 #        create_HR_diagram_plot()
-
-#         create_example_pair_sep_plots()
-
+#
+#        create_example_pair_sep_plots()
+#
 #        create_sigma_sys_hist()
-
+#
 #        create_transition_density_plot()
-
-#         create_parameter_dependence_plot(use_cached=True, min_bin_size=5)
-
-        # plot_duplicate_pairs(Star('Vesta', '/Users/dberke/data_output/Vesta'))
-        # plot_duplicate_pairs(hd146233)
-
-#         create_radial_velocity_plot()
-
+#
+#        create_parameter_dependence_plot(use_cached=True, min_bin_size=5)
+#
+#        plot_duplicate_pairs(Star('HD146233',
+#                                  '/Users/dberke/data_output/HD146233'))
+#
+#        create_radial_velocity_plot()
+#
 #        plot_vs_pair_blendedness(Star('HD146233',
 #                                      '/Users/dberke/data_output/HD146233'))
-
+#        plot_vs_max_pair_blendedness()
+#
 #        create_representative_blendedness_plots()
-
-#        plot_pair_depth_differences(hd146233)
+#
 #        plot_pair_depth_differences(Star('HD134060',
 #                                    '/Users/dberke/data_output/HD134060'))
-
+#
 #        create_sigma_s2s_histogram()
-
-#        plot_solar_twins_results(args.star_postfix)
-
+#
+        plot_solar_twins_results(args.star_postfix)
+#
 #        create_cosmic_ray_plots()
-
-        create_feature_fitting_example_plot()
+#
+#        create_feature_fitting_example_plot()
