@@ -10,17 +10,21 @@ blue line lists from BRASS.
 """
 
 import argparse
-import configparser
 import os
 from pathlib import Path
+
 import numpy as np
-import unyt as u
 from tqdm import tqdm, trange
+import unyt as u
+
+from varconlib.fitting import GaussianFit
+from varconlib.miscellaneous import (parse_spectral_mask_file,
+                                     velocity2wavelength)
+from varconlib.transition_line import Transition
 import varconlib as vcl
-import obs2d
-import conversions
-from transition_line import Transition
-from fitting import GaussianFit
+import varconlib.conversions
+import varconlib.obs2d
+
 
 desc = 'Measure the depths of absorption features in a spectrum.'
 parser = argparse.ArgumentParser(description=desc)
@@ -34,12 +38,10 @@ parser.add_argument('-rv', action='store', default=-0.57, type=float,
 
 args = parser.parse_args()
 
-config = configparser.ConfigParser(interpolation=configparser.
-                                   ExtendedInterpolation())
-config.read('/Users/dberke/code/config/variables.cfg')
-data_dir = Path(config['PATHS']['data_dir'])
-masks_dir = Path(config['PATHS']['masks_dir'])
-harps_dir = Path(config['PATHS']['harps_dir'])
+data_dir = vcl.data_dir
+masks_dir = vcl.masks_dir
+harps_dir = vcl.harps_dir
+output_dir = vcl.output_dir
 
 purpleLineFile = data_dir / 'BRASS_Combined_List.csv'
 
@@ -49,7 +51,7 @@ raw_line_data = np.genfromtxt(str(purpleLineFile), delimiter=",",
 
 line_data = []
 for line in tqdm(raw_line_data):
-    wavelength = conversions.air2vacMortonIAU(line[0]) * u.angstrom
+    wavelength = varconlib.conversions.air2vacMortonIAU(line[0]) * u.angstrom
     element = str(line[1])
     ionization_state = line[2]
     low_energy = line[3]
@@ -59,18 +61,17 @@ for line in tqdm(raw_line_data):
     transition.depth = depth
     line_data.append(transition)
 
-# output_dir = /Users/dberke/data_output
-output_dir = Path(config['PATHS']['output_dir'])
-
 if args.hd146233:
     # Use for our spectrum a high-SNR (447.6) observation of a solar twin.
-    spectrum_file = Path('/Users/dberke/HD146233/data/reduced/2016-03-29/'
+    spectrum_file = Path(str(harps_dir) + '/HD146233/data/reduced/2016-03-29/'
                          'HARPS.2016-03-30T07:25:38.139_e2ds_A.fits')
     object_dir = output_dir / 'HD146233/{}'.format(spectrum_file.stem)
 
 if args.vesta:
     # Use a high-SNR (316.8) observation of Vesta. Need to supply RV.
-    spectrum_file = Path(str(harps_dir) + '/4Vesta/data/reduced/2014-04-15/'
+#    spectrum_file = Path(str(harps_dir) + '/Vesta/data/reduced/2014-04-15/'
+#                         'HARPS.2014-04-16T05:45:10.757_e2ds_A.fits')
+    spectrum_file = Path(str(harps_dir) + '/Vesta/data/reduced/2014-04-15/'
                          'HARPS.2014-04-16T05:45:10.757_e2ds_A.fits')
     object_dir = output_dir / 'Vesta/{}'.format(spectrum_file.stem)
 
@@ -81,8 +82,6 @@ if args.vesta:
     obs_radial_velocity = args.rv * u.km / u.s
 
 print(f'Analyzing file at {spectrum_file}')
-
-
 
 if not object_dir.exists():
     os.mkdir(object_dir)
@@ -104,9 +103,9 @@ if not context_dir.exists():
 # Masked regions file
 no_CCD_bounds_file = masks_dir / 'unusable_spectrum_noCCDbounds.txt'
 
-mask_no_CCD_bounds = vcl.parse_spectral_mask_file(no_CCD_bounds_file)
+mask_no_CCD_bounds = parse_spectral_mask_file(no_CCD_bounds_file)
 
-obs = obs2d.HARPSFile2DScience(spectrum_file)
+obs = varconlib.obs2d.HARPSFile2DScience(spectrum_file)
 
 # Define the region in which to look for other lines (indicative of blending)
 # and how close a line's nominal wavelength must be to the fitted wavelength
@@ -140,7 +139,7 @@ for i in trange(len(line_data)):
         continue
 
     # Check for blended lines within 3.5 * HARPS' 2.6 km/s resolution element.
-    delta_lambda = vcl.velocity2wavelength(blending_limit, line.wavelength)
+    delta_lambda = velocity2wavelength(blending_limit, line.wavelength)
     for j in range(len(line_data)):
         if j == i:
             continue
