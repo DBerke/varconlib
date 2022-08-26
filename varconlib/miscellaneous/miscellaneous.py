@@ -524,7 +524,7 @@ def get_params_file(filename, ext=None):
         uncert_labels = [f'uncert{n}' for n in range(num_coeffs)]
 
         coeffs_dict = {}
-        covariance_dict = {}
+        uncert_dict = {}
         sigmas_dict = {}
         sigma_sys_dict = {}
 
@@ -542,11 +542,11 @@ def get_params_file(filename, ext=None):
                 coeffs = [float(row[lbl]) for lbl in coeff_labels]
                 coeffs_dict[label] = coeffs
                 uncerts = [float(row[lbl]) for lbl in uncert_labels]
-                covariance_dict[label] = uncerts
+                uncert_dict[label] = uncerts
 
         results['model_func'] = model_func
         results['coeffs'] = coeffs_dict
-        results['covars'] = covariance_dict
+        results['uncerts'] = uncert_dict
         results['sigmas'] = sigmas_dict
         results['sigmas_sys'] = sigma_sys_dict
 
