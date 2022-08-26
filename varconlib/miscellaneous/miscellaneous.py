@@ -473,7 +473,7 @@ def get_params_file(filename, ext=None):
             'coeffs': a dictionary containing the coefficients found from the
                 fit for each transition. Each value is a list, with as many
                 coefficients as needed for the model indicated in `filename`.
-            'uncert': a dictionary containing the uncertainties, calculated
+            'uncerts': a dictionary containing the uncertainties, calculated
                 from the covariance matrix of the model fit, for each instance
                 of transition of pair. Similarly to the `coeffs` dictionary,
                 each value is a list with the same number of entries as for
@@ -495,13 +495,13 @@ def get_params_file(filename, ext=None):
     results = {}
 
     if ext is None:
-        if filename[-3:].lower() == 'csv':
+        if filename.suffix.lower() == '.csv':
             ext = 'csv'
-        elif filename[-4:].lower() == 'hdf5':
+        elif filename.suffix.lower() == '.hdf5':
             ext = 'hdf5'
         else:
             raise RuntimeError("File extension must be '.csv' or '.hdf5', or"
-                               "else the 'ext' parameter must be passed.")
+                               " else the 'ext' parameter must be passed.")
 
     if ext.lower() == 'hdf5':
 
