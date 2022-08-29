@@ -26,7 +26,6 @@ from unyt.dimensions import length, time
 
 
 import varconlib as vcl
-import varconlib.fitting.fitting as fit
 
 # Need to find the base directory path dynamically on import so it works when
 # testing with Travis.
@@ -481,11 +480,11 @@ def get_params_file(filename, ext=None):
     """
 
     if not isinstance(filename, Path):
-        if not isinstance(filename, str):
+        if isinstance(filename, str):
+            file_path = Path(filename)
+        else:
             raise TypeError('Given file name must be str or pathlib.Path.\n'
                             f'Type: {type(filename)}')
-        else:
-            file_path = Path(filename)
     else:
         file_path = filename
     if not file_path.exists():
@@ -495,9 +494,9 @@ def get_params_file(filename, ext=None):
     results = {}
 
     if ext is None:
-        if filename.suffix.lower() == '.csv':
+        if file_path.suffix.lower() == '.csv':
             ext = 'csv'
-        elif filename.suffix.lower() == '.hdf5':
+        elif file_path.suffix.lower() == '.hdf5':
             ext = 'hdf5'
         else:
             raise RuntimeError("File extension must be '.csv' or '.hdf5', or"
@@ -517,7 +516,7 @@ def get_params_file(filename, ext=None):
         # Need to get the model function from the fitting.fitting module by
         # generating its name from the filename.
         func_name = '_'.join([str(file_path.name).split('_')[0], 'model'])
-        model_func = getattr(fit, func_name)
+        model_func = getattr(vcl.fitting.fitting, func_name)
 
         num_coeffs = len(signature(model_func).parameters) - 1
         coeff_labels = [f'coeff{n}' for n in range(num_coeffs)]
