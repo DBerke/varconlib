@@ -546,8 +546,8 @@ def query_nist(transition_list, species_set):
 
         sleep(1.5)
         try:
-            table = Nist.query(min_wavelength.to_astropy(),
-                               max_wavelength.to_astropy(),
+            table = Nist.query(min_wavelength.to(u.nm).to_astropy(),
+                               max_wavelength.to(u.nm).to_astropy(),
                                energy_level_unit='cm-1',
                                output_order='wavelength',
                                wavelength_type='vacuum',
@@ -563,10 +563,10 @@ def query_nist(transition_list, species_set):
             nist_transitions = []
             for row in tqdm(table):
                 if row[2] is ma.masked:
-                    tqdm.write(f'No energy information for {row[0]}!')
+                    tqdm.write(f'No energy information for {row[0]} Å!')
                     continue
                 elif row[0] is ma.masked:
-                    tqdm.write(f'No observed wavelength for {row[1]}!')
+                    tqdm.write(f'No observed wavelength for {row[1]} 1/cm!')
                     nist_wavenumber = float(row[1]) * u.cm ** -1
                     nist_wavelength = (1 / nist_wavenumber).to(u.nm)
                     tqdm.write(f'{nist_wavenumber} --> {nist_wavelength:.4f}')
