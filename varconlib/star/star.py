@@ -1046,6 +1046,84 @@ class Star(object):
 
         return info_list
 
+    def formatTransitionData(self, transition, order_num, era):
+        """
+        Return a list of informatin about a given transition.
+
+        Parameters
+        ----------
+        transitiono : `varconlib.transition.Transition`
+            An instance of transition.Transition.
+        order_num : int
+            An integer between [0, 71] representing the number of the HARPS
+            this pair is fitted in.
+        era : str, ['pre', 'post']
+            The time frame to restrict the results to.
+        """
+        # Define a default list to return if there are no observations for this
+        # star for this era.
+        info_list = [self.name, 0,
+                     np.nan, np.nan, np.nan, np.nan]
+
+        if era == 'pre':
+            if self.hasObsPre:
+                time_slice = slice(None, self.fiberSplitIndex)
+                era_index = 0
+            else:
+                return info_list
+        elif era == 'post':
+            if self.hasObsPost:
+                time_slice = slice(self.fiberSplitIndex, None)
+                era_index = 1
+            else:
+                return info_list
+        else:
+            raise RuntimeError(f'Incorrect value for era: {era}')
+
+        order_num = str(order_num)
+
+        transition_col = self.t_index(f'{transition.label}_{order_num}')
+
+        t_sigma_sys = float(self.transitionSysErrorsArray[era_index,
+                                                          transition_col])
+
+        # Careful about the bare time_slice here; but it should be fine because
+        # of the checks earlier that the star actually has observations for the
+        # specified era.
+        if np.isnan(self.transitionModelOffsetsArray[time_slice,
+                                                     transition_col]).all():
+            info_list[4] = t_sigma_sys
+            return info_list
+
+        t_offsets = ma.masked_invalid(
+                self.transitionModelOffsetsArray[time_slice,
+                                                 transition_col].value)
+
+        t_errors = ma.array(
+                self.transitionModelErrorsArray[time_slice,
+                                                transition_col].value)
+        t_errors.mask = t_offsets.mask
+        assert t_offsets.count() == t_errors.count()
+
+        t_weighted_mean, sum_ = ma.average(t_offsets,
+                                           weights=t_errors**-2,
+                                           returned=True)
+        t_chi_squared = calc_chi_squared_nu(t_offsets - t_weighted_mean,
+                                            t_errors, 1)
+        t_eotwm = 1 / np.sqrt(sum_)
+
+        info_list = [self.name, t_offsets.count(),
+                     t_weighted_mean, t_eotwm, t_sigma_sys,
+                     t_chi_squared]
+
+        for i, item in enumerate(info_list):
+            if item == 0:
+                pass
+            elif not item:
+                info_list[i] = 'nan'
+
+        return info_list
+
     def saveDataToDisk(self, file_path=None, data_format='text'):
         """Save important data arrays to disk in HDF5 format.
 

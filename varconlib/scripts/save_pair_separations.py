@@ -151,6 +151,14 @@ def main():
         os.mkdir(output_pre)
         os.mkdir(output_post)
 
+    t_output_dir = vcl.output_dir / 'transition_offset_files'
+    t_output_pre = t_output_dir / 'pre'
+    t_output_post = t_output_dir / 'post'
+    if not t_output_dir.exists():
+        os.mkdir(t_output_dir)
+        os.mkdir(t_output_pre)
+        os.mkdir(t_output_post)
+
     if args.stars:
         # Generate a file with properties constant for each star
         tqdm.write('Writing out data for each star.')
@@ -226,6 +234,47 @@ def main():
                         for row in info_list:
                             datawriter.writerow(row)
 
+    if args.transitions:
+        # Import the list of transitions to use.
+        with open(vcl.final_selection_file, 'r+b') as f:
+            transitions_list = pickle.load(f)
+
+        # Everything with units in m/s
+        transition_properties_header = ['star_name', 'Nobs',
+                                        'model_offset_transition',
+                                        'err_stat_transition',
+                                        'err_sys_transition',
+                                        'chisq_nu_transition']
+
+        tqdm.write('Writing out data for each transition.')
+        for transition in tqdm(transitions_list):
+            for order_num in transition.ordersToFitIn:
+                transition_label = "_".join([transition.label, str(order_num)])
+                for era in ('pre', 'post'):
+                    vprint('Collecting data for'
+                           f' {transition_label} in {era}-fiber'
+                           ' change era.')
+                    csv_file = t_output_dir /\
+                        f'{era}/{transition_label}_'\
+                        f'transition_offsets_{era}.csv'
+                    if not csv_file.parent.exists():
+                        os.mkdir(csv_file.parent)
+                    info_list = []
+
+                    for star in star_list:
+                        try:
+                            info_list.append(star.formatTransitionData(
+                                    transition, order_num, era))
+                        except ZeroDivisionError:
+                            vprint(f'Error with {star.name}, {era}.')
+                            raise
+
+                    with open(csv_file, 'w', newline='') as f:
+                        datawriter = csv.writer(f)
+                        datawriter.writerow(transition_properties_header)
+                        for row in info_list:
+                            datawriter.writerow(row)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Save out results of the pair'
@@ -238,6 +287,9 @@ if __name__ == '__main__':
     parser.add_argument('-S', '--stars', action='store_true',
                         help="Create a file containing static information for"
                         " each star.")
+    parser.add_argument('-T', '--transitions', action='store_true',
+                        help="Create CSV files with all the informationo for"
+                        "each transition.")
     parser.add_argument('-P', '--pairs', action='store_true',
                         help="Create CSV files with all the information for"
                         " each pair.")
