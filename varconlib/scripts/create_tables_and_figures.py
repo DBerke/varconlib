@@ -3263,14 +3263,14 @@ def create_fit_info_tables():
                 dict_label = '_'.join([label, era])
 
                 line = [*parse_label(label, ASCII=True),
-                        sigma_sys_dict[dict_label]]
+                        u.unyt_quantity(sigma_sys_dict[dict_label]).value]
                 line.extend(coeffs_dict[dict_label])
                 table_lines.append(line)
 
-        pairs_table_file = tables_dir / f'pairs_table_{era}.csv'
-        if pairs_table_file.exists():
-            os.unlink(pairs_table_file)
-        with open(pairs_table_file, 'w') as csvfile:
+        pairs_coeffs_file = tables_dir / f'pair_coefficients_table_{era}.csv'
+        if pairs_coeffs_file.exists():
+            os.unlink(pairs_coeffs_file)
+        with open(pairs_coeffs_file, 'w') as csvfile:
             tablewriter = csv.writer(csvfile, delimiter=',')
             tablewriter.writerow(pair_headers)
             tablewriter.writerows(table_lines)
@@ -3318,9 +3318,9 @@ if __name__ == '__main__':
 
 #        create_transitions_table()
 
-        get_program_ids()
+#        get_program_ids()
 
-#        create_fit_info_tables()
+        create_fit_info_tables()
 
     if args.figures:
         hd146233 = Star('HD146233', '/Users/dberke/data_output/HD146233')
