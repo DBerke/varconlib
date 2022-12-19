@@ -558,9 +558,12 @@ class HARPSFile2DScience(HARPSFile2D):
 
         file_date = blaze_file[6:16]
 
-        blaze_file_path = harps_blaze_files_dir /\
-            'data/reduced/{}'.format(file_date) /\
-            blaze_file
+        try:
+            blaze_file_path = harps_blaze_files_dir / f'{blaze_file}'
+        except FileNotFoundError:
+            blaze_file_path = harps_blaze_files_dir /\
+                'data/reduced/{}'.format(file_date) /\
+                blaze_file
 
         if not blaze_file_path.exists():
             tqdm.write(str(blaze_file_path))
