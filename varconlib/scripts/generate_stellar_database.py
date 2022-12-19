@@ -10,6 +10,7 @@ retrieval by other scripts.
 """
 
 import argparse
+import csv
 from json.decoder import JSONDecodeError
 import os
 from pathlib import Path
@@ -319,6 +320,8 @@ def main():
 
     vprint(f'{excluded_metal_poor_stars} were too metal-poor.')
 
+    star_names_list = [star.name for star in star_list]
+
     tqdm.write('Unpickling transitions list..')
     with open(vcl.final_selection_file, 'r+b') as f:
         transitions_list = pickle.load(f)
@@ -390,7 +393,7 @@ def main():
         pre_slice = slice(None, star.fiberSplitIndex)
         post_slice = slice(star.fiberSplitIndex, None)
 
-        for j, label in enumerate(tqdm(transition_labels)):
+        for j, label in enumerate(transition_labels):
             col_index = star.t_index(label)
 
             if star.hasObsPre:
@@ -409,7 +412,7 @@ def main():
                 star_transition_offsets_EotM[1, i, j] = star_eotm
                 star_transition_offsets_stds[1, i, j] = star_std
         if not args.transitions_only:
-            for k, label in enumerate(tqdm(pair_labels)):
+            for k, label in enumerate(pair_labels):
                 col_index = star.p_index(label)
 
                 if star.hasObsPre:
@@ -492,6 +495,127 @@ def main():
         hickle.dump(star_names, f, path='/star_row_index')
     tqdm.write(f'Collected {total_obs} observations in total from'
                f' {len(star_list)} stars.')
+
+    # Write transition and pair offsets to CSV files (with pairs/transitions
+    # with q-coefficients additionally).
+
+    tqdm.write('Writing output to CSV files.')
+
+    tran_sep_file_pre = vcl.databases_dir / 'transition_separations_pre_22.csv'
+    tran_eotm_file_pre = vcl.databases_dir / 'transition_eotm_pre_22.csv'
+    tran_eotwm_file_pre = vcl.databases_dir / 'transition_eotwm_pre_22.csv'
+    tran_sep_file_post = vcl.databases_dir / 'transition_separations_post_22.csv'
+    tran_eotm_file_post = vcl.databases_dir / 'transition_eotm_post_22.csv'
+    tran_eotwm_file_post = vcl.databases_dir / 'transition_eotwm_post_22.csv'
+
+    q_coeff_transitions = (102, 103, 104, 105, 132, 133, 134, 135, 153, 154,
+                           155, 156, 238, 241, 265, 271, 340, 347, 349, 354,
+                           355, 357, 360, 361, 365, 366, 372, 373)
+
+    for csv_file, arr in tqdm(zip((tran_sep_file_pre,
+                                   tran_eotm_file_pre,
+                                   tran_eotwm_file_pre),
+                                  (star_pair_separations,
+                                   star_pair_separations_EotM,
+                                   star_pair_separations_EotWM)), total=3):
+        if csv_file.exists():
+            os.unlink(csv_file)
+
+        with open(csv_file, 'w', newline='') as csvfile:
+            tqdm.write(f'Saving {csv_file.name}')
+            fieldnames = ['star']
+            for j in q_coeff_transitions:
+                fieldnames.append(transition_labels[j])
+
+            writer = csv.writer(csvfile, delimiter=',')
+            writer.writerow(fieldnames)
+            for i in range(row_len):
+                # Use pre- (=0) plane in array.
+                line = [star_names_list[i]]
+                line.extend(arr[0, i, q_coeff_transitions].value)
+                writer.writerow(line)
+
+    for csv_file, arr in tqdm(zip((tran_sep_file_post,
+                                   tran_eotm_file_post,
+                                   tran_eotwm_file_post),
+                                  (star_pair_separations,
+                                   star_pair_separations_EotM,
+                                   star_pair_separations_EotWM)), total=3):
+        if csv_file.exists():
+            os.unlink(csv_file)
+
+        with open(csv_file, 'w', newline='') as csvfile:
+            tqdm.write(f'Saving {csv_file.name}')
+            fieldnames = ['star']
+            for j in q_coeff_transitions:
+                fieldnames.append(transition_labels[j])
+
+            writer = csv.writer(csvfile, delimiter=',')
+            writer.writerow(fieldnames)
+            for i in range(row_len):
+                # Use post- (=1) plane in array.
+                line = [star_names_list[i]]
+                line.extend(arr[1, i, q_coeff_transitions].value)
+                writer.writerow(line)
+
+    # Now do the pairs
+    pair_sep_file_pre = vcl.databases_dir / 'pair_separations_pre_17.csv'
+    pair_eotm_file_pre = vcl.databases_dir / 'pair_eotm_pre_17.csv'
+    pair_eotwm_file_pre = vcl.databases_dir / 'pair_eotwm_pre_17.csv'
+    pair_sep_file_post = vcl.databases_dir / 'pair_separations_post_17.csv'
+    pair_eotm_file_post = vcl.databases_dir / 'pair_eotm_post_17.csv'
+    pair_eotwm_file_post = vcl.databases_dir / 'pair_eotwm_post_17.csv'
+
+    q_coeff_pairs = (137, 138, 186, 187, 244, 245, 510, 568, 681, 682, 705,
+                     715, 717, 720, 722, 731, 732, 744, 757, 773)
+
+    for csv_file, arr in tqdm(zip((pair_sep_file_pre,
+                                   pair_eotm_file_pre,
+                                   pair_eotwm_file_pre),
+                                  (star_pair_separations,
+                                   star_pair_separations_EotM,
+                                   star_pair_separations_EotWM)), total=3):
+        if csv_file.exists():
+            os.unlink(csv_file)
+
+        with open(csv_file, 'w', newline='') as csvfile:
+            tqdm.write(f'Saving {csv_file.name}')
+            fieldnames = ['star']
+#            fieldnames.extend(pair_labels)
+            for j in q_coeff_pairs:
+                fieldnames.append(pair_labels[j])
+
+            writer = csv.writer(csvfile, delimiter=',')
+            writer.writerow(fieldnames)
+            for i in range(row_len):
+                # Use pre- (=0) plane in array.
+                line = [star_names_list[i]]
+                line.extend(arr[0, i, q_coeff_pairs].value)
+                writer.writerow(line)
+
+    for csv_file, arr in tqdm(zip((pair_sep_file_post,
+                                   pair_eotm_file_post,
+                                   pair_eotwm_file_post),
+                                  (star_pair_separations,
+                                   star_pair_separations_EotM,
+                                   star_pair_separations_EotWM)), total=3):
+        if csv_file.exists():
+            os.unlink(csv_file)
+
+        with open(csv_file, 'w', newline='') as csvfile:
+            tqdm.write(f'Saving {csv_file.name}')
+            fieldnames = ['star']
+#            fieldnames.extend(pair_labels)
+            for j in q_coeff_pairs:
+                fieldnames.append(pair_labels[j])
+
+            writer = csv.writer(csvfile, delimiter=',')
+            writer.writerow(fieldnames)
+            for i in range(row_len):
+                # Use post- (=1) plane in array.
+                line = [star_names_list[i]]
+                line.extend(arr[1, i, q_coeff_pairs].value)
+                writer.writerow(line)
 
 
 if __name__ == '__main__':
