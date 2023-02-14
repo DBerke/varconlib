@@ -3153,12 +3153,25 @@ def create_fit_info_tables():
 
     tables_dir = output_dir / 'tables'
 
+    tqdm.write('Unpickling transitions list.')
+    with open(vcl.final_selection_file, 'r+b') as f:
+        transitions_list = pickle.load(f)
+    vprint(f'Found {len(transitions_list)} transitions.')
+
     tqdm.write('Unpickling pairs list.')
     with open(vcl.final_pair_selection_file, 'r+b') as f:
         pairs_list = pickle.load(f)
     vprint(f'Found {len(pairs_list)} pairs in the list.')
 
-    tqdm.write('Loading fitting results file...')
+    tqdm.write('Loading transition fitting results file...')
+    filename_t = vcl.output_dir /\
+        'fit_params/quadratic_transitions_3.0sigma_params.hdf5'
+    fit_results_dict_t = get_params_file(filename_t)
+    coeffs_dict_t = fit_results_dict_t['coeffs']
+    sigma_sys_dict_t = fit_results_dict_t['sigmas_sys']
+
+
+    tqdm.write('Loading pair fitting results file...')
     filename = vcl.output_dir /\
         'fit_params/quadratic_pairs_4.0sigma_params.hdf5'
     fit_results_dict = get_params_file(filename)
@@ -3275,6 +3288,32 @@ def create_fit_info_tables():
             tablewriter.writerow(pair_headers)
             tablewriter.writerows(table_lines)
 
+    transition_headers = ['Transition', 'Order', 'sigsys', 'a', 'b_1',
+                          'c_1', 'd_1', 'b_2', 'c_2', 'd_2']
+
+    for era in ('pre', 'post'):
+        tqdm.write(f'Collecting information for each transition for {era}...')
+        table_lines_t = []
+        for transition in tqdm(transitions_list):
+            for order_num in transition.ordersToFitIn:
+                label = '_'.join([transition.label, str(order_num)])
+                vprint(20 * '-')
+                vprint(f'Analyzing {label}...')
+                dict_label = '_'.join([label, era])
+
+                line = [transition.label, str(order_num),
+                        u.unyt_quantity(sigma_sys_dict_t[dict_label]).value]
+                line.extend(coeffs_dict_t[dict_label])
+                table_lines_t.append(line)
+
+        transitions_coeffs_file = tables_dir /\
+            f'transition_coefficients_table_{era}.csv'
+        if transitions_coeffs_file.exists():
+            os.unlink(transitions_coeffs_file)
+        with open(transitions_coeffs_file, 'w') as csvfile:
+            tablewriter = csv.writer(csvfile, delimiter=',')
+            tablewriter.writerow(transition_headers)
+            tablewriter.writerows(table_lines_t)
 
 
 if __name__ == '__main__':
