@@ -501,23 +501,28 @@ def main():
 
     tqdm.write('Writing output to CSV files.')
 
-    tran_sep_file_pre = vcl.databases_dir / 'transition_separations_pre_22.csv'
-    tran_eotm_file_pre = vcl.databases_dir / 'transition_eotm_pre_22.csv'
-    tran_eotwm_file_pre = vcl.databases_dir / 'transition_eotwm_pre_22.csv'
-    tran_sep_file_post = vcl.databases_dir / 'transition_separations_post_22.csv'
-    tran_eotm_file_post = vcl.databases_dir / 'transition_eotm_post_22.csv'
-    tran_eotwm_file_post = vcl.databases_dir / 'transition_eotwm_post_22.csv'
+    if args.save_all:
+        q_coeff_transitions = [i for i in range(col_len)]
+        sfx = ''
+    else:
+        q_coeff_transitions = (102, 103, 104, 105, 132, 133, 134, 135, 153, 154,
+                               155, 156, 238, 241, 265, 271, 340, 347, 349, 354,
+                               355, 357, 360, 361, 365, 366, 372, 373)
+        sfx = '_22'
 
-    q_coeff_transitions = (102, 103, 104, 105, 132, 133, 134, 135, 153, 154,
-                           155, 156, 238, 241, 265, 271, 340, 347, 349, 354,
-                           355, 357, 360, 361, 365, 366, 372, 373)
+    tran_offs_file_pre = vcl.databases_dir / f'transition_offsets_pre{sfx}.csv'
+    tran_eotm_file_pre = vcl.databases_dir / f'transition_eotm_pre{sfx}.csv'
+    tran_eotwm_file_pre = vcl.databases_dir / f'transition_eotwm_pre{sfx}.csv'
+    tran_offs_file_post = vcl.databases_dir / f'transition_offsets_post{sfx}.csv'
+    tran_eotm_file_post = vcl.databases_dir / f'transition_eotm_post{sfx}.csv'
+    tran_eotwm_file_post = vcl.databases_dir / f'transition_eotwm_post{sfx}.csv'
 
-    for csv_file, arr in tqdm(zip((tran_sep_file_pre,
+    for csv_file, arr in tqdm(zip((tran_offs_file_pre,
                                    tran_eotm_file_pre,
                                    tran_eotwm_file_pre),
-                                  (star_pair_separations,
-                                   star_pair_separations_EotM,
-                                   star_pair_separations_EotWM)), total=3):
+                                  (star_transition_offsets,
+                                   star_transition_offsets_EotM,
+                                   star_transition_offsets_EotWM)), total=3):
         if csv_file.exists():
             os.unlink(csv_file)
 
@@ -535,12 +540,12 @@ def main():
                 line.extend(arr[0, i, q_coeff_transitions].value)
                 writer.writerow(line)
 
-    for csv_file, arr in tqdm(zip((tran_sep_file_post,
+    for csv_file, arr in tqdm(zip((tran_offs_file_post,
                                    tran_eotm_file_post,
                                    tran_eotwm_file_post),
-                                  (star_pair_separations,
-                                   star_pair_separations_EotM,
-                                   star_pair_separations_EotWM)), total=3):
+                                  (star_transition_offsets,
+                                   star_transition_offsets_EotM,
+                                   star_transition_offsets_EotWM)), total=3):
         if csv_file.exists():
             os.unlink(csv_file)
 
@@ -559,15 +564,21 @@ def main():
                 writer.writerow(line)
 
     # Now do the pairs
-    pair_sep_file_pre = vcl.databases_dir / 'pair_separations_pre_17.csv'
-    pair_eotm_file_pre = vcl.databases_dir / 'pair_eotm_pre_17.csv'
-    pair_eotwm_file_pre = vcl.databases_dir / 'pair_eotwm_pre_17.csv'
-    pair_sep_file_post = vcl.databases_dir / 'pair_separations_post_17.csv'
-    pair_eotm_file_post = vcl.databases_dir / 'pair_eotm_post_17.csv'
-    pair_eotwm_file_post = vcl.databases_dir / 'pair_eotwm_post_17.csv'
+    if args.save_all:
+        q_coeff_pairs = [i for i in range(pair_col_len)]
+        sfx = ''
+    else:
+        q_coeff_pairs = (137, 138, 186, 187, 244, 245, 510, 568, 681, 682, 705,
+                         715, 717, 720, 722, 731, 732, 744, 757, 773)
+        sfx = '_17'
 
-    q_coeff_pairs = (137, 138, 186, 187, 244, 245, 510, 568, 681, 682, 705,
-                     715, 717, 720, 722, 731, 732, 744, 757, 773)
+    pair_sep_file_pre = vcl.databases_dir / f'pair_separations_pre{sfx}.csv'
+    pair_eotm_file_pre = vcl.databases_dir / f'pair_eotm_pre{sfx}.csv'
+    pair_eotwm_file_pre = vcl.databases_dir / f'pair_eotwm_pre{sfx}.csv'
+    pair_sep_file_post = vcl.databases_dir / f'pair_separations_post{sfx}.csv'
+    pair_eotm_file_post = vcl.databases_dir / f'pair_eotm_post{sfx}.csv'
+    pair_eotwm_file_post = vcl.databases_dir / f'pair_eotwm_post{sfx}.csv'
+
 
     for csv_file, arr in tqdm(zip((pair_sep_file_pre,
                                    pair_eotm_file_pre,
@@ -641,6 +652,9 @@ if __name__ == '__main__':
     parser.add_argument('--inject-fake-signal', action='store_true',
                         help='Inject a fake signal when recreating stars.'
                         ' (Requires --recreate-stars to work.)')
+    parser.add_argument('--save-all', action='store_true',
+                        help='Save values for all transitions/pairs to CSV.'
+                        ' Otherwise only for ones with q-coefficients.')
 
     paper = parser.add_mutually_exclusive_group()
     paper.add_argument('--casagrande2011', action='store_true',
